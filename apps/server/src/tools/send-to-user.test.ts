@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { ChannelStore } from '../channels/store.js';
 import { seedTestTenant } from '../integration/environment-fixture.js';
 import { SessionStore } from '../sessions/store.js';
 import { openDatabase } from '../storage/database.js';
@@ -266,3 +267,164 @@ it.each(['complete', 'incomplete'] as const)(
     }
   },
 );
+
+function channelFixture() {
+  const base = fixture();
+  const channelStore = new ChannelStore(base.database, 'send-to-user-channel-secret-32chars');
+  channelStore.saveFeishuCredentials(
+    ownerId,
+    { kind: 'feishu', appId: 'cli_1', appSecret: 's' },
+    '123456',
+  );
+  channelStore.bindExternalUser(ownerId, 'feishu', 'ou_1');
+  const tool = createSendToUserTool({
+    store: base.store,
+    source: base.run,
+    channels: { store: channelStore },
+  });
+  return { ...base, channelStore, tool };
+}
+
+it('creates queued deliveries for bound channels and failed deliveries for unbound channels', async () => {
+  const { database, store, run, channelStore, tool } = channelFixture();
+  try {
+    const call = {
+      id: 'send-channels',
+      name: 'send_to_user',
+      arguments: { content: '同步到 IM。', channels: ['feishu', 'wechat'] },
+    };
+    store.appendModelMessage({
+      runId: run.runId,
+      message: { role: 'assistant', content: '', tool_calls: [call] },
+    });
+    const result = await tool.execute(await tool.validate(call.arguments), {
+      call,
+      signal: new AbortController().signal,
+    });
+    const resultText = typeof result === 'string' ? result : result.content;
+    const payload = JSON.parse(resultText) as {
+      deliveries: { channel: string; delivery_id: string; status: string; error?: string }[];
+    };
+    expect(payload.deliveries).toHaveLength(2);
+    const feishu = payload.deliveries.find((delivery) => delivery.channel === 'feishu');
+    const wechat = payload.deliveries.find((delivery) => delivery.channel === 'wechat');
+    expect(feishu?.status).toBe('queued');
+    expect(wechat?.status).toBe('failed');
+    expect(wechat?.error).toContain('未登录');
+    expect(channelStore.getDelivery(ownerId, feishu?.delivery_id ?? '').status).toBe('pending');
+    expect(channelStore.getDelivery(ownerId, wechat?.delivery_id ?? '').status).toBe('failed');
+  } finally {
+    database.close();
+  }
+});
+
+it('requeues a failed delivery through redeliver_of without creating new deliveries', async () => {
+  const { database, channelStore, tool, store, run } = channelFixture();
+  try {
+    const failed = channelStore.createDelivery({
+      ownerId,
+      channel: 'feishu',
+      content: '原文',
+      maxAttempts: 1,
+    });
+    channelStore.markDelivering(ownerId, failed.deliveryId);
+    channelStore.markAttemptFailed(
+      ownerId,
+      failed.deliveryId,
+      { code: 'network_error', message: '网络超时', retryable: true },
+      null,
+    );
+    const call = {
+      id: 'send-redeliver',
+      name: 'send_to_user',
+      arguments: { redeliver_of: failed.deliveryId },
+    };
+    store.appendModelMessage({
+      runId: run.runId,
+      message: { role: 'assistant', content: '', tool_calls: [call] },
+    });
+    const result = await tool.execute(await tool.validate(call.arguments), {
+      call,
+      signal: new AbortController().signal,
+    });
+    const resultText = typeof result === 'string' ? result : result.content;
+    const payload = JSON.parse(resultText) as {
+      redelivered: boolean;
+      delivery: { delivery_id: string; status: string };
+    };
+    expect(payload.redelivered).toBe(true);
+    expect(payload.delivery.delivery_id).toBe(failed.deliveryId);
+    const requeued = channelStore.getDelivery(ownerId, failed.deliveryId);
+    expect(requeued.status).toBe('pending');
+    expect(requeued.attempts).toBe(0);
+  } finally {
+    database.close();
+  }
+});
+
+it('rejects redeliver_of for deliveries that have not failed', async () => {
+  const { database, channelStore, tool, store, run } = channelFixture();
+  try {
+    const pending = channelStore.createDelivery({ ownerId, channel: 'feishu', content: '原文' });
+    const call = {
+      id: 'send-redeliver-pending',
+      name: 'send_to_user',
+      arguments: { redeliver_of: pending.deliveryId },
+    };
+    store.appendModelMessage({
+      runId: run.runId,
+      message: { role: 'assistant', content: '', tool_calls: [call] },
+    });
+    await expect(
+      tool.execute(await tool.validate(call.arguments), {
+        call,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({ code: 'failed_precondition' });
+  } finally {
+    database.close();
+  }
+});
+
+it('rejects channels outside the global main conversation', async () => {
+  const database = openDatabase(':memory:');
+  const store = new SessionStore(database);
+  seedTestTenant(database, ownerId);
+  try {
+    const workspace = store.createWorkspace({
+      ownerId,
+      name: 'project-beta',
+      envId: 'main',
+      path: '/workspace/project-beta',
+    });
+    const sent = store.sendMessage({
+      ownerId,
+      threadId: workspace.mainThread.threadId,
+      text: 'question',
+      mode: 'follow_up',
+      clientActionId: 'send-ws-channel-question',
+      method: 'SendMessage',
+      parameters: {},
+    });
+    const run = store.getRunById(sent.runId);
+    const channelStore = new ChannelStore(database, 'send-to-user-channel-secret-32chars');
+    const tool = createSendToUserTool({ store, source: run, channels: { store: channelStore } });
+    const call = {
+      id: 'send-ws-channels',
+      name: 'send_to_user',
+      arguments: { content: '回复', channels: ['feishu'] },
+    };
+    store.appendModelMessage({
+      runId: run.runId,
+      message: { role: 'assistant', content: '', tool_calls: [call] },
+    });
+    await expect(
+      tool.execute(await tool.validate(call.arguments), {
+        call,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_argument' });
+  } finally {
+    database.close();
+  }
+});

@@ -6,6 +6,11 @@ import {
   AttachmentStore,
   attachmentMetadataSchema,
 } from '../attachments/index.js';
+import {
+  channelJsonText,
+  channelReferenceSchema,
+  parseChannelJson,
+} from '../channels/reference.js';
 import { ContextStore } from '../context/context-store.js';
 import {
   modelExecutionModeEventId,
@@ -15,6 +20,7 @@ import {
 } from '../context/output-mode.js';
 import {
   type AutomationReference,
+  type ChannelReference,
   type Clock,
   type ContextMessage,
   type DelegationKey,
@@ -65,6 +71,7 @@ const messageSourceSchema = z.enum([
   'subagent_response',
   'automation',
   'thread_notification',
+  'channel',
 ]);
 const automationReferenceSchema = z.object({
   scheduleId: z.string(),
@@ -147,6 +154,7 @@ const inputRowSchema = z.object({
   automation_fire_id: z.string().nullable(),
   automation_trigger: z.enum(['scheduled', 'run_now']).nullable(),
   automation_scheduled_at: z.string().nullable(),
+  channel_json: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -346,6 +354,7 @@ const inputResponseSchema = z.object({
   sourceThreadId: z.string().nullable(),
   sourceAgentId: z.string().nullable(),
   automation: automationReferenceSchema.nullable(),
+  channel: channelReferenceSchema.nullable().default(null),
   attachments: z.array(attachmentMetadataSchema).readonly().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -1287,6 +1296,38 @@ export class SessionStore {
     });
   }
 
+  acceptChannelInput(
+    action: ActionInput & {
+      text: string;
+      channel: ChannelReference;
+    },
+  ): { thread: ThreadRecord; input: InputRecord; runId: string } {
+    const text = requireText(action.text, 'text', 1_000_000, {
+      maximumBytes: this.#maxInputBytes,
+    });
+    if (action.channel.externalMessageId != null) {
+      requireText(action.channel.externalMessageId, 'channel.externalMessageId', 200);
+    }
+    return this.#action(action, automationAcceptResponseSchema, () => {
+      const thread = this.getOrCreateMainThread(action.ownerId);
+      this.agentEnvironments.requirePolicy(thread.threadId, 'thread');
+      this.#assertQueueCapacity(thread.threadId, 1);
+      const active = this.getActiveRun(thread.threadId);
+      if (active?.status === 'cancel_requested') {
+        throw new SessionError(
+          'failed_precondition',
+          'Cannot submit channel input after cancellation was requested.',
+        );
+      }
+      const run = active ?? this.#insertRun(action.ownerId, thread.threadId, 'thread');
+      const input = this.#insertInput(action.ownerId, thread.threadId, text, 'follow_up', {
+        source: 'channel',
+        channel: action.channel,
+      });
+      return { thread, input, runId: run.runId };
+    });
+  }
+
   acceptAutomationInput(
     action: ActionInput & {
       targetKind: 'main' | 'existing_thread' | 'new_task' | 'new_automation_only';
@@ -1843,6 +1884,7 @@ export class SessionStore {
                 ? {}
                 : { sourceAgentId: sourceInput.sourceAgentId }),
               ...(sourceInput.automation === null ? {} : { automation: sourceInput.automation }),
+              ...(sourceInput.channel === null ? {} : { channel: sourceInput.channel }),
             }),
         message: storedMessage,
         ...(input.responseUsage === undefined ? {} : { responseUsage: input.responseUsage }),
@@ -3913,6 +3955,7 @@ export class SessionStore {
       sourceThreadId?: string;
       sourceAgentId?: string;
       automation?: AutomationReference;
+      channel?: ChannelReference;
     } = {},
     attachments: readonly AttachmentMetadata[] = [],
   ): InputRecord {
@@ -3925,8 +3968,8 @@ export class SessionStore {
           input_id, thread_id, owner_id, text, mode, status, position, version,
           source, delegation_source_thread_id, delegation_source_agent_id, source_tool_call_id,
           source_thread_id, source_agent_id, automation_schedule_id, automation_fire_id,
-          automation_trigger, automation_scheduled_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 'queued', ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          automation_trigger, automation_scheduled_at, channel_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'queued', ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         inputId,
@@ -3945,6 +3988,7 @@ export class SessionStore {
         metadata.automation?.fireId ?? null,
         metadata.automation?.trigger ?? null,
         metadata.automation?.scheduledAt ?? null,
+        channelJsonText(metadata.channel),
         now,
         now,
       );
@@ -4140,6 +4184,7 @@ export class SessionStore {
             },
       sourceThreadId: row.source_thread_id,
       sourceAgentId: row.source_agent_id,
+      channel: parseChannelJson(row.channel_json),
       automation:
         row.automation_schedule_id === null ||
         row.automation_fire_id === null ||

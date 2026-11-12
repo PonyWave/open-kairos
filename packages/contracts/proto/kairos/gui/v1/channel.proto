@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package kairos.gui.v1;
+
+import "kairos/gui/v1/gui.proto";
+
+enum ChannelLoginState {
+  CHANNEL_LOGIN_STATE_UNSPECIFIED = 0;
+  CHANNEL_LOGIN_STATE_UNCONFIGURED = 1;
+  CHANNEL_LOGIN_STATE_PENDING = 2;
+  CHANNEL_LOGIN_STATE_ACTIVE = 3;
+  CHANNEL_LOGIN_STATE_ERROR = 4;
+}
+
+message ChannelState {
+  ChannelId channel = 1;
+  ChannelLoginState login_state = 2;
+  bool configured = 3;
+  string account_label = 4;
+  string bound_external_user_id = 5;
+  string status_reason = 6;
+  optional string pairing_code = 7;
+}
+
+message GetChannelStatesRequest {}
+
+message GetChannelStatesResponse {
+  repeated ChannelState states = 1;
+}
+
+message StartChannelLoginRequest {
+  string client_action_id = 1;
+  ChannelId channel = 2;
+}
+
+message StartChannelLoginResponse {
+  string client_action_id = 1;
+  ChannelState state = 2;
+  string qr_content = 3;
+  string login_session_id = 4;
+}
+
+message PollChannelLoginRequest {
+  string login_session_id = 1;
+}
+
+message PollChannelLoginResponse {
+  ChannelLoginState login_state = 1;
+  string status_reason = 2;
+}
+
+message SaveFeishuCredentialsRequest {
+  string client_action_id = 1;
+  string app_id = 2;
+  string app_secret = 3;
+}
+
+message SaveFeishuCredentialsResponse {
+  string client_action_id = 1;
+  ChannelState state = 2;
+}
+
+message UnbindChannelRequest {
+  string client_action_id = 1;
+  ChannelId channel = 2;
+}
+
+message UnbindChannelResponse {
+  string client_action_id = 1;
+  ChannelState state = 2;
+}
+
+service ChannelService {
+  rpc GetChannelStates(GetChannelStatesRequest) returns (GetChannelStatesResponse);
+  rpc StartChannelLogin(StartChannelLoginRequest) returns (StartChannelLoginResponse);
+  rpc PollChannelLogin(PollChannelLoginRequest) returns (PollChannelLoginResponse);
+  rpc SaveFeishuCredentials(SaveFeishuCredentialsRequest) returns (SaveFeishuCredentialsResponse);
+  rpc UnbindChannel(UnbindChannelRequest) returns (UnbindChannelResponse);
+}

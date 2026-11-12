@@ -34,6 +34,7 @@
 - 文件工具：`read`、`write`、`edit`、`read_image`；附件上传与投递。
 - 网页访问：`web_fetch` 抓取网页，`web_search` 搜索（需配置外部索引），受限 `browser` 工具使用 Playwright 驱动的 Chromium。
 - `send_to_user`：全局 main 向用户投递回复的通道。
+- IM 渠道：微信（ClawBot 扫码绑定）与飞书（自建应用长连接）接入全局 main，入站消息标注来源，出站通过 `send_to_user` 的 `channels` 参数投递，投递失败重试后通知全局 main。设置页「渠道」栏目管理绑定。文件类消息暂不支持。
 
 ## 与 Kairos 的关系
 

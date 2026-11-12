@@ -868,6 +868,34 @@ button.title-icon {
   line-height: 20px;
   margin-bottom: 4px;
 }
+.channel-source {
+  font-weight: 600;
+}
+.channel-delivery-failure {
+  display: flex;
+  justify-content: center;
+}
+.channel-delivery-failure-card {
+  max-width: 720px;
+  width: 100%;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: var(--panel, transparent);
+}
+.channel-delivery-failure-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.channel-delivery-failure-detail {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: inherit;
+}
 .message.transient {
   opacity: 0.85;
 }

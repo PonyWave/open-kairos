@@ -16,6 +16,7 @@ import {
 } from '@kairos/agent-core';
 import { z } from 'zod';
 import type { AutomationService } from '../automation/service.js';
+import type { ChannelStore } from '../channels/store.js';
 import { DEFAULT_PERIODIC_RECAP_CONFIGURATION } from '../config.js';
 import {
   HardCutError,
@@ -122,6 +123,7 @@ export interface RunCoordinatorOptions {
   automations?: AutomationService;
   model?: RuntimeModelConfiguration;
   settings?: SettingsStore;
+  channels?: { store: ChannelStore };
   environments: EnvironmentStore;
   environmentOperations: EnvironmentOperationGateway;
   environmentUse: EnvironmentUseGateway;
@@ -1820,7 +1822,13 @@ export class RunCoordinator {
           this.#environmentRuntime.projectEnvironmentIds(run.ownerId, envIds),
       };
       if (threadType === 'main') {
-        tools.push(createSendToUserTool({ store: this.store, source: run }));
+        tools.push(
+          createSendToUserTool({
+            store: this.store,
+            source: run,
+            ...(this.#options.channels === undefined ? {} : { channels: this.#options.channels }),
+          }),
+        );
         tools.push(...createThreadDelegationTools(delegation));
         tools.push(createWorkspaceListTool(delegation));
         if (this.#options.automations) {

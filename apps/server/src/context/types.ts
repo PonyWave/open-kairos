@@ -156,7 +156,18 @@ export type MessageSource =
   | 'thread_response'
   | 'subagent_response'
   | 'automation'
-  | 'thread_notification';
+  | 'thread_notification'
+  | 'channel';
+
+export type ChannelId = 'wechat' | 'feishu';
+export type ChannelReferenceKind = 'inbound' | 'delivery_failure';
+
+export interface ChannelReference {
+  channel: ChannelId;
+  kind: ChannelReferenceKind;
+  externalMessageId?: string | null | undefined;
+  deliveryId?: string | null | undefined;
+}
 
 export interface AutomationReference {
   scheduleId: string;
@@ -185,6 +196,7 @@ export interface ContextMessage {
   sourceThreadId?: string | null;
   sourceAgentId?: string | null;
   automation?: AutomationReference | null;
+  channel?: ChannelReference | null;
   responseUsage?: DetailedModelUsage;
   sendToUserEnabled?: boolean;
   attachments?: readonly AttachmentMetadata[] | undefined;
@@ -205,6 +217,7 @@ export interface AppendContextMessageInput {
   sourceThreadId?: string;
   sourceAgentId?: string;
   automation?: AutomationReference;
+  channel?: ChannelReference;
   responseUsage?: DetailedModelUsage;
 }
 

@@ -29,6 +29,7 @@ describe('SQLite schema installation', () => {
           .all(),
       ).toEqual([
         { namespace: 'context_recap', version: 1 },
+        { namespace: 'context_recap', version: 2 },
         { namespace: 'sessions', version: 1 },
       ]);
       expect(database.prepare('SELECT COUNT(*) AS count FROM session_example').get()).toEqual({
@@ -249,7 +250,7 @@ describe('SQLite schema installation', () => {
             "SELECT MAX(version) AS version FROM schema_migrations WHERE namespace = 'context_recap'",
           )
           .get(),
-      ).toEqual({ version: 1 });
+      ).toEqual({ version: 2 });
       database
         .prepare(
           `INSERT INTO context_messages(

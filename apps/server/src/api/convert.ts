@@ -1,6 +1,8 @@
 import {
   AttachmentSource,
   AutomationTrigger,
+  ChannelId,
+  ChannelReferenceKind,
   ContentBlockType,
   EnvironmentBindingStatus,
   EnvironmentCapability,
@@ -93,7 +95,21 @@ function toMessageSource(source: NonNullable<InputRecord['source']>): MessageSou
       return MessageSource.AUTOMATION;
     case 'thread_notification':
       return MessageSource.THREAD_NOTIFICATION;
+    case 'channel':
+      return MessageSource.CHANNEL;
   }
+}
+
+function toChannelReference(record: NonNullable<InputRecord['channel']>) {
+  return {
+    channel: record.channel === 'wechat' ? ChannelId.WECHAT : ChannelId.FEISHU,
+    kind:
+      record.kind === 'inbound'
+        ? ChannelReferenceKind.INBOUND
+        : ChannelReferenceKind.DELIVERY_FAILURE,
+    ...(record.externalMessageId == null ? {} : { externalMessageId: record.externalMessageId }),
+    ...(record.deliveryId == null ? {} : { deliveryId: record.deliveryId }),
+  };
 }
 
 function toAutomationReference(record: AutomationReference) {
@@ -156,6 +172,7 @@ export function toThreadMessagePreview(record: ThreadMessagePreviewProjection) {
     createdAt: timestamp(record.createdAt),
     ...(record.source === null ? {} : { source: toMessageSource(record.source) }),
     ...(record.sourceThreadId === null ? {} : { sourceThreadId: record.sourceThreadId }),
+    ...(record.channel === null ? {} : { channel: toChannelReference(record.channel) }),
     attachments: record.attachments.map(toAttachment),
   };
 }
@@ -226,6 +243,9 @@ export function toInput(record: InputRecord) {
     ...(record.sourceThreadId === null ? {} : { sourceThreadId: record.sourceThreadId }),
     ...(record.sourceAgentId === null ? {} : { sourceAgentId: record.sourceAgentId }),
     ...(record.automation === null ? {} : { automation: toAutomationReference(record.automation) }),
+    ...(record.channel === null || record.channel === undefined
+      ? {}
+      : { channel: toChannelReference(record.channel) }),
     attachments: (record.attachments ?? []).map(toAttachment),
     createdAt: timestamp(record.createdAt),
     updatedAt: timestamp(record.updatedAt),
@@ -431,6 +451,9 @@ export function toCurrentMessage(record: ContextMessage) {
     ...(record.automation === null || record.automation === undefined
       ? {}
       : { automation: toAutomationReference(record.automation) }),
+    ...(record.channel === null || record.channel === undefined
+      ? {}
+      : { channel: toChannelReference(record.channel) }),
   };
 }
 

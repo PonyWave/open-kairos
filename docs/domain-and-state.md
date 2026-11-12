@@ -4,16 +4,18 @@
 
 ## 1. 命名空间与版本基线
 
-各命名空间以版本 1 安装最终结构，新库安装即最终结构：
+新库安装即最终结构（顺序应用全部迁移）：
 
-| 命名空间                 | 说明                                   |
-| ------------------------ | -------------------------------------- |
-| `context_recap`          | Context、Recap、附件、环境、身份与设置记录。 |
-| `server_runtime`         | Thread、输入队列、Run、Automation、通知交付与工作空间。 |
-| `devices`                | 设备身份与绑定。                       |
-| `environment_operations` | 远程 Operation 意图、状态与输出，以及环境间文件同步记录。 |
+| 命名空间                 | 版本 | 说明                                                     |
+| ------------------------ | ---- | -------------------------------------------------------- |
+| `context_recap`          | 2    | Context、Recap、附件、环境、身份与设置记录。             |
+| `server_runtime`         | 2    | Thread、输入队列、Run、Automation、通知交付、工作空间与 IM 渠道记录。 |
+| `devices`                | 1    | 设备身份与绑定。                                         |
+| `environment_operations` | 1    | 远程 Operation 意图、状态与输出，以及环境间文件同步记录。 |
 
-正常启动先预检全部命名空间，存在未迁移旧版本时在任何 DDL 或 DML 前拒绝启动；`migrate.js` 只识别 v1 数据库，带旧版本或未版本化应用表的数据库明确拒绝。
+v2 迁移（`context_recap` 与 `server_runtime`）为 IM 渠道引入：`context_messages` 与 `inputs` 的 `source` 取值扩展 `channel` 并新增 `channel_json` 列（表重建），`server_runtime` 新增 `channel_states`、`channel_inbound_events`、`channel_deliveries` 表。迁移在关闭外键检查的事务中重建表，提交后执行 `foreign_key_check`。
+
+正常启动先预检全部命名空间，存在未迁移旧版本时在任何 DDL 或 DML 前拒绝启动；v1 数据库通过显式迁移命令（`migrate.js`，带受限权限备份）升级到 v2，未版本化应用表的数据库明确拒绝。
 
 ## 2. 单用户身份
 
@@ -81,3 +83,15 @@ Memory Wiki 是主环境上的用户级长期记忆目录（默认 `<KAIROS_DATA
 - 读路径：记忆目录存在时，根 Agent（`agent_id = 'thread'`）的系统指令注入 memory 使用说明与索引块；目录不存在时不注入任何 memory 指令（首次 dream 运行创建目录或用户手工创建后生效）。索引缺失、空白或非法 UTF-8 时不注入索引块，不阻断对话。
 - 写路径一：全局 main 的根 Agent 额外获得写策略指令，用文件工具主动更新主题页与索引页；工作空间 Thread 经 `thread_notify` 向全局 main 提议。
 - 写路径二：dream Automation 的每次 fire 新建 automation_only Thread，按 `STATE.json` 水位增量整理 Wiki，其根 Run 的 recall 可见范围为本用户全部 Thread。
+
+## 9. IM 渠道
+
+| 表                       | 说明                                                                     |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `channel_states`         | 每租户每渠道一行：状态（未配置/待登录/待绑定/已连接/异常）、加密凭证、绑定外部用户 ID、微信 `context_token` 与长轮询游标、飞书配对码。 |
+| `channel_inbound_events` | 入站去重：`(tenant_id, channel, external_message_id)` 主键。             |
+| `channel_deliveries`     | 出站投递记录：渠道、原始内容、状态（pending/delivering/succeeded/failed）、尝试次数、最近错误与重试时间、失败通知时间。 |
+
+- 入站消息写入全局 main 输入队列：`source = 'channel'`，`channel_json` 记录渠道、类型（`inbound`/`delivery_failure`）、外部消息 ID 或投递 ID。
+- 投递失败按 2s/10s/30s 退避重试（默认最多 4 次尝试），失败后向全局 main 注入一次失败通知（`notified_at` 去重）。`redeliver_of` 把失败的投递重置为 pending 并清零尝试次数。
+- 渠道凭证使用与模型密钥相同的 AES-256-GCM 方案加密，密钥派生标签独立（`kairos-channels-v1`）。

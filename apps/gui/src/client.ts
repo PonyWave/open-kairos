@@ -10,6 +10,7 @@ import {
   AttachmentService,
   AuthService,
   AutomationService,
+  ChannelService,
   ContextService,
   EnvironmentService,
   EventService,
@@ -24,6 +25,7 @@ import {
 
 export interface KairosClients {
   settings: ReturnType<typeof createClient<typeof SettingsService>>;
+  channels: ReturnType<typeof createClient<typeof ChannelService>>;
   environments: ReturnType<typeof createClient<typeof EnvironmentService>>;
   auth: ReturnType<typeof createClient<typeof AuthService>>;
   attachments: ReturnType<typeof createClient<typeof AttachmentService>>;
@@ -93,6 +95,7 @@ export function createKairosClients(options: KairosClientOptions = {}): KairosCl
     });
   return {
     settings: createClient(SettingsService, transport),
+    channels: createClient(ChannelService, transport),
     environments: createClient(EnvironmentService, transport),
     auth: createClient(AuthService, transport),
     attachments: createClient(AttachmentService, transport),

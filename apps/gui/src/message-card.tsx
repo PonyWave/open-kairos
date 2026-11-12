@@ -1,4 +1,6 @@
 import {
+  ChannelId,
+  ChannelReferenceKind,
   ContentBlockType,
   type Message,
   MessageRole,
@@ -119,8 +121,14 @@ export function MessageCard({
   onRerun,
 }: MessageCardProps) {
   const [revision, setRevision] = useState(message.content);
-  const isUser = !readOnly && isRootAgent(message.agentId) && isDirectUserMessage(message);
-  const showActions = isUser && allowActions;
+  const channelInbound =
+    message.source === MessageSource.CHANNEL &&
+    message.channel?.kind === ChannelReferenceKind.INBOUND;
+  const isUser =
+    !readOnly &&
+    isRootAgent(message.agentId) &&
+    (isDirectUserMessage(message) || channelInbound === true);
+  const showActions = isUser && allowActions && channelInbound !== true;
   const editingActive = editing && showActions;
   const sent = sentMessage === undefined ? sentUserMessage(message) : sentMessage;
   if (sent) {
@@ -161,6 +169,13 @@ export function MessageCard({
         onOpenTopic={onOpenTopic}
       />
     );
+  }
+
+  if (
+    message.source === MessageSource.CHANNEL &&
+    message.channel?.kind === ChannelReferenceKind.DELIVERY_FAILURE
+  ) {
+    return <ChannelDeliveryFailureCard message={message} />;
   }
 
   if (message.source === MessageSource.THREAD_RESPONSE && message.sourceThreadId) {
@@ -347,6 +362,11 @@ export function MessageCard({
   };
   const content = (
     <>
+      {channelInbound === true && (
+        <div className="reply-source channel-source">
+          {message.channel?.channel === ChannelId.WECHAT ? '来自微信' : '来自飞书'}
+        </div>
+      )}
       {sourceThreadId && sourceThreadId !== message.threadId && (
         <div className="reply-source">
           {sourceThreadId === mainThreadId ? '来自主对话' : '来自其他话题'}
@@ -381,7 +401,11 @@ export function MessageCard({
           </div>
         </form>
       ) : orderedContent ? null : (
-        renderText(message)
+        renderText(
+          channelInbound === true
+            ? { ...message, content: message.content.replace(/^\[来自(微信|飞书)\]\n?/, '') }
+            : message,
+        )
       )}
 
       {orderedContent ? renderOrderedContent() : renderedToolItems}
@@ -432,6 +456,18 @@ export function MessageCard({
           <div className="message-content">{content}</div>
         </>
       )}
+    </article>
+  );
+}
+
+function ChannelDeliveryFailureCard({ message }: { message: Message }) {
+  const channelName = message.channel?.channel === ChannelId.WECHAT ? '微信' : '飞书';
+  return (
+    <article className="message channel-delivery-failure" data-message-id={message.messageId}>
+      <div className="channel-delivery-failure-card">
+        <div className="channel-delivery-failure-title">渠道投递失败（{channelName}）</div>
+        <pre className="channel-delivery-failure-detail">{message.content}</pre>
+      </div>
     </article>
   );
 }

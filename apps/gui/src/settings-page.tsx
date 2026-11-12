@@ -10,6 +10,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppDialog } from './app-dialog.js';
 import { AvatarEditor } from './avatar-editor.js';
+import { ChannelSettings } from './channels-settings.js';
 import type { KairosClients } from './client.js';
 import type { ConversationDisplayMode } from './conversation-display.js';
 import { Dropdown } from './dropdown.js';
@@ -17,10 +18,12 @@ import { formatClientError } from './errors.js';
 import { SettingsRequests } from './settings-requests.js';
 import { UserAvatar } from './user-avatar.js';
 
-export type SettingsSection = 'account' | 'models' | 'display';
+export type SettingsSection = 'account' | 'models' | 'channels' | 'display';
 export function settingsSectionFromLocation(search: string): SettingsSection {
   const section = new URLSearchParams(search).get('section');
-  return section === 'models' || section === 'display' ? section : 'account';
+  return section === 'models' || section === 'display' || section === 'channels'
+    ? section
+    : 'account';
 }
 
 export function SettingsPage({
@@ -64,6 +67,13 @@ export function SettingsPage({
         </button>
         <button
           type="button"
+          aria-current={section === 'channels' ? 'page' : undefined}
+          onClick={() => onSectionChange('channels')}
+        >
+          渠道
+        </button>
+        <button
+          type="button"
           aria-current={section === 'display' ? 'page' : undefined}
           onClick={() => onSectionChange('display')}
         >
@@ -80,6 +90,8 @@ export function SettingsPage({
         />
       ) : section === 'models' ? (
         <ModelSettingsPanel clients={clients} onDirtyChange={onDirtyChange} />
+      ) : section === 'channels' ? (
+        <ChannelSettings clients={clients} />
       ) : (
         <ConversationDisplaySettings
           mode={conversationDisplayMode}
