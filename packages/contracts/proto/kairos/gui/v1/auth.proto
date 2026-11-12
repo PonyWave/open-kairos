@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package kairos.gui.v1;
 
-import "google/protobuf/timestamp.proto";
-
 enum AuthenticationState {
   AUTHENTICATION_STATE_UNSPECIFIED = 0;
   AUTHENTICATION_STATE_ANONYMOUS = 1;
@@ -23,32 +21,11 @@ message Identity {
   uint32 profile_version = 8;
 }
 
-message RequestEmailCodeRequest {
-  string email = 1;
-  string client_action_id = 2;
+message BootstrapSessionRequest {
+  string token = 1;
 }
 
-message RequestEmailCodeResponse {
-  string verification_id = 1;
-  google.protobuf.Timestamp expires_at = 2;
-}
-
-message VerifyEmailCodeRequest {
-  string email = 1;
-  string verification_id = 2;
-  string code = 3;
-}
-
-message VerifyEmailCodeResponse {
-  AuthenticationState state = 1;
-  optional Identity identity = 2;
-}
-
-message CompleteProfileRequest {
-  string username = 1;
-}
-
-message CompleteProfileResponse {
+message BootstrapSessionResponse {
   Identity identity = 1;
 }
 
@@ -64,9 +41,7 @@ message LogoutRequest {}
 message LogoutResponse {}
 
 service AuthService {
-  rpc RequestEmailCode(RequestEmailCodeRequest) returns (RequestEmailCodeResponse);
-  rpc VerifyEmailCode(VerifyEmailCodeRequest) returns (VerifyEmailCodeResponse);
-  rpc CompleteProfile(CompleteProfileRequest) returns (CompleteProfileResponse);
+  rpc BootstrapSession(BootstrapSessionRequest) returns (BootstrapSessionResponse);
   rpc GetCurrentIdentity(GetCurrentIdentityRequest) returns (GetCurrentIdentityResponse);
   rpc Logout(LogoutRequest) returns (LogoutResponse);
 }

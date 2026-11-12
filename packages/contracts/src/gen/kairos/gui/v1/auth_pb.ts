@@ -5,8 +5,6 @@
 import type { Message } from '@bufbuild/protobuf';
 import type { GenEnum, GenFile, GenMessage, GenService } from '@bufbuild/protobuf/codegenv2';
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from '@bufbuild/protobuf/codegenv2';
-import type { Timestamp } from '@bufbuild/protobuf/wkt';
-import { file_google_protobuf_timestamp } from '@bufbuild/protobuf/wkt';
 
 /**
  * Describes the file kairos/gui/v1/auth.proto.
@@ -14,8 +12,7 @@ import { file_google_protobuf_timestamp } from '@bufbuild/protobuf/wkt';
 export const file_kairos_gui_v1_auth: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChhrYWlyb3MvZ3VpL3YxL2F1dGgucHJvdG8SDWthaXJvcy5ndWkudjEivAEKCElkZW50aXR5Eg8KB3VzZXJfaWQYASABKAkSDQoFZW1haWwYAiABKAkSEAoIdXNlcm5hbWUYAyABKAkSEQoJdGVuYW50X2lkGAQgASgJEhYKDm1haW5fdGhyZWFkX2lkGAUgASgJEhYKCWF2YXRhcl9pZBgHIAEoCUgAiAEBEhcKD3Byb2ZpbGVfdmVyc2lvbhgIIAEoDUIMCgpfYXZhdGFyX2lkSgQIBhAHUg5kZWZhdWx0X2Vudl9pZCJCChdSZXF1ZXN0RW1haWxDb2RlUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIYChBjbGllbnRfYWN0aW9uX2lkGAIgASgJImMKGFJlcXVlc3RFbWFpbENvZGVSZXNwb25zZRIXCg92ZXJpZmljYXRpb25faWQYASABKAkSLgoKZXhwaXJlc19hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiTgoWVmVyaWZ5RW1haWxDb2RlUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIXCg92ZXJpZmljYXRpb25faWQYAiABKAkSDAoEY29kZRgDIAEoCSKJAQoXVmVyaWZ5RW1haWxDb2RlUmVzcG9uc2USMQoFc3RhdGUYASABKA4yIi5rYWlyb3MuZ3VpLnYxLkF1dGhlbnRpY2F0aW9uU3RhdGUSLgoIaWRlbnRpdHkYAiABKAsyFy5rYWlyb3MuZ3VpLnYxLklkZW50aXR5SACIAQFCCwoJX2lkZW50aXR5IioKFkNvbXBsZXRlUHJvZmlsZVJlcXVlc3QSEAoIdXNlcm5hbWUYASABKAkiRAoXQ29tcGxldGVQcm9maWxlUmVzcG9uc2USKQoIaWRlbnRpdHkYASABKAsyFy5rYWlyb3MuZ3VpLnYxLklkZW50aXR5IhsKGUdldEN1cnJlbnRJZGVudGl0eVJlcXVlc3QijAEKGkdldEN1cnJlbnRJZGVudGl0eVJlc3BvbnNlEjEKBXN0YXRlGAEgASgOMiIua2Fpcm9zLmd1aS52MS5BdXRoZW50aWNhdGlvblN0YXRlEi4KCGlkZW50aXR5GAIgASgLMhcua2Fpcm9zLmd1aS52MS5JZGVudGl0eUgAiAEBQgsKCV9pZGVudGl0eSIPCg1Mb2dvdXRSZXF1ZXN0IhAKDkxvZ291dFJlc3BvbnNlKrIBChNBdXRoZW50aWNhdGlvblN0YXRlEiQKIEFVVEhFTlRJQ0FUSU9OX1NUQVRFX1VOU1BFQ0lGSUVEEAASIgoeQVVUSEVOVElDQVRJT05fU1RBVEVfQU5PTllNT1VTEAESKQolQVVUSEVOVElDQVRJT05fU1RBVEVfUFJPRklMRV9SRVFVSVJFRBACEiYKIkFVVEhFTlRJQ0FUSU9OX1NUQVRFX0FVVEhFTlRJQ0FURUQQAzLoAwoLQXV0aFNlcnZpY2USYwoQUmVxdWVzdEVtYWlsQ29kZRImLmthaXJvcy5ndWkudjEuUmVxdWVzdEVtYWlsQ29kZVJlcXVlc3QaJy5rYWlyb3MuZ3VpLnYxLlJlcXVlc3RFbWFpbENvZGVSZXNwb25zZRJgCg9WZXJpZnlFbWFpbENvZGUSJS5rYWlyb3MuZ3VpLnYxLlZlcmlmeUVtYWlsQ29kZVJlcXVlc3QaJi5rYWlyb3MuZ3VpLnYxLlZlcmlmeUVtYWlsQ29kZVJlc3BvbnNlEmAKD0NvbXBsZXRlUHJvZmlsZRIlLmthaXJvcy5ndWkudjEuQ29tcGxldGVQcm9maWxlUmVxdWVzdBomLmthaXJvcy5ndWkudjEuQ29tcGxldGVQcm9maWxlUmVzcG9uc2USaQoSR2V0Q3VycmVudElkZW50aXR5Eigua2Fpcm9zLmd1aS52MS5HZXRDdXJyZW50SWRlbnRpdHlSZXF1ZXN0Gikua2Fpcm9zLmd1aS52MS5HZXRDdXJyZW50SWRlbnRpdHlSZXNwb25zZRJFCgZMb2dvdXQSHC5rYWlyb3MuZ3VpLnYxLkxvZ291dFJlcXVlc3QaHS5rYWlyb3MuZ3VpLnYxLkxvZ291dFJlc3BvbnNlYgZwcm90bzM',
-    [file_google_protobuf_timestamp],
+    'ChhrYWlyb3MvZ3VpL3YxL2F1dGgucHJvdG8SDWthaXJvcy5ndWkudjEivAEKCElkZW50aXR5Eg8KB3VzZXJfaWQYASABKAkSDQoFZW1haWwYAiABKAkSEAoIdXNlcm5hbWUYAyABKAkSEQoJdGVuYW50X2lkGAQgASgJEhYKDm1haW5fdGhyZWFkX2lkGAUgASgJEhYKCWF2YXRhcl9pZBgHIAEoCUgAiAEBEhcKD3Byb2ZpbGVfdmVyc2lvbhgIIAEoDUIMCgpfYXZhdGFyX2lkSgQIBhAHUg5kZWZhdWx0X2Vudl9pZCIoChdCb290c3RyYXBTZXNzaW9uUmVxdWVzdBINCgV0b2tlbhgBIAEoCSJFChhCb290c3RyYXBTZXNzaW9uUmVzcG9uc2USKQoIaWRlbnRpdHkYASABKAsyFy5rYWlyb3MuZ3VpLnYxLklkZW50aXR5IhsKGUdldEN1cnJlbnRJZGVudGl0eVJlcXVlc3QijAEKGkdldEN1cnJlbnRJZGVudGl0eVJlc3BvbnNlEjEKBXN0YXRlGAEgASgOMiIua2Fpcm9zLmd1aS52MS5BdXRoZW50aWNhdGlvblN0YXRlEi4KCGlkZW50aXR5GAIgASgLMhcua2Fpcm9zLmd1aS52MS5JZGVudGl0eUgAiAEBQgsKCV9pZGVudGl0eSIPCg1Mb2dvdXRSZXF1ZXN0IhAKDkxvZ291dFJlc3BvbnNlKrIBChNBdXRoZW50aWNhdGlvblN0YXRlEiQKIEFVVEhFTlRJQ0FUSU9OX1NUQVRFX1VOU1BFQ0lGSUVEEAASIgoeQVVUSEVOVElDQVRJT05fU1RBVEVfQU5PTllNT1VTEAESKQolQVVUSEVOVElDQVRJT05fU1RBVEVfUFJPRklMRV9SRVFVSVJFRBACEiYKIkFVVEhFTlRJQ0FUSU9OX1NUQVRFX0FVVEhFTlRJQ0FURUQQAzKkAgoLQXV0aFNlcnZpY2USYwoQQm9vdHN0cmFwU2Vzc2lvbhImLmthaXJvcy5ndWkudjEuQm9vdHN0cmFwU2Vzc2lvblJlcXVlc3QaJy5rYWlyb3MuZ3VpLnYxLkJvb3RzdHJhcFNlc3Npb25SZXNwb25zZRJpChJHZXRDdXJyZW50SWRlbnRpdHkSKC5rYWlyb3MuZ3VpLnYxLkdldEN1cnJlbnRJZGVudGl0eVJlcXVlc3QaKS5rYWlyb3MuZ3VpLnYxLkdldEN1cnJlbnRJZGVudGl0eVJlc3BvbnNlEkUKBkxvZ291dBIcLmthaXJvcy5ndWkudjEuTG9nb3V0UmVxdWVzdBodLmthaXJvcy5ndWkudjEuTG9nb3V0UmVzcG9uc2ViBnByb3RvMw',
   );
 
 /**
@@ -67,124 +64,27 @@ export const IdentitySchema: GenMessage<Identity> =
   messageDesc(file_kairos_gui_v1_auth, 0);
 
 /**
- * @generated from message kairos.gui.v1.RequestEmailCodeRequest
+ * @generated from message kairos.gui.v1.BootstrapSessionRequest
  */
-export type RequestEmailCodeRequest = Message<'kairos.gui.v1.RequestEmailCodeRequest'> & {
+export type BootstrapSessionRequest = Message<'kairos.gui.v1.BootstrapSessionRequest'> & {
   /**
-   * @generated from field: string email = 1;
+   * @generated from field: string token = 1;
    */
-  email: string;
-
-  /**
-   * @generated from field: string client_action_id = 2;
-   */
-  clientActionId: string;
+  token: string;
 };
 
 /**
- * Describes the message kairos.gui.v1.RequestEmailCodeRequest.
- * Use `create(RequestEmailCodeRequestSchema)` to create a new message.
+ * Describes the message kairos.gui.v1.BootstrapSessionRequest.
+ * Use `create(BootstrapSessionRequestSchema)` to create a new message.
  */
-export const RequestEmailCodeRequestSchema: GenMessage<RequestEmailCodeRequest> =
+export const BootstrapSessionRequestSchema: GenMessage<BootstrapSessionRequest> =
   /*@__PURE__*/
   messageDesc(file_kairos_gui_v1_auth, 1);
 
 /**
- * @generated from message kairos.gui.v1.RequestEmailCodeResponse
+ * @generated from message kairos.gui.v1.BootstrapSessionResponse
  */
-export type RequestEmailCodeResponse = Message<'kairos.gui.v1.RequestEmailCodeResponse'> & {
-  /**
-   * @generated from field: string verification_id = 1;
-   */
-  verificationId: string;
-
-  /**
-   * @generated from field: google.protobuf.Timestamp expires_at = 2;
-   */
-  expiresAt?: Timestamp | undefined;
-};
-
-/**
- * Describes the message kairos.gui.v1.RequestEmailCodeResponse.
- * Use `create(RequestEmailCodeResponseSchema)` to create a new message.
- */
-export const RequestEmailCodeResponseSchema: GenMessage<RequestEmailCodeResponse> =
-  /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_auth, 2);
-
-/**
- * @generated from message kairos.gui.v1.VerifyEmailCodeRequest
- */
-export type VerifyEmailCodeRequest = Message<'kairos.gui.v1.VerifyEmailCodeRequest'> & {
-  /**
-   * @generated from field: string email = 1;
-   */
-  email: string;
-
-  /**
-   * @generated from field: string verification_id = 2;
-   */
-  verificationId: string;
-
-  /**
-   * @generated from field: string code = 3;
-   */
-  code: string;
-};
-
-/**
- * Describes the message kairos.gui.v1.VerifyEmailCodeRequest.
- * Use `create(VerifyEmailCodeRequestSchema)` to create a new message.
- */
-export const VerifyEmailCodeRequestSchema: GenMessage<VerifyEmailCodeRequest> =
-  /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_auth, 3);
-
-/**
- * @generated from message kairos.gui.v1.VerifyEmailCodeResponse
- */
-export type VerifyEmailCodeResponse = Message<'kairos.gui.v1.VerifyEmailCodeResponse'> & {
-  /**
-   * @generated from field: kairos.gui.v1.AuthenticationState state = 1;
-   */
-  state: AuthenticationState;
-
-  /**
-   * @generated from field: optional kairos.gui.v1.Identity identity = 2;
-   */
-  identity?: Identity | undefined;
-};
-
-/**
- * Describes the message kairos.gui.v1.VerifyEmailCodeResponse.
- * Use `create(VerifyEmailCodeResponseSchema)` to create a new message.
- */
-export const VerifyEmailCodeResponseSchema: GenMessage<VerifyEmailCodeResponse> =
-  /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_auth, 4);
-
-/**
- * @generated from message kairos.gui.v1.CompleteProfileRequest
- */
-export type CompleteProfileRequest = Message<'kairos.gui.v1.CompleteProfileRequest'> & {
-  /**
-   * @generated from field: string username = 1;
-   */
-  username: string;
-};
-
-/**
- * Describes the message kairos.gui.v1.CompleteProfileRequest.
- * Use `create(CompleteProfileRequestSchema)` to create a new message.
- */
-export const CompleteProfileRequestSchema: GenMessage<CompleteProfileRequest> =
-  /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_auth, 5);
-
-/**
- * @generated from message kairos.gui.v1.CompleteProfileResponse
- */
-export type CompleteProfileResponse = Message<'kairos.gui.v1.CompleteProfileResponse'> & {
+export type BootstrapSessionResponse = Message<'kairos.gui.v1.BootstrapSessionResponse'> & {
   /**
    * @generated from field: kairos.gui.v1.Identity identity = 1;
    */
@@ -192,12 +92,12 @@ export type CompleteProfileResponse = Message<'kairos.gui.v1.CompleteProfileResp
 };
 
 /**
- * Describes the message kairos.gui.v1.CompleteProfileResponse.
- * Use `create(CompleteProfileResponseSchema)` to create a new message.
+ * Describes the message kairos.gui.v1.BootstrapSessionResponse.
+ * Use `create(BootstrapSessionResponseSchema)` to create a new message.
  */
-export const CompleteProfileResponseSchema: GenMessage<CompleteProfileResponse> =
+export const BootstrapSessionResponseSchema: GenMessage<BootstrapSessionResponse> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_auth, 6);
+  messageDesc(file_kairos_gui_v1_auth, 2);
 
 /**
  * @generated from message kairos.gui.v1.GetCurrentIdentityRequest
@@ -210,7 +110,7 @@ export type GetCurrentIdentityRequest = Message<'kairos.gui.v1.GetCurrentIdentit
  */
 export const GetCurrentIdentityRequestSchema: GenMessage<GetCurrentIdentityRequest> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_auth, 7);
+  messageDesc(file_kairos_gui_v1_auth, 3);
 
 /**
  * @generated from message kairos.gui.v1.GetCurrentIdentityResponse
@@ -233,7 +133,7 @@ export type GetCurrentIdentityResponse = Message<'kairos.gui.v1.GetCurrentIdenti
  */
 export const GetCurrentIdentityResponseSchema: GenMessage<GetCurrentIdentityResponse> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_auth, 8);
+  messageDesc(file_kairos_gui_v1_auth, 4);
 
 /**
  * @generated from message kairos.gui.v1.LogoutRequest
@@ -246,7 +146,7 @@ export type LogoutRequest = Message<'kairos.gui.v1.LogoutRequest'> & {};
  */
 export const LogoutRequestSchema: GenMessage<LogoutRequest> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_auth, 9);
+  messageDesc(file_kairos_gui_v1_auth, 5);
 
 /**
  * @generated from message kairos.gui.v1.LogoutResponse
@@ -259,7 +159,7 @@ export type LogoutResponse = Message<'kairos.gui.v1.LogoutResponse'> & {};
  */
 export const LogoutResponseSchema: GenMessage<LogoutResponse> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_auth, 10);
+  messageDesc(file_kairos_gui_v1_auth, 6);
 
 /**
  * @generated from enum kairos.gui.v1.AuthenticationState
@@ -298,28 +198,12 @@ export const AuthenticationStateSchema: GenEnum<AuthenticationState> =
  */
 export const AuthService: GenService<{
   /**
-   * @generated from rpc kairos.gui.v1.AuthService.RequestEmailCode
+   * @generated from rpc kairos.gui.v1.AuthService.BootstrapSession
    */
-  requestEmailCode: {
+  bootstrapSession: {
     methodKind: 'unary';
-    input: typeof RequestEmailCodeRequestSchema;
-    output: typeof RequestEmailCodeResponseSchema;
-  };
-  /**
-   * @generated from rpc kairos.gui.v1.AuthService.VerifyEmailCode
-   */
-  verifyEmailCode: {
-    methodKind: 'unary';
-    input: typeof VerifyEmailCodeRequestSchema;
-    output: typeof VerifyEmailCodeResponseSchema;
-  };
-  /**
-   * @generated from rpc kairos.gui.v1.AuthService.CompleteProfile
-   */
-  completeProfile: {
-    methodKind: 'unary';
-    input: typeof CompleteProfileRequestSchema;
-    output: typeof CompleteProfileResponseSchema;
+    input: typeof BootstrapSessionRequestSchema;
+    output: typeof BootstrapSessionResponseSchema;
   };
   /**
    * @generated from rpc kairos.gui.v1.AuthService.GetCurrentIdentity

@@ -5,9 +5,7 @@ import type { GuiAuthentication } from './api/auth.js';
 import { registerGuiRoutes } from './api/connect.js';
 import { registerHealthRoute } from './api/health.js';
 import { BashLogReader } from './api/logs.js';
-import type { EmailSender } from './auth/mailer.js';
-import { SmtpEmailSender } from './auth/mailer.js';
-import { AuthService, type AuthServiceOptions } from './auth/service.js';
+import { AuthService } from './auth/service.js';
 import { AuthStore } from './auth/store.js';
 import { AutomationService } from './automation/service.js';
 import {
@@ -38,26 +36,8 @@ import type { WebToolOptions } from './tools/web.js';
 
 export interface IdentityServerOptions {
   secret: string;
-  invitedEmails: readonly string[];
-  testAccountEnabled: boolean;
-  allowedOrigin: string;
+  allowedOrigin: string | null;
   secureCookies: boolean;
-  smtp?: { url: string; from: string };
-  mailer?: EmailSender;
-  limits?: Partial<
-    Pick<
-      AuthServiceOptions,
-      | 'verificationTtlMs'
-      | 'setupTtlMs'
-      | 'sessionTtlMs'
-      | 'maxCodeAttempts'
-      | 'resendIntervalMs'
-      | 'sourceWindowMs'
-      | 'sourceLimit'
-      | 'globalWindowMs'
-      | 'globalLimit'
-    >
-  >;
 }
 
 export interface ServerOptions {
@@ -178,15 +158,7 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
   const authentication: GuiAuthentication = {
     authService: new AuthService(new AuthStore(database), {
       secret: identity.secret,
-      invitedEmails: identity.invitedEmails,
-      testAccountEnabled: identity.testAccountEnabled,
       createMainThread: (tenantId) => store.getOrCreateMainThread(tenantId),
-      ...(identity.mailer
-        ? { mailer: identity.mailer }
-        : identity.smtp
-          ? { mailer: new SmtpEmailSender(identity.smtp) }
-          : {}),
-      ...(identity.limits ?? {}),
       ...(options.now ? { now: options.now } : {}),
     }),
     allowedOrigin: identity.allowedOrigin,
@@ -198,7 +170,9 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
   registerHealthRoute(server, database);
   const deviceInstaller = new DeviceInstaller(
     options.deviceReleaseDirectory ?? serverConfig.daemonReleaseDirectory,
-    identity.allowedOrigin,
+    () =>
+      identity.allowedOrigin ??
+      `http://127.0.0.1:${(server.server.address() as { port: number } | null)?.port ?? serverConfig.port}`,
   );
   deviceInstaller.register(server);
   void server.register(fastifyConnectPlugin, {

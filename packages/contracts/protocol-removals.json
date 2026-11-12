@@ -1,51 +1,51 @@
 {
-  "baselineCommit": "5ae75718cac081187adaf857254dd190c53d8aad",
-  "reason": "User-authorized sandbox workspace unification removes per-Agent defaults and the tenant default-device preference. Historical database records remain available for audit.",
+  "baselineCommit": "f6085f6f896819212b91ca79d64021141b1ecc13",
+  "reason": "open-kairos 单用户本地认证移除邮箱验证码与资料补全流程，新增本地会话引导 BootstrapSession。",
   "changes": [
     {
       "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
-      "type": "FIELD_NO_DELETE",
-      "message": "Previously present field \"6\" with name \"default_env_id\" on message \"Identity\" was deleted."
-    },
-    {
-      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
       "type": "MESSAGE_NO_DELETE",
-      "message": "Previously present message \"SetDefaultEnvironmentRequest\" was deleted from file."
+      "message": "Previously present message \"CompleteProfileRequest\" was deleted from file."
     },
     {
-      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
+      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
       "type": "MESSAGE_NO_DELETE",
-      "message": "Previously present message \"SetDefaultEnvironmentResponse\" was deleted from file."
+      "message": "Previously present message \"CompleteProfileResponse\" was deleted from file."
     },
     {
-      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
-      "type": "FIELD_NO_DELETE",
-      "message": "Previously present field \"22\" with name \"is_default\" on message \"Environment\" was deleted."
+      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
+      "type": "MESSAGE_NO_DELETE",
+      "message": "Previously present message \"RequestEmailCodeRequest\" was deleted from file."
     },
     {
-      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
-      "type": "FIELD_NO_DELETE",
-      "message": "Previously present field \"2\" with name \"default_env\" on message \"EnvironmentPolicy\" was deleted."
+      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
+      "type": "MESSAGE_NO_DELETE",
+      "message": "Previously present message \"RequestEmailCodeResponse\" was deleted from file."
     },
     {
-      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
-      "type": "FIELD_NO_DELETE",
-      "message": "Previously present field \"3\" with name \"default_pwd\" on message \"EnvironmentPolicy\" was deleted."
+      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
+      "type": "MESSAGE_NO_DELETE",
+      "message": "Previously present message \"VerifyEmailCodeRequest\" was deleted from file."
     },
     {
-      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
-      "type": "FIELD_NO_DELETE",
-      "message": "Previously present field \"2\" with name \"default_env_id\" on message \"ListEnvironmentsResponse\" was deleted."
+      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
+      "type": "MESSAGE_NO_DELETE",
+      "message": "Previously present message \"VerifyEmailCodeResponse\" was deleted from file."
     },
     {
-      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
-      "type": "FIELD_NO_DELETE",
-      "message": "Previously present field \"3\" with name \"default_env_id\" on message \"RevokeEnvironmentResponse\" was deleted."
-    },
-    {
-      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
+      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
       "type": "RPC_NO_DELETE",
-      "message": "Previously present RPC \"SetDefaultEnvironment\" on service \"EnvironmentService\" was deleted."
+      "message": "Previously present RPC \"CompleteProfile\" on service \"AuthService\" was deleted."
+    },
+    {
+      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
+      "type": "RPC_NO_DELETE",
+      "message": "Previously present RPC \"RequestEmailCode\" on service \"AuthService\" was deleted."
+    },
+    {
+      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
+      "type": "RPC_NO_DELETE",
+      "message": "Previously present RPC \"VerifyEmailCode\" on service \"AuthService\" was deleted."
     }
   ]
 }

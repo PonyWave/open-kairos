@@ -15,7 +15,7 @@ import { createKairosClients, readBrowserCookie } from './client.js';
 const identity = create(IdentitySchema, {
   userId: 'user-1',
   tenantId: 'tenant-1',
-  email: 'test@kairos.com',
+  email: 'local@open-kairos.local',
   username: '测试用户',
   mainThreadId: 'main-1',
 });
@@ -25,12 +25,10 @@ afterEach(() => {
 });
 
 describe('AuthController login lifecycle', () => {
-  it('requests and verifies a code, completes a profile, restores identity and logs out', async () => {
-    const requestIds: string[] = [];
-    let failRequest = true;
-    let failProfile = true;
+  it('bootstraps with a local token, restores identity and logs out', async () => {
     let currentState = AuthenticationState.ANONYMOUS;
     let logoutCalls = 0;
+    const bootstrapTokens: string[] = [];
     const transport = createRouterTransport((router) => {
       router.service(AuthService, {
         getCurrentIdentity() {
@@ -38,25 +36,11 @@ describe('AuthController login lifecycle', () => {
             ? { state: currentState, identity }
             : { state: currentState };
         },
-        requestEmailCode(request) {
-          requestIds.push(request.clientActionId);
-          if (failRequest) throw new ConnectError('response lost', Code.Unavailable);
-          return {
-            verificationId: 'verification-1',
-            expiresAt: { seconds: 1_800_000_000n, nanos: 0 },
-          };
-        },
-        verifyEmailCode(request) {
-          expect(request.verificationId).toBe('verification-1');
-          if (request.code !== '945945') {
-            throw new ConnectError('wrong code', Code.Unauthenticated);
+        bootstrapSession(request) {
+          bootstrapTokens.push(request.token);
+          if (request.token !== 'local-token') {
+            throw new ConnectError('invalid token', Code.Unauthenticated);
           }
-          currentState = AuthenticationState.PROFILE_REQUIRED;
-          return { state: AuthenticationState.PROFILE_REQUIRED };
-        },
-        completeProfile(request) {
-          expect(request.username).toBe('测试用户');
-          if (failProfile) throw new ConnectError('try again', Code.InvalidArgument);
           currentState = AuthenticationState.AUTHENTICATED;
           return { identity };
         },
@@ -69,44 +53,52 @@ describe('AuthController login lifecycle', () => {
     });
     const controller = new AuthController({
       clients: createKairosClients({ transport }),
-      createId: () => 'request-action-1',
+      readFragmentToken: () => null,
+      clearFragmentToken: () => {},
     });
 
     await controller.restore();
-    expect(controller.state.step).toBe('email');
-    await controller.requestEmailCode(' test@kairos.com ');
-    expect(controller.state.step).toBe('email');
-    expect(controller.state.error).toContain('原操作编号');
-    failRequest = false;
-    await controller.requestEmailCode('test@kairos.com');
-    expect(controller.state.step).toBe('code');
-    expect(controller.state.verificationId).toBe('verification-1');
-    expect(requestIds).toEqual(['request-action-1', 'request-action-1']);
-
-    await controller.verifyEmailCode('123');
-    expect(controller.state.error).toContain('6 位数字');
-    await controller.verifyEmailCode('111111');
-    expect(controller.state.step).toBe('code');
-    expect(controller.state.error).toContain('验证码无效或已过期');
-    await controller.verifyEmailCode('945945');
-    expect(controller.state.step).toBe('profile');
-
-    await controller.completeProfile(' 测试用户 ');
-    expect(controller.state.step).toBe('profile');
-    expect(controller.state.error).toContain('try again');
-    failProfile = false;
-    await controller.completeProfile('测试用户');
+    expect(controller.state.step).toBe('token');
+    await controller.bootstrap('wrong-token');
+    expect(controller.state.step).toBe('token');
+    expect(controller.state.error).toBeTruthy();
+    await controller.bootstrap('local-token');
     expect(controller.state.step).toBe('authenticated');
     expect(controller.state.identity?.tenantId).toBe('tenant-1');
+    expect(bootstrapTokens).toEqual(['wrong-token', 'local-token']);
 
     await controller.restore();
     expect(controller.state.identity?.userId).toBe('user-1');
     await controller.logout();
     expect(logoutCalls).toBe(1);
-    expect(controller.state.step).toBe('email');
+    expect(controller.state.step).toBe('token');
     expect(controller.state.identity).toBeNull();
-    expect(controller.state.verificationId).toBeNull();
     expect(controller.state.error).toBeNull();
+  });
+
+  it('bootstraps from the URL fragment token during restore', async () => {
+    let cleared = 0;
+    const transport = createRouterTransport((router) => {
+      router.service(AuthService, {
+        getCurrentIdentity() {
+          return { state: AuthenticationState.ANONYMOUS };
+        },
+        bootstrapSession(request) {
+          expect(request.token).toBe('fragment-token');
+          return { identity };
+        },
+      });
+    });
+    const controller = new AuthController({
+      clients: createKairosClients({ transport }),
+      readFragmentToken: () => 'fragment-token',
+      clearFragmentToken: () => {
+        cleared += 1;
+      },
+    });
+    await controller.restore();
+    expect(controller.state.step).toBe('authenticated');
+    expect(cleared).toBe(1);
   });
 
   it('offers restore retry and ignores the superseded StrictMode restore', async () => {
@@ -152,7 +144,7 @@ describe('AuthController login lifecycle', () => {
     await controller.restore();
     await controller.logout();
 
-    expect(controller.state.step).toBe('email');
+    expect(controller.state.step).toBe('token');
     expect(controller.state.identity).toBeNull();
     expect(controller.state.logoutUnknown).toBe(true);
     expect(controller.state.error).toContain('当前页面已退出并停止旧账号操作');
@@ -170,9 +162,8 @@ describe('AuthController login lifecycle', () => {
     await controller.restore();
 
     controller.expireSession();
-    expect(controller.state.step).toBe('email');
+    expect(controller.state.step).toBe('token');
     expect(controller.state.identity).toBeNull();
-    expect(controller.state.verificationId).toBeNull();
     expect(controller.state.error).toContain('旧订阅和待提交操作已停止');
   });
 });
@@ -208,13 +199,9 @@ describe('cookie, CSRF and session expiration transport', () => {
     ).rejects.toMatchObject({ code: Code.Unauthenticated });
     expect(expired).toHaveBeenCalledTimes(1);
 
-    await expect(
-      clients.auth.verifyEmailCode({
-        email: identity.email,
-        verificationId: 'verification-1',
-        code: '111111',
-      }),
-    ).rejects.toMatchObject({ code: Code.Unauthenticated });
+    await expect(clients.auth.bootstrapSession({ token: 'local-token' })).rejects.toMatchObject({
+      code: Code.Unauthenticated,
+    });
     expect(expired).toHaveBeenCalledTimes(1);
     expect(requests).toEqual([
       { csrf: 'csrf-test-token', credentials: 'include' },

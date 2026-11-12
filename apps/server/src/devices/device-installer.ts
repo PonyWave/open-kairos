@@ -25,15 +25,20 @@ function quote(value: string): string {
 }
 
 export class DeviceInstaller {
-  private readonly origin: string;
+  private readonly origin: () => string;
   constructor(
     private readonly directory: string,
-    origin: string,
+    origin: string | (() => string),
   ) {
-    const url = new URL(origin);
+    const resolve = typeof origin === 'string' ? () => origin : origin;
+    const url = new URL(resolve());
     if (url.username || url.password || !['http:', 'https:'].includes(url.protocol))
       throw new Error('Device installer requires a public HTTP(S) origin.');
-    this.origin = url.origin;
+    this.origin = () => new URL(resolve()).origin;
+  }
+
+  #origin(): string {
+    return this.origin();
   }
 
   private release(target: string) {
@@ -79,11 +84,11 @@ export class DeviceInstaller {
   }
 
   command(issued: EnvironmentPairingIssue): string {
-    const websocket = new URL('/devices/wss', this.origin);
+    const websocket = new URL('/devices/wss', this.#origin());
     websocket.protocol = websocket.protocol === 'https:' ? 'wss:' : 'ws:';
     const script =
       'set -eu; file=$(mktemp); trap \'rm -f "$file"\' EXIT; curl --fail --silent --show-error --location "$1" -o "$file"; bash "$file" --env-id "$2" --server-url "$3" --directory "$4"';
-    return `printf '%s\\n' ${quote(issued.pairingCredential)} | bash -c ${quote(script)} -- ${quote(`${this.origin}/api/daemon/install.sh`)} ${quote(issued.environment.envId)} ${quote(websocket.toString())} ${quote(issued.environment.autoDetect ? '' : issued.environment.recommendedPwd)}`;
+    return `printf '%s\\n' ${quote(issued.pairingCredential)} | bash -c ${quote(script)} -- ${quote(`${this.#origin()}/api/daemon/install.sh`)} ${quote(issued.environment.envId)} ${quote(websocket.toString())} ${quote(issued.environment.autoDetect ? '' : issued.environment.recommendedPwd)}`;
   }
 
   register(server: FastifyInstance): void {
@@ -136,7 +141,7 @@ export class DeviceInstaller {
 set -euo pipefail
 set +x
 umask 077
-BASE=${quote(`${this.origin}/api/daemon`)}
+BASE=${quote(`${this.#origin()}/api/daemon`)}
 ENV_ID=
 SERVER_URL=
 DIRECTORY=

@@ -5,18 +5,13 @@ import {
   AuthenticationState,
   AuthService as AuthServiceDescriptor,
   ContractValidationError,
-  validateCompleteProfileRequest,
-  validateRequestEmailCodeRequest,
-  validateVerifyEmailCodeRequest,
 } from '@kairos/contracts';
 import { AuthError } from '../auth/errors.js';
 import type { AuthService } from '../auth/service.js';
 import type { Identity } from '../auth/types.js';
 import { SessionError } from '../sessions/errors.js';
-import { timestamp } from './convert.js';
 
 const sessionCookie = 'kairos_session';
-const setupCookie = 'kairos_setup';
 const csrfCookie = 'kairos_csrf';
 const csrfHeader = 'x-csrf-token';
 
@@ -42,7 +37,7 @@ const readOnlyMethods = new Set([
 
 export interface GuiAuthentication {
   authService: AuthService;
-  allowedOrigin: string;
+  allowedOrigin: string | null;
   secureCookies: boolean;
 }
 
@@ -74,103 +69,41 @@ export function requireGuiIdentity(
 export function registerAuthRoutes(router: ConnectRouter, authentication: GuiAuthentication): void {
   const service = authentication.authService;
   router.service(AuthServiceDescriptor, {
-    requestEmailCode: async (request, context) => {
+    bootstrapSession: (request, context) => {
       try {
         requireStateRequest(context, authentication);
-        validateRequestEmailCodeRequest(request);
-        const delivered = await service.requestEmailCode({
-          email: request.email,
-          clientActionId: request.clientActionId,
-          sourceAddress: context.requestHeader.get('x-kairos-source-address') ?? 'unknown',
-        });
-        return {
-          verificationId: delivered.verificationId,
-          expiresAt: timestamp(delivered.expiresAt),
-        };
-      } catch (error) {
-        throw authConnectError(error);
-      }
-    },
-    verifyEmailCode: (request, context) => {
-      try {
-        requireStateRequest(context, authentication);
-        validateVerifyEmailCodeRequest(request);
-        const verified = service.verifyEmailCode(request);
-        if (verified.kind === 'profile_required') {
-          clearCookie(context, sessionCookie, authentication.secureCookies);
-          setCookie(
-            context,
-            setupCookie,
-            verified.credential.token,
-            verified.credential.expiresAt,
-            authentication.secureCookies,
-            true,
-          );
-          return { state: AuthenticationState.PROFILE_REQUIRED };
+        if (request.token.trim().length === 0 || request.token.length > 200) {
+          throw new AuthError('invalid_argument', 'The local session token is invalid.');
         }
-        clearCookie(context, setupCookie, authentication.secureCookies);
+        const bootstrapped = service.bootstrapSession(request.token);
         setCookie(
           context,
           sessionCookie,
-          verified.credential.token,
-          verified.credential.expiresAt,
+          request.token,
+          bootstrapped.expiresAt,
           authentication.secureCookies,
           true,
         );
-        return {
-          state: AuthenticationState.AUTHENTICATED,
-          identity: identityResponse(verified.identity),
-        };
-      } catch (error) {
-        throw authConnectError(error);
-      }
-    },
-    completeProfile: (request, context) => {
-      try {
-        requireStateRequest(context, authentication);
-        validateCompleteProfileRequest(request);
-        const completed = service.completeProfile(
-          cookieValue(context, setupCookie) ?? '',
-          request.username,
-        );
-        clearCookie(context, setupCookie, authentication.secureCookies);
-        setCookie(
-          context,
-          sessionCookie,
-          completed.token,
-          completed.expiresAt,
-          authentication.secureCookies,
-          true,
-        );
-        return { identity: identityResponse(completed.identity) };
+        return { identity: identityResponse(bootstrapped.identity) };
       } catch (error) {
         throw authConnectError(error);
       }
     },
     getCurrentIdentity: (_request, context) => {
       ensureCsrfCookie(context, authentication.secureCookies);
-      const current = service.currentIdentity(
-        cookieValue(context, sessionCookie),
-        cookieValue(context, setupCookie),
-      );
+      const current = service.currentIdentity(cookieValue(context, sessionCookie));
       return current.state === 'authenticated'
         ? {
             state: AuthenticationState.AUTHENTICATED,
             identity: identityResponse(current.identity),
           }
-        : {
-            state:
-              current.state === 'profile_required'
-                ? AuthenticationState.PROFILE_REQUIRED
-                : AuthenticationState.ANONYMOUS,
-          };
+        : { state: AuthenticationState.ANONYMOUS };
     },
     logout: (_request, context) => {
       try {
         requireStateRequest(context, authentication);
         service.revokeSession(cookieValue(context, sessionCookie));
         clearCookie(context, sessionCookie, authentication.secureCookies);
-        clearCookie(context, setupCookie, authentication.secureCookies);
         return {};
       } catch (error) {
         throw authConnectError(error);
@@ -183,13 +116,27 @@ export function requireStateRequest(
   context: HandlerContext,
   authentication: GuiAuthentication,
 ): void {
-  if (context.requestHeader.get('origin') !== authentication.allowedOrigin) {
+  const origin = context.requestHeader.get('origin') ?? '';
+  if (!isAllowedOrigin(origin, authentication.allowedOrigin)) {
     throw new AuthError('permission_denied', 'The request Origin is not allowed.');
   }
   const expected = cookieValue(context, csrfCookie) ?? '';
   const supplied = context.requestHeader.get(csrfHeader) ?? '';
   if (!expected || !supplied || !safeEqual(expected, supplied)) {
     throw new AuthError('permission_denied', 'The CSRF token is missing or invalid.');
+  }
+}
+
+function isAllowedOrigin(origin: string, allowedOrigin: string | null): boolean {
+  if (allowedOrigin !== null) return origin === allowedOrigin;
+  try {
+    const url = new URL(origin);
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname)
+    );
+  } catch {
+    return false;
   }
 }
 

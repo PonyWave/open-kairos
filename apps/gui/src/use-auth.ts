@@ -20,10 +20,7 @@ export function useAuth(clients: Pick<KairosClients, 'auth'>) {
       state,
       authenticationGeneration: controller.authenticationGeneration,
       restore: () => controller.restore(),
-      requestEmailCode: (email: string) => controller.requestEmailCode(email),
-      verifyEmailCode: (code: string) => controller.verifyEmailCode(code),
-      completeProfile: (username: string) => controller.completeProfile(username),
-      restartEmail: () => controller.restartEmail(),
+      bootstrap: (token: string) => controller.bootstrap(token),
       updateIdentity: (identity: NonNullable<typeof state.identity>) =>
         controller.updateIdentity(identity),
       logout: () => controller.logout(),

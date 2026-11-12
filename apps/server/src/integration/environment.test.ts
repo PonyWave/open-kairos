@@ -5,11 +5,16 @@ import type { DatabaseSync } from 'node:sqlite';
 import { DeviceCapability } from '@kairos/contracts/device';
 import type { FastifyInstance } from 'fastify';
 import { expect, it } from 'vitest';
-import type { EmailMessage } from '../auth/mailer.js';
-import { LOCAL_TEST_CODE, LOCAL_TEST_EMAIL } from '../auth/service.js';
+import { AuthService } from '../auth/service.js';
+import { AuthStore } from '../auth/store.js';
 import { EnvironmentStore } from '../devices/environment-store.js';
+import { SessionStore } from '../sessions/store.js';
 import { openDatabase } from '../storage/database.js';
-import { createTestServer as createServer } from './test-authentication.js';
+import {
+  createTestServer as createServer,
+  seedTestSession,
+  testIdentityOptions,
+} from './test-authentication.js';
 
 const origin = 'http://127.0.0.1:4317';
 
@@ -19,6 +24,10 @@ class TestClient {
 
   constructor(server: FastifyInstance) {
     this.#server = server;
+  }
+
+  setCookie(name: string, value: string): void {
+    this.#cookies.set(name, value);
   }
 
   async call(service: string, method: string, payload: Record<string, unknown>) {
@@ -48,60 +57,41 @@ class TestClient {
   }
 }
 
-async function login(
-  client: TestClient,
-  messages: EmailMessage[],
-  email: string,
-  username: string,
-) {
+async function login(client: TestClient, database: DatabaseSync) {
   const initialized = await client.call('AuthService', 'GetCurrentIdentity', {});
   expect(initialized.statusCode).toBe(200);
-  const requested = await client.call('AuthService', 'RequestEmailCode', {
-    email,
-    clientActionId: `request-${username}`,
+  const service = new AuthService(new AuthStore(database), {
+    secret: testIdentityOptions().secret,
+    createMainThread: (tenantId) => new SessionStore(database).getOrCreateMainThread(tenantId),
   });
-  expect(requested.statusCode).toBe(200);
-  const verificationId = requested.json().verificationId;
-  const code =
-    email === LOCAL_TEST_EMAIL ? LOCAL_TEST_CODE : /(\d{6})/.exec(messages.at(-1)?.text ?? '')?.[1];
-  expect(code).toMatch(/^\d{6}$/);
-  const verified = await client.call('AuthService', 'VerifyEmailCode', {
-    email,
-    verificationId,
-    code,
+  const session = service.createLocalSession();
+  const bootstrapped = await client.call('AuthService', 'BootstrapSession', {
+    token: session.token,
   });
-  expect(verified.statusCode).toBe(200);
-  const completed = await client.call('AuthService', 'CompleteProfile', { username });
-  expect(completed.statusCode).toBe(200);
-  return completed.json().identity;
+  expect(bootstrapped.statusCode).toBe(200);
+  return bootstrapped.json().identity;
 }
 
 it('runs environment RPCs with real sessions and independently verifies SQLite state', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'kairos-environment-integration-'));
   const database: DatabaseSync = openDatabase(':memory:');
-  const messages: EmailMessage[] = [];
   const current = new Date();
   const server = createServer(database, false, {
     identity: {
-      secret: 'environment-integration-secret-at-least-32-characters',
-      invitedEmails: ['second@example.com'],
-      testAccountEnabled: true,
+      secret: testIdentityOptions().secret,
       allowedOrigin: origin,
       secureCookies: false,
-      mailer: {
-        async send(message) {
-          messages.push(message);
-        },
-      },
-      limits: { resendIntervalMs: 0 },
     },
     now: () => current,
   });
   const first = new TestClient(server);
   const second = new TestClient(server);
   try {
-    const firstIdentity = await login(first, messages, LOCAL_TEST_EMAIL, 'first');
-    await login(second, messages, 'second@example.com', 'second');
+    const firstIdentity = await login(first, database);
+    seedTestSession(database, 'tenant-second', 'tenant-second-token');
+    second.setCookie('kairos_session', 'tenant-second-token');
+    const secondInitialized = await second.call('AuthService', 'GetCurrentIdentity', {});
+    expect(secondInitialized.statusCode).toBe(200);
     const registered = await first.call('EnvironmentService', 'RegisterEnvironment', {
       clientActionId: 'integration-register',
       name: '集成服务器',

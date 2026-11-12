@@ -7,12 +7,3 @@ export interface Identity {
   avatarId?: string;
   profileVersion?: number;
 }
-
-export interface IssuedCredential {
-  token: string;
-  expiresAt: string;
-}
-
-export type VerifiedAuthentication =
-  | { kind: 'profile_required'; credential: IssuedCredential }
-  | { kind: 'authenticated'; credential: IssuedCredential; identity: Identity };

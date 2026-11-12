@@ -19,8 +19,6 @@ const testCsrfToken = 'test-csrf-token';
 export function testIdentityOptions(): IdentityServerOptions {
   return {
     secret: testSecret,
-    invitedEmails: ['*'],
-    testAccountEnabled: true,
     allowedOrigin: testOrigin,
     secureCookies: false,
   };

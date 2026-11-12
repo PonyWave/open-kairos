@@ -25,7 +25,6 @@ import {
   AttachmentService,
   AuthenticationState,
   AuthService,
-  CompleteProfileRequestSchema,
   ContentBlockType,
   ContextService,
   ContractValidationError,
@@ -53,7 +52,6 @@ import {
   QueueService,
   RegisterEnvironmentRequestSchema,
   ReloadResourcesResponseSchema,
-  RequestEmailCodeRequestSchema,
   RunService,
   RunStatus,
   SendMessageRequestSchema,
@@ -65,19 +63,15 @@ import {
   ThreadService,
   ThreadType,
   UploadAttachmentRequestSchema,
-  VerifyEmailCodeRequestSchema,
   validateAgentEnvironmentBinding,
-  validateCompleteProfileRequest,
   validateDownloadAttachmentRequest,
   validateDownloadAttachmentResponse,
   validateEnvironmentPolicy,
   validateGetEnvironmentDaemonCommandsRequest,
   validateReloadResourcesResponse,
-  validateRequestEmailCodeRequest,
   validateSetEnvironmentMaintenanceRequest,
   validateThreadMessagePreview,
   validateUploadAttachmentRequest,
-  validateVerifyEmailCodeRequest,
   WatchThreadRequestSchema,
   WatchThreadResponseSchema,
   WorkspaceService,
@@ -420,43 +414,19 @@ describe('attachment contracts', () => {
 });
 
 describe('authentication contract', () => {
-  it('exposes the email login, profile, identity and logout methods', () => {
+  it('exposes the local bootstrap, identity and logout methods', () => {
     expect(AuthService.methods.map((method) => method.localName)).toEqual([
-      'requestEmailCode',
-      'verifyEmailCode',
-      'completeProfile',
+      'bootstrapSession',
       'getCurrentIdentity',
       'logout',
     ]);
     expect(AuthenticationState.PROFILE_REQUIRED).toBe(2);
   });
 
-  it('validates authentication inputs and normalizes email addresses', async () => {
+  it('normalizes email addresses', async () => {
     const { normalizeEmail } = await import('./auth.js');
     expect(normalizeEmail(' Test@Example.COM ')).toBe('test@example.com');
-    expect(() =>
-      validateRequestEmailCodeRequest(
-        create(RequestEmailCodeRequestSchema, {
-          email: 'invalid',
-          clientActionId: 'request-1',
-        }),
-      ),
-    ).toThrow(ContractValidationError);
-    expect(() =>
-      validateVerifyEmailCodeRequest(
-        create(VerifyEmailCodeRequestSchema, {
-          email: 'person@example.com',
-          verificationId: 'verification-1',
-          code: '12345',
-        }),
-      ),
-    ).toThrow(ContractValidationError);
-    expect(() =>
-      validateCompleteProfileRequest(create(CompleteProfileRequestSchema, { username: '' })),
-    ).toThrow(ContractValidationError);
-    expect(() =>
-      validateCompleteProfileRequest(create(CompleteProfileRequestSchema, { username: '用户' })),
-    ).not.toThrow();
+    expect(() => normalizeEmail('invalid')).toThrow(ContractValidationError);
   });
 });
 

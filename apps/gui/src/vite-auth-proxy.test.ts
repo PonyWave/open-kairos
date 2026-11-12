@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import { Code } from '@connectrpc/connect';
 import { createServer as createViteServer, type ViteDevServer } from 'vite';
 import { describe, expect, it } from 'vitest';
 import { createKairosClients } from './client.js';
@@ -136,11 +137,15 @@ describe('Vite development proxy authentication', () => {
           return fetch(input, { ...init, headers });
         },
       });
-      const response = await clients.auth.requestEmailCode({
-        email: 'test@kairos.com',
-        clientActionId: 'vite-real-proxy-request-email-code',
-      });
-      expect(response.verificationId).toBeTruthy();
+      const response = await clients.auth
+        .bootstrapSession({
+          token: 'vite-proxy-invalid-token',
+        })
+        .then(
+          () => 'unexpected-success',
+          (error: unknown) => error,
+        );
+      expect(response).toMatchObject({ code: Code.Unauthenticated });
     } finally {
       await vite?.close();
       if (child) await stopServer(child);

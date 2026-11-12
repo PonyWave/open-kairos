@@ -59,10 +59,7 @@ const environmentSchema = z.object({
   KAIROS_AUTH_SECRET: z.string().min(32).optional(),
   KAIROS_MAIN_ENV_ID: z.string().optional(),
   KAIROS_MAIN_WORKSPACE: z.string().optional(),
-  KAIROS_AUTH_INVITED_EMAILS: z.string().optional(),
   KAIROS_PUBLIC_ORIGIN: z.string().optional(),
-  KAIROS_SMTP_URL: z.string().optional(),
-  KAIROS_SMTP_FROM: z.string().optional(),
   KAIROS_DAEMON_RELEASE_DIR: z
     .string()
     .refine(isAbsolute, 'KAIROS_DAEMON_RELEASE_DIR must be an absolute path.')
@@ -467,47 +464,21 @@ function isLoopbackHost(host: string): boolean {
   return host === '127.0.0.1' || host === '::1' || host.toLowerCase() === 'localhost';
 }
 
-function readPublicOrigin(
-  configured: string | undefined,
-  host: string,
-  port: number,
-  production: boolean,
-): string {
-  if (production && !configured) {
-    throw new Error('KAIROS_PUBLIC_ORIGIN is required in production.');
-  }
-  const hostForUrl = host.includes(':') ? `[${host}]` : host;
-  const candidate = configured ?? `http://${hostForUrl}:${port}`;
-  const url = new URL(candidate);
+function readPublicOrigin(configured: string): string {
+  const url = new URL(configured);
   if (
     url.username ||
     url.password ||
     url.pathname !== '/' ||
     url.search ||
     url.hash ||
-    (url.protocol !== 'http:' && url.protocol !== 'https:') ||
-    (production && url.protocol !== 'https:')
+    (url.protocol !== 'http:' && url.protocol !== 'https:')
   ) {
     throw new Error(
       'KAIROS_PUBLIC_ORIGIN must be an HTTP(S) origin without a path or credentials.',
     );
   }
   return url.origin;
-}
-
-function readSmtpConfiguration(urlValue: string | undefined, from: string | undefined) {
-  if (!urlValue && !from) return undefined;
-  if (!urlValue || !from) {
-    throw new Error('KAIROS_SMTP_URL and KAIROS_SMTP_FROM must be configured together.');
-  }
-  const url = new URL(urlValue);
-  if (url.protocol !== 'smtp:' && url.protocol !== 'smtps:') {
-    throw new Error('KAIROS_SMTP_URL must use smtp:// or smtps://.');
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(from)) {
-    throw new Error('KAIROS_SMTP_FROM must be an email address.');
-  }
-  return { url: urlValue, from };
 }
 
 function readMainEnvironmentConfiguration(
@@ -542,36 +513,6 @@ export function readServerConfig(environment: NodeJS.ProcessEnv = process.env) {
     modelApiType,
     config.KAIROS_MODEL_ALLOWED_ORIGINS,
   );
-  const production = config.NODE_ENV === 'production';
-  const smtp = readSmtpConfiguration(config.KAIROS_SMTP_URL, config.KAIROS_SMTP_FROM);
-  const invitedEmailValue = config.KAIROS_AUTH_INVITED_EMAILS?.trim() ?? '';
-  const invitedEmailEntries =
-    invitedEmailValue.length === 0
-      ? []
-      : invitedEmailValue.split(',').map((email) => email.trim().toLowerCase());
-  const invitationError =
-    "KAIROS_AUTH_INVITED_EMAILS must be '*' or comma-separated email addresses without empty entries.";
-  if (
-    invitedEmailEntries.some((email) => email.length === 0) ||
-    (invitedEmailEntries.includes('*') && invitedEmailEntries.length !== 1)
-  ) {
-    throw new Error(invitationError);
-  }
-  const invitedEmails = [...new Set(invitedEmailEntries)];
-  if (
-    invitedEmails.some(
-      (email) =>
-        email !== '*' && (email.includes('*') || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),
-    )
-  ) {
-    throw new Error(invitationError);
-  }
-  if (production && !config.KAIROS_AUTH_SECRET) {
-    throw new Error('KAIROS_AUTH_SECRET is required in production.');
-  }
-  if (production && (!smtp || invitedEmails.length === 0)) {
-    throw new Error('Production requires SMTP configuration and an invited email range.');
-  }
   return {
     host: config.KAIROS_HOST,
     port: config.KAIROS_PORT,
@@ -583,16 +524,10 @@ export function readServerConfig(environment: NodeJS.ProcessEnv = process.env) {
       fileURLToPath(new URL('../../../dist/releases', import.meta.url)),
     auth: {
       secret: config.KAIROS_AUTH_SECRET,
-      invitedEmails,
-      ...(smtp ? { smtp } : {}),
-      allowedOrigin: readPublicOrigin(
-        config.KAIROS_PUBLIC_ORIGIN,
-        config.KAIROS_HOST,
-        config.KAIROS_PORT,
-        production,
-      ),
-      secureCookies: production,
-      testAccountEnabled: !production && isLoopbackHost(config.KAIROS_HOST),
+      allowedOrigin: config.KAIROS_PUBLIC_ORIGIN
+        ? readPublicOrigin(config.KAIROS_PUBLIC_ORIGIN)
+        : null,
+      secureCookies: config.KAIROS_PUBLIC_ORIGIN?.startsWith('https:') ?? false,
     },
     maxRpcBytes: config.KAIROS_MAX_RPC_BYTES,
     maxEventQueue: config.KAIROS_MAX_EVENT_QUEUE,

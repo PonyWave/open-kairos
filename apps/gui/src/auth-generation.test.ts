@@ -110,7 +110,7 @@ describe('authentication generation for session expiration', () => {
     await vi.waitFor(() => expect(calls).toBe(2));
     second.resolve(unauthorizedResponse());
     await expect(currentB).rejects.toMatchObject({ code: Code.Unauthenticated });
-    expect(controller.state.step).toBe('email');
+    expect(controller.state.step).toBe('token');
     expect(controller.state.identity).toBeNull();
   });
 
@@ -154,7 +154,7 @@ describe('authentication generation for session expiration', () => {
     streams[1]?.enqueue(endStreamUnauthorized());
     streams[1]?.close();
     await expect(nextB).rejects.toMatchObject({ code: Code.Unauthenticated });
-    expect(controller.state.step).toBe('email');
+    expect(controller.state.step).toBe('token');
     expect(controller.state.identity).toBeNull();
   });
 });

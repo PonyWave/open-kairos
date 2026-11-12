@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,17 +6,19 @@ import type { ModelEvent } from '@kairos/agent-core';
 import { ScriptedProvider } from '@kairos/agent-core/testing';
 import type { FastifyInstance } from 'fastify';
 import { expect, it, vi } from 'vitest';
-import type { IdentityServerOptions } from '../app.js';
-import type { EmailMessage } from '../auth/mailer.js';
-import { LOCAL_TEST_CODE, LOCAL_TEST_EMAIL } from '../auth/service.js';
+import { AuthService } from '../auth/service.js';
+import { AuthStore } from '../auth/store.js';
+import { SessionStore } from '../sessions/store.js';
 import { openDatabase } from '../storage/database.js';
 import {
   createEnvironmentTestServer as createServer,
   seedTestEnvironment,
   testEnvironmentPolicyJson,
 } from './environment-fixture.js';
+import { seedTestSession, testIdentityOptions } from './test-authentication.js';
 
 const origin = 'http://127.0.0.1:4317';
+const secret = testIdentityOptions().secret;
 
 class TestClient {
   readonly #server: FastifyInstance;
@@ -30,8 +31,8 @@ class TestClient {
     }
   }
 
-  fork(): TestClient {
-    return new TestClient(this.#server, this.#cookies);
+  setCookie(name: string, value: string): void {
+    this.#cookies.set(name, value);
   }
 
   async call(
@@ -70,41 +71,20 @@ interface Fixture {
   server: FastifyInstance;
   database: DatabaseSync;
   directory: string;
-  messages: EmailMessage[];
-  now: Date;
-  advance: (milliseconds: number) => void;
 }
 
-async function fixture(
-  limitOverrides: IdentityServerOptions['limits'] = {},
-  invitedEmails: readonly string[] = ['second@example.com'],
-): Promise<Fixture> {
+async function fixture(): Promise<Fixture> {
   const directory = await mkdtemp(join(tmpdir(), 'kairos-auth-integration-'));
   const database = openDatabase(':memory:');
-  const messages: EmailMessage[] = [];
-  const current = new Date();
   const provider = new ScriptedProvider([
     modelResponse('无环境普通回复'),
     modelResponse('第二个回复'),
   ]);
   const server = createServer(database, false, {
     identity: {
-      secret: 'integration-authentication-secret-at-least-32-characters',
-      invitedEmails,
-      testAccountEnabled: true,
+      secret,
       allowedOrigin: origin,
       secureCookies: false,
-      mailer: {
-        async send(message) {
-          messages.push(message);
-        },
-      },
-      limits: {
-        resendIntervalMs: 60_000,
-        sourceLimit: 100,
-        globalLimit: 100,
-        ...limitOverrides,
-      },
     },
     model: {
       provider,
@@ -113,18 +93,8 @@ async function fixture(
       contextWindowTokens: 128_000,
       outputReserveTokens: 4096,
     },
-    now: () => current,
   });
-  return {
-    server,
-    database,
-    directory,
-    messages,
-    now: current,
-    advance(milliseconds) {
-      current.setTime(current.getTime() + milliseconds);
-    },
-  };
+  return { server, database, directory };
 }
 
 async function cleanup(current: Fixture): Promise<void> {
@@ -149,238 +119,62 @@ async function initialize(client: TestClient): Promise<void> {
   expect(response.json().state).toBe('AUTHENTICATION_STATE_ANONYMOUS');
 }
 
-async function login(client: TestClient, current: Fixture, email: string, username: string) {
-  await initialize(client);
-  const requested = await client.call('AuthService', 'RequestEmailCode', {
-    email,
-    clientActionId: randomUUID(),
+function localAuthService(current: Fixture): AuthService {
+  return new AuthService(new AuthStore(current.database), {
+    secret,
+    createMainThread: (tenantId) =>
+      new SessionStore(current.database).getOrCreateMainThread(tenantId),
   });
-  expect(requested.statusCode).toBe(200);
-  const verificationId = requested.json().verificationId;
-  const code =
-    email === LOCAL_TEST_EMAIL
-      ? LOCAL_TEST_CODE
-      : /(\d{6})/.exec(current.messages.at(-1)?.text ?? '')?.[1];
-  expect(code).toMatch(/^\d{6}$/);
-  const verified = await client.call('AuthService', 'VerifyEmailCode', {
-    email,
-    verificationId,
-    code,
-  });
-  expect(verified.statusCode).toBe(200);
-  if (verified.json().state === 'AUTHENTICATION_STATE_AUTHENTICATED') {
-    const currentIdentity = await client.call('AuthService', 'GetCurrentIdentity', {});
-    expect(currentIdentity.json().state).toBe('AUTHENTICATION_STATE_AUTHENTICATED');
-    return verified.json().identity;
-  }
-  expect(verified.json().state).toBe('AUTHENTICATION_STATE_PROFILE_REQUIRED');
-  const setupIdentity = await client.call('AuthService', 'GetCurrentIdentity', {});
-  expect(setupIdentity.json().state).toBe('AUTHENTICATION_STATE_PROFILE_REQUIRED');
-  const completed = await client.call('AuthService', 'CompleteProfile', { username });
-  expect(completed.statusCode).toBe(200);
-  const currentIdentity = await client.call('AuthService', 'GetCurrentIdentity', {});
-  expect(currentIdentity.json().state).toBe('AUTHENTICATION_STATE_AUTHENTICATED');
-  return completed.json().identity;
 }
 
-it('registers and logs in an arbitrary email with captured SMTP codes when invitations are open', async () => {
-  const current = await fixture({ resendIntervalMs: 0 }, ['*']);
-  const client = new TestClient(current.server);
-  const returningClient = new TestClient(current.server);
-  try {
-    const email = 'open-person@example.net';
-    const identity = await login(client, current, email, '开放邀请用户');
-    expect(current.messages).toHaveLength(1);
-    expect(current.messages[0]?.to).toBe(email);
-    const threads = await client.call('ThreadService', 'ListThreads', {
-      afterSeq: '0',
-      limit: 10,
-    });
-    expect(threads.statusCode).toBe(200);
-    expect(threads.json().threads.map((thread: { threadId: string }) => thread.threadId)).toEqual([
-      identity.mainThreadId,
-    ]);
+async function bootstrap(client: TestClient, current: Fixture) {
+  await initialize(client);
+  const session = localAuthService(current).createLocalSession();
+  const response = await client.call('AuthService', 'BootstrapSession', { token: session.token });
+  expect(response.statusCode).toBe(200);
+  return response.json().identity;
+}
 
-    const restoredIdentity = await login(returningClient, current, email, '再次登录');
-    expect(restoredIdentity).toMatchObject({
-      email,
-      tenantId: identity.tenantId,
-      mainThreadId: identity.mainThreadId,
-    });
-    expect(current.messages).toHaveLength(2);
-    expect(current.messages.every((message) => message.to === email)).toBe(true);
-    expect(current.database.prepare('SELECT COUNT(*) AS count FROM users').get()).toEqual({
-      count: 1,
-    });
-    expect(current.database.prepare('SELECT COUNT(*) AS count FROM tenants').get()).toEqual({
-      count: 1,
-    });
-  } finally {
-    await cleanup(current);
-  }
-});
-
-it('continues to reject emails outside an ordinary invitation list', async () => {
+it('runs the local bootstrap lifecycle with CSRF and ordinary conversation', async () => {
   const current = await fixture();
   const client = new TestClient(current.server);
   try {
     await initialize(client);
-    const requested = await client.call('AuthService', 'RequestEmailCode', {
-      email: 'outside@example.net',
-      clientActionId: randomUUID(),
-    });
-    expect(requested.statusCode).toBe(403);
-    expect(current.messages).toHaveLength(0);
-  } finally {
-    await cleanup(current);
-  }
-});
-
-it('runs the local login lifecycle with CSRF, replay, concurrency and ordinary conversation', async () => {
-  const current = await fixture();
-  const client = new TestClient(current.server);
-  try {
-    await initialize(client);
+    const session = localAuthService(current).createLocalSession();
     const missingCsrf = await client.call(
       'AuthService',
-      'RequestEmailCode',
-      { email: LOCAL_TEST_EMAIL, clientActionId: 'missing-csrf' },
+      'BootstrapSession',
+      { token: session.token },
       { csrf: false },
     );
     expect(missingCsrf.statusCode).toBe(403);
     const wrongOrigin = await client.call(
       'AuthService',
-      'RequestEmailCode',
-      { email: LOCAL_TEST_EMAIL, clientActionId: 'wrong-origin' },
+      'BootstrapSession',
+      { token: session.token },
       { origin: false },
     );
     expect(wrongOrigin.statusCode).toBe(403);
+    const invalid = await client.call('AuthService', 'BootstrapSession', {
+      token: 'invalid-token',
+    });
+    expect(invalid.statusCode).toBe(401);
 
-    const requested = await client.call('AuthService', 'RequestEmailCode', {
-      email: ` ${LOCAL_TEST_EMAIL.toUpperCase()} `,
-      clientActionId: 'request-1',
+    const bootstrapped = await client.call('AuthService', 'BootstrapSession', {
+      token: session.token,
     });
-    expect(requested.statusCode).toBe(200);
-    const firstVerification = requested.json().verificationId;
-    expect(current.messages).toHaveLength(0);
-    const duplicate = await client.call('AuthService', 'RequestEmailCode', {
-      email: LOCAL_TEST_EMAIL,
-      clientActionId: 'request-1',
-    });
-    expect(duplicate.statusCode).toBe(200);
-    expect(duplicate.json().verificationId).toBe(firstVerification);
-    const wrong = await client.call('AuthService', 'VerifyEmailCode', {
-      email: LOCAL_TEST_EMAIL,
-      verificationId: firstVerification,
-      code: '111111',
-    });
-    expect(wrong.statusCode).toBe(401);
-    expect(
-      current.database
-        .prepare(
-          'SELECT attempts, code_hash FROM auth_email_verifications WHERE verification_id = ?',
-        )
-        .get(firstVerification),
-    ).toMatchObject({ attempts: 1 });
-    expect(
-      current.database
-        .prepare('SELECT code_hash FROM auth_email_verifications WHERE verification_id = ?')
-        .get(firstVerification),
-    ).not.toMatchObject({ code_hash: LOCAL_TEST_CODE });
-
-    const tooSoon = await client.call('AuthService', 'RequestEmailCode', {
-      email: LOCAL_TEST_EMAIL,
-      clientActionId: 'request-too-soon',
-    });
-    expect(tooSoon.statusCode).toBe(429);
-    current.advance(61_000);
-    const resent = await client.call('AuthService', 'RequestEmailCode', {
-      email: LOCAL_TEST_EMAIL,
-      clientActionId: 'request-2',
-    });
-    expect(resent.statusCode).toBe(200);
-    const secondVerification = resent.json().verificationId;
-    const invalidated = await client.call('AuthService', 'VerifyEmailCode', {
-      email: LOCAL_TEST_EMAIL,
-      verificationId: firstVerification,
-      code: LOCAL_TEST_CODE,
-    });
-    expect(invalidated.statusCode).toBe(401);
-
-    const verified = await client.call('AuthService', 'VerifyEmailCode', {
-      email: LOCAL_TEST_EMAIL,
-      verificationId: secondVerification,
-      code: LOCAL_TEST_CODE,
-    });
-    expect(verified.statusCode).toBe(200);
-    expect(verified.json().state).toBe('AUTHENTICATION_STATE_PROFILE_REQUIRED');
-    const setCookies = verified.headers['set-cookie'];
+    expect(bootstrapped.statusCode).toBe(200);
+    const identity = bootstrapped.json().identity;
+    expect(identity.email).toBe('local@open-kairos.local');
+    const setCookies = bootstrapped.headers['set-cookie'];
     expect(JSON.stringify(setCookies)).toContain('HttpOnly');
     expect(JSON.stringify(setCookies)).toContain('SameSite=Strict');
     expect(JSON.stringify(setCookies)).not.toContain('Secure');
-    const replay = await client.call('AuthService', 'VerifyEmailCode', {
-      email: LOCAL_TEST_EMAIL,
-      verificationId: secondVerification,
-      code: LOCAL_TEST_CODE,
-    });
-    expect(replay.statusCode).toBe(401);
-    const setupCannotRead = await client.call('ThreadService', 'ListThreads', {
-      afterSeq: '0',
-      limit: 10,
-    });
-    expect(setupCannotRead.statusCode).toBe(401);
 
-    const firstProfile = client.fork();
-    const secondProfile = client.fork();
-    const [firstCompleted, secondCompleted] = await Promise.all([
-      firstProfile.call('AuthService', 'CompleteProfile', { username: '测试用户' }),
-      secondProfile.call('AuthService', 'CompleteProfile', { username: '测试用户' }),
-    ]);
-    expect(firstCompleted.statusCode).toBe(200);
-    expect(secondCompleted.statusCode).toBe(401);
-    const identity = firstCompleted.json().identity;
-    expect(identity).not.toHaveProperty('defaultEnvId');
-    expect(current.database.prepare('SELECT COUNT(*) AS count FROM users').get()).toEqual({
-      count: 1,
-    });
-    expect(current.database.prepare('SELECT COUNT(*) AS count FROM tenants').get()).toEqual({
-      count: 1,
-    });
-    expect(
-      current.database
-        .prepare("SELECT COUNT(*) AS count FROM threads WHERE thread_type = 'main'")
-        .get(),
-    ).toEqual({ count: 1 });
-    expect(current.database.prepare('SELECT COUNT(*) AS count FROM auth_sessions').get()).toEqual({
-      count: 1,
-    });
-    expect((await secondProfile.call('AuthService', 'GetCurrentIdentity', {})).json().state).toBe(
-      'AUTHENTICATION_STATE_ANONYMOUS',
-    );
-    current.advance(61_000);
-    const secondLogin = await secondProfile.call('AuthService', 'RequestEmailCode', {
-      email: LOCAL_TEST_EMAIL,
-      clientActionId: 'second-browser-login',
-    });
-    expect(secondLogin.statusCode).toBe(200);
-    const secondSession = await secondProfile.call('AuthService', 'VerifyEmailCode', {
-      email: LOCAL_TEST_EMAIL,
-      verificationId: secondLogin.json().verificationId,
-      code: LOCAL_TEST_CODE,
-    });
-    expect(secondSession.statusCode).toBe(200);
-    expect(secondSession.json().state).toBe('AUTHENTICATION_STATE_AUTHENTICATED');
-    expect(secondSession.json().identity.tenantId).toBe(identity.tenantId);
-    expect(
-      current.database
-        .prepare('SELECT default_env_id FROM tenants WHERE tenant_id = ?')
-        .get(identity.tenantId),
-    ).toEqual({ default_env_id: null });
-
-    const currentIdentity = await firstProfile.call('AuthService', 'GetCurrentIdentity', {});
+    const currentIdentity = await client.call('AuthService', 'GetCurrentIdentity', {});
     expect(currentIdentity.json().state).toBe('AUTHENTICATION_STATE_AUTHENTICATED');
-    expect(currentIdentity.json().identity.email).toBe(LOCAL_TEST_EMAIL);
-    const businessWithoutCsrf = await firstProfile.call(
+    expect(currentIdentity.json().identity.email).toBe('local@open-kairos.local');
+    const businessWithoutCsrf = await client.call(
       'MessageService',
       'SendMessage',
       {
@@ -392,7 +186,7 @@ it('runs the local login lifecycle with CSRF, replay, concurrency and ordinary c
       { csrf: false },
     );
     expect(businessWithoutCsrf.statusCode).toBe(403);
-    const sent = await firstProfile.call('MessageService', 'SendMessage', {
+    const sent = await client.call('MessageService', 'SendMessage', {
       clientActionId: 'ordinary-message',
       threadId: identity.mainThreadId,
       text: '没有环境也能对话吗？',
@@ -400,7 +194,7 @@ it('runs the local login lifecycle with CSRF, replay, concurrency and ordinary c
     });
     expect(sent.statusCode).toBe(200);
     await vi.waitFor(async () => {
-      const snapshot = await firstProfile.call('ThreadService', 'GetThread', {
+      const snapshot = await client.call('ThreadService', 'GetThread', {
         threadId: identity.mainThreadId,
       });
       expect(
@@ -412,34 +206,19 @@ it('runs the local login lifecycle with CSRF, replay, concurrency and ordinary c
       ).toBe(true);
     });
 
-    const logoutWithoutCsrf = await firstProfile.call('AuthService', 'Logout', {}, { csrf: false });
+    const logoutWithoutCsrf = await client.call('AuthService', 'Logout', {}, { csrf: false });
     expect(logoutWithoutCsrf.statusCode).toBe(403);
-    const logout = await firstProfile.call('AuthService', 'Logout', {});
+    const logout = await client.call('AuthService', 'Logout', {});
     expect(logout.statusCode).toBe(200);
-    const loggedOut = await firstProfile.call('ThreadService', 'ListThreads', {
+    const loggedOut = await client.call('ThreadService', 'ListThreads', {
       afterSeq: '0',
       limit: 10,
     });
     expect(loggedOut.statusCode).toBe(401);
-    expect((await secondProfile.call('AuthService', 'GetCurrentIdentity', {})).json().state).toBe(
-      'AUTHENTICATION_STATE_AUTHENTICATED',
-    );
 
-    current.advance(61_000);
-    const requestedAgain = await firstProfile.call('AuthService', 'RequestEmailCode', {
-      email: LOCAL_TEST_EMAIL,
-      clientActionId: 'login-again',
-    });
-    expect(requestedAgain.statusCode).toBe(200);
-    const verifiedAgain = await firstProfile.call('AuthService', 'VerifyEmailCode', {
-      email: LOCAL_TEST_EMAIL,
-      verificationId: requestedAgain.json().verificationId,
-      code: LOCAL_TEST_CODE,
-    });
-    expect(verifiedAgain.statusCode).toBe(200);
-    expect(verifiedAgain.json().state).toBe('AUTHENTICATION_STATE_AUTHENTICATED');
-    expect(verifiedAgain.json().identity.tenantId).toBe(identity.tenantId);
-    expect(verifiedAgain.json().identity.mainThreadId).toBe(identity.mainThreadId);
+    const again = await bootstrap(client, current);
+    expect(again.tenantId).toBe(identity.tenantId);
+    expect(again.mainThreadId).toBe(identity.mainThreadId);
     expect(current.database.prepare('SELECT COUNT(*) AS count FROM users').get()).toEqual({
       count: 1,
     });
@@ -457,12 +236,16 @@ it('runs the local login lifecycle with CSRF, replay, concurrency and ordinary c
 });
 
 it('isolates threads, runs, logs and devices between personal tenants', async () => {
-  const current = await fixture({ resendIntervalMs: 0 });
+  const current = await fixture();
   const first = new TestClient(current.server);
   const second = new TestClient(current.server);
   try {
-    const firstIdentity = await login(first, current, LOCAL_TEST_EMAIL, '第一用户');
-    const secondIdentity = await login(second, current, 'second@example.com', '第二用户');
+    const firstIdentity = await bootstrap(first, current);
+    seedTestSession(current.database, 'tenant-b', 'tenant-b-token');
+    second.setCookie('kairos_session', 'tenant-b-token');
+    const secondCurrent = await second.call('AuthService', 'GetCurrentIdentity', {});
+    expect(secondCurrent.statusCode).toBe(200);
+    const secondIdentity = secondCurrent.json().identity;
     expect(firstIdentity.tenantId).not.toBe(secondIdentity.tenantId);
     seedTestEnvironment(current.database, firstIdentity.tenantId);
     const created = await first.call('ThreadService', 'CreateThread', {
