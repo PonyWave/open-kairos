@@ -1,5 +1,37 @@
 # CHANGELOG
 
+## 4f92b6a - 2026-11-13
+
+来源分支：main，合并提交 4f92b6a。
+
+### 新增
+
+- bash 工具结果在输出预览截断或存在缺口时附加 `hint`，指引使用 `read_output` 按 `next_offset` 续读；`read` 还有更多行时附加 `offset` 续读提示。
+- `write`/`edit` 成功后在目标环境探测目标文件目录链上的 `AGENTS.md`（至多 5 级，主环境工作区根目录除外），命中时工具结果附加 `agents_md_hint` 提醒，同一执行内按路径去重。
+- `<agent-execution-environment>` JSON 新增 `started_at`（对话创建时间）；需要精确当前时间时在 bash 中执行 `date`。
+
+## 760961e - 2026-11-13
+
+来源分支：main，合并提交 760961e。
+
+### 变更
+
+- 后台委派交付与 `thread_notify` 通知的注入文本统一包裹 `<system-reminder>` 标签并附说明行，系统提示词声明其为自动交付记录、不是用户消息。
+- 交付的 `response` 超过 8000 字符时截断为预览并标记 `response_truncated`，可用 `thread_read`/`subagent_status` 读取完整结果。
+
+### 新增
+
+- 用户取消 Run 后，下一次根执行的系统指令附带中断提醒（上一执行被用户中断、历史部分输出不完整），执行完成后自动消失。
+
+## d063e30 - 2026-11-13
+
+来源分支：main，合并提交 d063e30。
+
+### 变更
+
+- 系统提示词新增通用规范：Safety（真实机器非沙箱、禁止读取凭据、工作目录外修改与 git 变更需用户明确要求）、Coding and verification（根因修复、最小改动、匹配现有风格、不假设依赖、验证后汇报）、Output（Markdown、文件引用带行号、按变更规模控制长度）与 AGENTS.md 作用域优先级规则。
+- `read`/`write`/`edit`/`bash`/`read_output` 等基础工具描述补全语义、参数说明与协作流程；`thread_call`/`subagent`/`thread_notify`/`send_to_user` 描述精简，委派规则以系统提示词为唯一完整副本。
+
 ## 787cc9f - 2026-11-13
 
 来源分支：main，合并提交 787cc9f。
