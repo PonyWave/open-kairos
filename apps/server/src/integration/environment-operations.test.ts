@@ -912,6 +912,7 @@ it('executes Agent tools through the real Server channel and isolates two enviro
         'read_image',
         'read_output',
         'recall',
+        'skill',
         'subagent',
         'subagent_cancel',
         'subagent_status',

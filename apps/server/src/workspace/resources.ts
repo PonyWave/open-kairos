@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { parseSkillDocument, skillNameFromPath } from './skills.js';
 
 export const WORKSPACE_RESOURCE_LIMITS = Object.freeze({
   maxFileBytes: 64 * 1024,
@@ -59,12 +60,27 @@ export function createWorkspaceResourceSnapshot(
       .sort((left, right) => compareText(left.path, right.path))
       .map((resource) => Object.freeze({ ...resource })),
   );
-  const systemInstructions = frozenResources
-    .map(
-      (resource) =>
+  const sections: string[] = [];
+  const skillLines: string[] = [];
+  for (const resource of frozenResources) {
+    const skillName = skillNameFromPath(resource.path);
+    if (skillName !== undefined) {
+      const document = parseSkillDocument(resource.path, resource.content);
+      skillLines.push(
+        document.description.length > 0
+          ? `- ${document.name}: ${document.description}`
+          : `- ${document.name}`,
+      );
+    } else {
+      sections.push(
         `<workspace-resource path="${resource.path}">\n${resource.content}${resource.content.endsWith('\n') ? '' : '\n'}</workspace-resource>`,
-    )
-    .join('\n\n');
+      );
+    }
+  }
+  if (skillLines.length > 0) {
+    sections.unshift(`<workspace-skills>\n${skillLines.join('\n')}\n</workspace-skills>`);
+  }
+  const systemInstructions = sections.join('\n\n');
   const hash = createHash('sha256').update('kairos-workspace-resources-v1\0');
   for (const resource of frozenResources) {
     hash.update(JSON.stringify([resource.path, resource.content]));

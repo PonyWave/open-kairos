@@ -33,7 +33,9 @@ Server 首次启动时自动注册主环境：写入环境记录、完成设备�
 
 ### 3.1 资源快照
 
-全部 Agent 的 `AGENTS.md` 与 `.agents/skills/<name>/SKILL.md` 资源快照固定从主环境根目录读取，保存在绑定历史快照中，不随工作空间设备变化。Agent 用文件工具读取 skill 内容时显式传 `env_id=main`。
+全部 Agent 的 `AGENTS.md` 与 `.agents/skills/<name>/SKILL.md` 资源快照固定从主环境根目录读取，保存在绑定历史快照中，不随工作空间设备变化。
+
+系统提示词按两级注入资源：`AGENTS.md` 注入全文；skills 注入目录（`<workspace-skills>`，每个 skill 一行名称与描述）。`SKILL.md` 支持 YAML frontmatter，`description` 字段作为目录描述；无 frontmatter 时描述回退为正文首个非空行，`name` 字段如存在必须与目录名一致。Agent 用 `skill` 工具按名称加载某个 skill 的完整正文，正文取自该执行固定的绑定快照，不经设备往返；读取 skill 引用的附属文件时用文件工具显式传 `env_id=main`。
 
 `write` 与 `edit` 在目标环境执行成功后，Server 探测目标文件目录链上的 `AGENTS.md`（最多 5 级，主环境工作区根目录除外），发现时在工具结果中附加 `agents_md_hint` 提醒；同一执行内已提醒过的路径不再重复。`<agent-execution-environment>` JSON 记录 `started_at`（对话创建时间）；需要精确当前时间时在 bash 中执行 `date`。
 

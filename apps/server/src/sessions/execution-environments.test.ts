@@ -2,6 +2,7 @@ import type { ModelEvent, ToolCall } from '@kairos/agent-core';
 import { ScriptedProvider } from '@kairos/agent-core/testing';
 import { DeviceCapability, OperationStatus } from '@kairos/contracts/device';
 import { expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { ModelInputService } from '../context/model-input-service.js';
 import { EnvironmentStore } from '../devices/environment-store.js';
 import { ensureMainEnvironment, MainEnvironmentUseGateway } from '../devices/main-environment.js';
@@ -994,6 +995,78 @@ it('requires a new binding and fresh readiness after the main environment is re-
       case: 'directoryCheck',
       value: { path: '/workspace' },
     });
+  } finally {
+    await f.close();
+  }
+});
+
+it('serves Skill bodies from the pinned snapshot through the skill tool', async () => {
+  const f = fixture([
+    response('', [{ id: 'call-skill', name: 'skill', arguments: { name: 'review' } }]),
+    response('done'),
+  ]);
+  try {
+    f.environmentOperations.loadResources = async () =>
+      createWorkspaceResourceSnapshot([
+        { path: 'AGENTS.md', content: 'root rules' },
+        {
+          path: '.agents/skills/review/SKILL.md',
+          content: '---\ndescription: Review code changes\n---\nReview the diff carefully.\n',
+        },
+      ]);
+    const main = f.store.getOrCreateMainThread(ownerId);
+    const accepted = send(f.store, main.threadId);
+    f.coordinator.schedule(main.threadId, accepted.runId);
+    await completed(f.store, accepted.runId);
+    const firstRequest = f.provider.requests[0];
+    if (!firstRequest) throw new Error('The first model request is missing.');
+    const system = firstRequest.messages
+      .filter((message) => message.role === 'system')
+      .map((message) => message.content)
+      .join('\n');
+    expect(system).toContain('- review: Review code changes');
+    expect(system).not.toContain('Review the diff carefully.');
+    const secondRequest = f.provider.requests[1];
+    if (!secondRequest) throw new Error('The second model request is missing.');
+    const toolMessage = secondRequest.messages.find(
+      (message) => message.role === 'tool' && message.tool_call_id === 'call-skill',
+    );
+    if (toolMessage?.role !== 'tool') throw new Error('The skill tool result is missing.');
+    expect(toolMessage.status).toBe('success');
+    expect(z.record(z.string(), z.unknown()).parse(JSON.parse(toolMessage.content))).toEqual({
+      name: 'review',
+      description: 'Review code changes',
+      path: '.agents/skills/review/SKILL.md',
+      content: 'Review the diff carefully.\n',
+    });
+  } finally {
+    await f.close();
+  }
+});
+
+it('reports an unknown Skill name with the available catalog', async () => {
+  const f = fixture([
+    response('', [{ id: 'call-skill', name: 'skill', arguments: { name: 'missing' } }]),
+    response('done'),
+  ]);
+  try {
+    f.environmentOperations.loadResources = async () =>
+      createWorkspaceResourceSnapshot([
+        { path: '.agents/skills/review/SKILL.md', content: 'Review the diff carefully.\n' },
+      ]);
+    const main = f.store.getOrCreateMainThread(ownerId);
+    const accepted = send(f.store, main.threadId);
+    f.coordinator.schedule(main.threadId, accepted.runId);
+    await completed(f.store, accepted.runId);
+    const secondRequest = f.provider.requests[1];
+    if (!secondRequest) throw new Error('The second model request is missing.');
+    const toolMessage = secondRequest.messages.find(
+      (message) => message.role === 'tool' && message.tool_call_id === 'call-skill',
+    );
+    if (toolMessage?.role !== 'tool') throw new Error('The skill tool result is missing.');
+    expect(toolMessage.status).toBe('error');
+    expect(toolMessage.content).toContain('Unknown Skill: missing');
+    expect(toolMessage.content).toContain('review');
   } finally {
     await f.close();
   }

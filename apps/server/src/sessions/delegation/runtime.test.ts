@@ -214,7 +214,7 @@ it('exposes main Agent delegation choices and delivery guidance in actual model 
     expect(system).toContain('Use a task Thread for ongoing work');
     expect(system).toContain('Reuse a relevant existing Thread');
     expect(system).toContain('Choose whether a task needs a persistent Thread before choosing');
-    expect(system).toContain('Their SKILL.md contents are already included');
+    expect(system).toContain('call the skill tool with the Skill name to load its full SKILL.md');
     expect(system).toContain('completion checks');
     expect(system).toContain('Verify before reporting completion');
     expect(system).not.toContain('You are the root Agent of a persistent task Thread');

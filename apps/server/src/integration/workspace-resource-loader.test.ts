@@ -34,11 +34,15 @@ describe('WorkspaceResourceLoader', () => {
     expect((await loader.load()).snapshotId).toBe(empty.snapshotId);
   });
 
-  it('loads complete resources and sorts path-marked instructions by relative path', async () => {
+  it('loads complete resources and renders a Skill catalog with the full AGENTS.md', async () => {
     const root = await createWorkspace();
     await writeResource(root, '.agents/skills/zeta/SKILL.md', 'zeta instructions');
     await writeResource(root, 'AGENTS.md', 'root instructions\n');
-    await writeResource(root, '.agents/skills/alpha/SKILL.md', 'alpha instructions');
+    await writeResource(
+      root,
+      '.agents/skills/alpha/SKILL.md',
+      '---\ndescription: alpha catalog summary\n---\nalpha instructions',
+    );
     await writeResource(root, '.agents/skills/alpha/script.mjs', 'throw new Error("not executed")');
     await writeResource(root, '.agents/skills/stray', 'ordinary files are ignored');
     await writeResource(root, '.env', 'KAIROS_MARKER=env must not be read');
@@ -53,18 +57,41 @@ describe('WorkspaceResourceLoader', () => {
       'AGENTS.md',
     ]);
     expect(snapshot.systemInstructions).toBe(
-      '<workspace-resource path=".agents/skills/alpha/SKILL.md">\n' +
-        'alpha instructions\n</workspace-resource>\n\n' +
-        '<workspace-resource path=".agents/skills/zeta/SKILL.md">\n' +
-        'zeta instructions\n</workspace-resource>\n\n' +
+      '<workspace-skills>\n' +
+        '- alpha: alpha catalog summary\n' +
+        '- zeta: zeta instructions\n' +
+        '</workspace-skills>\n\n' +
         '<workspace-resource path="AGENTS.md">\n' +
         'root instructions\n</workspace-resource>',
     );
+    expect(snapshot.systemInstructions).not.toContain('alpha instructions');
     expect(snapshot.systemInstructions).not.toContain('not executed');
     expect(snapshot.systemInstructions).not.toContain('must not be read');
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot.resources)).toBe(true);
     expect(snapshot.resources.every((resource) => Object.isFrozen(resource))).toBe(true);
+  });
+
+  it.each([
+    {
+      label: 'a name that differs from the directory',
+      content: '---\nname: other\ndescription: summary\n---\nbody',
+      error: /does not match its directory/,
+    },
+    {
+      label: 'frontmatter that is not valid YAML',
+      content: '---\nname: [unclosed\n---\nbody',
+      error: /not valid YAML/,
+    },
+    {
+      label: 'a non-string description',
+      content: '---\ndescription: 42\n---\nbody',
+      error: /frontmatter is invalid/,
+    },
+  ])('rejects a Skill with $label', async ({ content, error }) => {
+    const root = await createWorkspace();
+    await writeResource(root, '.agents/skills/alpha/SKILL.md', content);
+    await expect(new WorkspaceResourceLoader(root).load()).rejects.toThrow(error);
   });
 
   it('hashes paths and content and compares added, updated and removed resources', async () => {

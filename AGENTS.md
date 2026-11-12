@@ -24,7 +24,7 @@
 | Memory Wiki   | 主环境上的用户级长期记忆目录，`MEMORY.md` 为索引页，主题页按需读取；根 Agent 注入索引，全局 main 主动更新。                                                    |
 | dream         | 内置每日记忆整理 Automation（`new_automation_only` 目标），每次执行为一次性 automation_only Thread，按 `STATE.json` 水位增量整理 Memory Wiki，可禁用、可删除。 |
 
-- 全部 Agent 的 `AGENTS.md` 与 `.agents/skills/<name>/SKILL.md` 资源快照固定从主环境根目录读取；用文件工具读取其他环境的资源时显式传 `env_id=main`。
+- 全部 Agent 的 `AGENTS.md` 与 `.agents/skills/<name>/SKILL.md` 资源快照固定从主环境根目录读取；系统提示词注入 `AGENTS.md` 全文与 skill 目录（名称与描述），skill 正文由 `skill` 工具从绑定快照按需加载；用文件工具读取其他环境的资源时显式传 `env_id=main`。
 - 工作空间只提供默认 `env_id` 与路径，不限制工具访问其他已授权设备和任意路径。
 - `thread_notify` 的目标参数为 `workspace`（默认）或 `global`；临时对话只能使用 `global`，工作空间 main 的目标固定 `global`。
 

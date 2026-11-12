@@ -3,12 +3,11 @@ import { lstat, open, readdir, realpath } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   createWorkspaceResourceSnapshot,
+  SKILL_NAME_PATTERN,
   WORKSPACE_RESOURCE_LIMITS,
   type WorkspaceResource,
   type WorkspaceResourceSnapshot,
 } from '../workspace/index.js';
-
-const skillDirectoryNamePattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 export class WorkspaceResourceLoader {
   readonly workspaceDirectory: string;
@@ -38,7 +37,7 @@ export class WorkspaceResourceLoader {
       }
       skillEntries.sort((left, right) => compareText(left.name, right.name));
       for (const entry of skillEntries) {
-        if (!skillDirectoryNamePattern.test(entry.name)) {
+        if (!SKILL_NAME_PATTERN.test(entry.name)) {
           throw new Error(`Invalid Skill directory name: ${entry.name}.`);
         }
         const skillRelativePath = `.agents/skills/${entry.name}`;

@@ -10,6 +10,8 @@ import type { EnvironmentUse, EnvironmentUseGateway } from '../devices/environme
 import {
   compareWorkspaceResourceSnapshots,
   createWorkspaceResourceSnapshot,
+  parseSkillDocument,
+  skillNameFromPath,
   WORKSPACE_RESOURCE_LIMITS,
   type WorkspaceResourceSnapshot,
 } from '../workspace/index.js';
@@ -1025,6 +1027,36 @@ export class AgentEnvironmentRuntime {
     return instructions;
   }
 
+  loadSkill(run: RunRecord, name: string): string {
+    const specification = this.store.agentEnvironments.requireExecution(run);
+    const binding = this.store.agentEnvironments.requireHistory(specification.historyId);
+    const resources = binding.resources;
+    if (!resources)
+      throw new SessionError(
+        'failed_precondition',
+        'The workspace resources have not been loaded.',
+      );
+    const available: string[] = [];
+    for (const resource of resources.resources) {
+      const skillName = skillNameFromPath(resource.path);
+      if (skillName === undefined) continue;
+      available.push(skillName);
+      if (skillName !== name) continue;
+      const document = parseSkillDocument(resource.path, resource.content);
+      return jsonStringify({
+        name: document.name,
+        description: document.description,
+        path: resource.path,
+        content: document.body,
+      });
+    }
+    available.sort();
+    throw new SessionError(
+      'not_found',
+      `Unknown Skill: ${name}. Available Skills: ${available.length > 0 ? available.join(', ') : 'none'}.`,
+    );
+  }
+
   list(run: RunRecord): string {
     const specification = this.store.agentEnvironments.requireExecution(run);
     return this.listForScope(run.ownerId, specification.allowedEnv);
@@ -1830,7 +1862,15 @@ function remoteSnapshot(
     }
     seen.add(resource.path);
   }
-  return createWorkspaceResourceSnapshot(sorted);
+  try {
+    return createWorkspaceResourceSnapshot(sorted);
+  } catch (error) {
+    throw new SessionError(
+      'failed_precondition',
+      error instanceof Error ? error.message : 'The remote workspace resources are invalid.',
+      { cause: error },
+    );
+  }
 }
 
 function terminal(operation: EnvironmentOperationRecord): OperationStatus | undefined {

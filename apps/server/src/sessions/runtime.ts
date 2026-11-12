@@ -51,6 +51,7 @@ import {
   createEnvironmentTools,
   createRecallTool,
   createSendToUserTool,
+  createSkillTool,
   createSubagentDelegationTools,
   createThreadDelegationTools,
   createThreadNotificationTool,
@@ -1797,6 +1798,7 @@ export class RunCoordinator {
     };
     const tools: AgentTool[] = [createRecallTool({ engine: recall, scope, visibility })];
     tools.push(...createEnvironmentTools(this.#environmentRuntime, run));
+    tools.push(createSkillTool(this.#environmentRuntime, run));
     tools.push(
       ...createWebTools({
         ...(this.#options.web ?? {}),

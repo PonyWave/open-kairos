@@ -190,7 +190,9 @@ it('pins an active Run to v1, applies v2 to the next Run, and replays reload wit
     expect(firstSystem).toContain('AGENTS v1 marker');
     expect(firstSystem).toContain('Skill alpha v1 marker');
     expect(firstSystem).toContain('<workspace-resource path="AGENTS.md">');
-    expect(firstSystem).toContain('<workspace-resource path=".agents/skills/alpha/SKILL.md">');
+    expect(firstSystem).toContain(
+      '<workspace-skills>\n- alpha: Skill alpha v1 marker\n</workspace-skills>',
+    );
 
     const countsWhileActive = tableCounts(fixture, threadId);
     const loader = fixture.workspaceResourceLoader as CountingWorkspaceLoader;
