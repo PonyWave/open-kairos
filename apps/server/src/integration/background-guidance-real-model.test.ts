@@ -18,6 +18,7 @@ import type { DelegationKey } from '../context/types.js';
 import { OpenAICompatibleProvider } from '../providers/openai-compatible.js';
 import type { InteractionRecord, RunRecord, RunStatus } from '../sessions/records.js';
 import { SessionStore } from '../sessions/store.js';
+import { systemReminderContent } from '../sessions/system-reminder.js';
 import {
   closeFixture,
   deferred,
@@ -322,14 +323,17 @@ function requestSummary(request: ModelRequest): Record<string, unknown> {
     last?.role === 'user' && last.content.startsWith('Kairos internal Recap operation;');
   let automaticDelivery = false;
   if (last?.role === 'user') {
-    try {
-      const value: unknown = JSON.parse(last.content);
-      automaticDelivery =
-        isRecord(value) &&
-        typeof value.tool_call_id === 'string' &&
-        (value.kind === 'thread_call' || value.kind === 'subagent');
-    } catch {
-      automaticDelivery = false;
+    const reminder = systemReminderContent(last.content);
+    if (reminder !== undefined) {
+      try {
+        const value: unknown = JSON.parse(reminder.slice(reminder.indexOf('\n') + 1));
+        automaticDelivery =
+          isRecord(value) &&
+          typeof value.tool_call_id === 'string' &&
+          (value.kind === 'thread_call' || value.kind === 'subagent');
+      } catch {
+        automaticDelivery = false;
+      }
     }
   }
   return {

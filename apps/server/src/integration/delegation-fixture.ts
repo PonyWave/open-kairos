@@ -12,6 +12,7 @@ import {
   type RunStatus,
 } from '@kairos/contracts';
 import { vi } from 'vitest';
+import { systemReminderContent } from '../sessions/system-reminder.js';
 import { openDatabase } from '../storage/database.js';
 import {
   type ControlledEnvironmentOperations,
@@ -103,20 +104,23 @@ export function requestKey(request: ModelRequest): string {
   if (last?.role === 'tool') return `tool:${last.tool_call_id}`;
   if (last?.role === 'user') {
     if (last.content.startsWith('recap_id:')) return 'prepared:recap';
-    try {
-      const parsed: unknown = JSON.parse(last.content);
-      if (typeof parsed === 'object' && parsed !== null) {
-        const toolCallId = Reflect.get(parsed, 'tool_call_id');
-        const kind = Reflect.get(parsed, 'kind');
-        if (typeof toolCallId === 'string' && kind === 'thread_notification') {
-          return `notification:${toolCallId}`;
+    const reminder = systemReminderContent(last.content);
+    if (reminder !== undefined) {
+      try {
+        const parsed: unknown = JSON.parse(reminder.slice(reminder.indexOf('\n') + 1));
+        if (typeof parsed === 'object' && parsed !== null) {
+          const toolCallId = Reflect.get(parsed, 'tool_call_id');
+          const kind = Reflect.get(parsed, 'kind');
+          if (typeof toolCallId === 'string' && kind === 'thread_notification') {
+            return `notification:${toolCallId}`;
+          }
+          if (typeof toolCallId === 'string' && (kind === 'thread_call' || kind === 'subagent')) {
+            return `delivery:${toolCallId}`;
+          }
         }
-        if (typeof toolCallId === 'string' && (kind === 'thread_call' || kind === 'subagent')) {
-          return `delivery:${toolCallId}`;
-        }
+      } catch {
+        // A system reminder without a delivery payload is ordinary user text.
       }
-    } catch {
-      // Ordinary user text is not a delegation delivery.
     }
     return `user:${last.content}`;
   }

@@ -785,6 +785,64 @@ it('separates cancellation acceptance from actual Loop termination', async () =>
   }
 });
 
+it('reminds the execution after a user-cancelled Run and clears the reminder once work completes', async () => {
+  let attempts = 0;
+  const requests: ModelRequest[] = [];
+  const provider: ModelProvider = {
+    async *stream(request, signal) {
+      requests.push(structuredClone(request));
+      attempts += 1;
+      if (attempts === 1) {
+        await new Promise<void>((_, reject) => {
+          if (signal.aborted) reject(signal.reason);
+          else signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        });
+        return;
+      }
+      yield* response('done');
+    },
+  };
+  const { database, store, coordinator, thread, directory } = await fixture(provider);
+  const systemOf = (marker: string) =>
+    requests
+      .find((candidate) =>
+        candidate.messages.some(
+          (message) => message.role === 'user' && message.content.includes(marker),
+        ),
+      )
+      ?.messages.filter((message) => message.role === 'system')
+      .map((message) => message.content)
+      .join('\n') ?? '';
+  try {
+    const cancelled = send(store, thread.threadId, 'first', 'send-first');
+    await coordinator.deliver(cancelled.input, cancelled.runId);
+    await vi.waitFor(() => expect(attempts).toBe(1));
+    const accepted = store.requestCancelRun(
+      action('CancelRun', 'cancel-reminder', {
+        threadId: thread.threadId,
+        runId: cancelled.runId,
+        reason: 'stop',
+      }),
+    );
+    await coordinator.cancel(accepted, 'stop');
+    await waitStatus(store, cancelled.runId, 'cancelled');
+
+    const resumed = send(store, thread.threadId, 'second', 'send-second');
+    await coordinator.deliver(resumed.input, resumed.runId);
+    await waitStatus(store, resumed.runId, 'completed');
+    expect(systemOf('second')).toContain(
+      '<system-reminder>The previous execution was interrupted by the user before completion;',
+    );
+
+    const settled = send(store, thread.threadId, 'third', 'send-third');
+    await coordinator.deliver(settled.input, settled.runId);
+    await waitStatus(store, settled.runId, 'completed');
+    expect(systemOf('third')).not.toContain('The previous execution was interrupted');
+  } finally {
+    await cleanup(coordinator, database, directory);
+  }
+});
+
 it('reuses the stable request ID when an interrupted model step continues', async () => {
   let attempts = 0;
   const requests: ModelRequest[] = [];

@@ -79,8 +79,14 @@ import type {
 } from './records.js';
 import { RequestSlots } from './request-slots.js';
 import type { AcceptedThreadCall, AcceptedThreadNotification, SessionStore } from './store.js';
+import { wrapSystemReminder } from './system-reminder.js';
 import { ThreadTitleGenerator } from './title-generation.js';
 import type { ReloadResourcesInput, ReloadResourcesResult } from './workspace-resources.js';
+
+const DELIVERY_RESPONSE_PREVIEW_CHARS = 8000;
+
+const CANCELLATION_REMINDER =
+  "<system-reminder>The previous execution was interrupted by the user before completion; any partial output in the history is incomplete. The user's next message continues the conversation.</system-reminder>";
 
 const subagentInputSchema = z
   .object({
@@ -1400,17 +1406,30 @@ export class RunCoordinator {
 
   #interactionDeliveryText(interaction: InteractionRecord): string {
     const response = this.store.getCurrentInteractionResponse(interaction.ownerId, interaction);
-    return JSON.stringify({
-      source_thread_id: interaction.sourceThreadId,
-      source_agent_id: interaction.sourceAgentId,
-      tool_call_id: interaction.sourceToolCallId,
-      kind: interaction.kind,
-      thread_id: interaction.targetThreadId,
-      agent_id: interaction.targetAgentId,
-      status: interaction.status,
-      response: response?.message.role === 'assistant' ? response.message.content : null,
-      error: interaction.error,
-    });
+    const fullResponse = response?.message.role === 'assistant' ? response.message.content : null;
+    const truncated =
+      fullResponse !== null && fullResponse.length > DELIVERY_RESPONSE_PREVIEW_CHARS;
+    return wrapSystemReminder(
+      'A background delegated task reached a terminal state. This is an automatic delivery record, not a user message; use its status, response and error fields and continue the conversation accordingly.' +
+        (truncated
+          ? ' The response field is a bounded preview; read the full result with thread_read or subagent_status using the tool_call_id.'
+          : '') +
+        '\n' +
+        JSON.stringify({
+          source_thread_id: interaction.sourceThreadId,
+          source_agent_id: interaction.sourceAgentId,
+          tool_call_id: interaction.sourceToolCallId,
+          kind: interaction.kind,
+          thread_id: interaction.targetThreadId,
+          agent_id: interaction.targetAgentId,
+          status: interaction.status,
+          response: truncated
+            ? fullResponse.slice(0, DELIVERY_RESPONSE_PREVIEW_CHARS)
+            : fullResponse,
+          ...(truncated ? { response_truncated: true } : {}),
+          error: interaction.error,
+        }),
+    );
   }
 
   #enqueueDelivery(interaction: InteractionRecord): {
@@ -1592,10 +1611,28 @@ export class RunCoordinator {
     run?: RunRecord,
   ): readonly string[] {
     const thread = this.store.getThread(ownerId, threadId);
-    return Object.freeze([
+    const instructions = [
       agentInstructions(thread.threadType, agentId),
       ...this.#environmentRuntime.instructions(ownerId, threadId, agentId, run),
-    ]);
+    ];
+    if (run && this.#previousRootRunCancelled(ownerId, threadId, run)) {
+      instructions.push(CANCELLATION_REMINDER);
+    }
+    return Object.freeze(instructions);
+  }
+
+  #previousRootRunCancelled(ownerId: string, threadId: string, run: RunRecord): boolean {
+    if (run.agentId !== 'thread' || run.parentRunId !== null) return false;
+    const previous = this.store
+      .listRuns(ownerId, threadId)
+      .filter(
+        (candidate) =>
+          candidate.agentId === 'thread' &&
+          candidate.parentRunId === null &&
+          candidate.runId !== run.runId,
+      )
+      .findLast((candidate) => candidate.createdAt <= run.createdAt);
+    return previous?.status === 'cancelled';
   }
 
   #runtimeSpec(

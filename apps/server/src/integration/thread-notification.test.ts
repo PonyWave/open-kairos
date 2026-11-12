@@ -9,6 +9,7 @@ import {
   ThreadNotificationStatus,
 } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
+import { systemReminderContent } from '../sessions/system-reminder.js';
 import {
   ControlledProvider,
   closeFixture,
@@ -150,7 +151,13 @@ it('registers thread_notify only on task roots and persists idle delivery with b
       status: 'consumed',
       context_message_seq: expect.any(Number),
     });
-    expect(JSON.parse(delivered.delivery_content)).toMatchObject({
+    const notificationReminder = systemReminderContent(delivered.delivery_content);
+    if (notificationReminder === undefined) {
+      throw new Error('The notification delivery is not wrapped as a system reminder.');
+    }
+    expect(
+      JSON.parse(notificationReminder.slice(notificationReminder.indexOf('\n') + 1)),
+    ).toMatchObject({
       kind: 'thread_notification',
       source_thread_id: task.threadId,
       source_agent_id: 'thread',

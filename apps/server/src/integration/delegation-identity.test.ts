@@ -14,6 +14,7 @@ import {
 } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
 import { SessionStore } from '../sessions/store.js';
+import { systemReminderContent } from '../sessions/system-reminder.js';
 import {
   ControlledProvider,
   closeFixture,
@@ -530,8 +531,13 @@ it('REQ-05 isolates identical Subagent call IDs across GUI, Provider, SQLite and
       (request) => request.key === 'delivery:shared-subagent-call',
     );
     expect(deliveryRequests).toHaveLength(1);
+    const deliveryReminder = systemReminderContent(
+      deliveryRequests[0]?.request.messages.at(-1)?.content ?? '',
+    );
     const providerDelivery = JSON.parse(
-      deliveryRequests[0]?.request.messages.at(-1)?.content ?? '{}',
+      deliveryReminder === undefined
+        ? '{}'
+        : deliveryReminder.slice(deliveryReminder.indexOf('\n') + 1),
     ) as Record<string, unknown>;
     expect(providerDelivery).toMatchObject({
       source_thread_id: mainId,
@@ -679,7 +685,11 @@ it('REQ-05 persists busy direct injection before ordinary follow_up without a qu
         last.content.includes('"tool_call_id":"busy-call"') &&
         currentFixture
       ) {
-        const parsed: unknown = JSON.parse(last.content);
+        const deliveryText = systemReminderContent(last.content);
+        if (deliveryText === undefined) {
+          throw new Error('Delegation delivery is not wrapped as a system reminder.');
+        }
+        const parsed: unknown = JSON.parse(deliveryText.slice(deliveryText.indexOf('\n') + 1));
         if (typeof parsed !== 'object' || parsed === null) {
           throw new Error('Delegation delivery is not an object.');
         }
