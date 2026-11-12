@@ -46,10 +46,11 @@ import {
   type SettingsSection,
   settingsSectionFromLocation,
 } from './settings-page.js';
+import { TemporaryThreadsSection, WorkspaceGroupSection } from './sidebar-workspaces.js';
 import { ThreadListPage } from './thread-list-page.js';
 import { ThreadSyncManager } from './thread-sync-manager.js';
-import { RecentTopicItem } from './thread-title.js';
 import type { AgentOrigin, TopicCardView } from './thread-view.js';
+import { type ThreadIdentity, ThreadWorkspaceProvider } from './thread-workspaces.js';
 import { withToolExpanded } from './tool-group-projection.js';
 import { type ActionExecutorView, useActionExecutor } from './use-action-executor.js';
 import { useAuth } from './use-auth.js';
@@ -148,6 +149,20 @@ export function AccountWorkbench({
   const threadSyncManager = useMemo(() => new ThreadSyncManager(clients), [clients]);
   const topics = useTopicPreviews(clients, true);
   const workspaceDirectory = useWorkspaceDirectory(clients, true);
+  const threadWorkspaces = useMemo(() => {
+    const map = new Map<string, ThreadIdentity>();
+    map.set(identity.mainThreadId, { main: true });
+    for (const group of workspaceDirectory.groups) {
+      const workspaceId = group.workspace?.workspaceId;
+      if (!workspaceId) continue;
+      if (group.mainThread) map.set(group.mainThread.threadId, { workspaceId, main: true });
+      for (const thread of group.tasks) map.set(thread.threadId, { workspaceId, main: false });
+    }
+    for (const thread of workspaceDirectory.temporary) {
+      map.set(thread.threadId, { main: false });
+    }
+    return map;
+  }, [workspaceDirectory.groups, workspaceDirectory.temporary, identity.mainThreadId]);
   const drafts = useDrafts(storage);
   const directory = workbench.state;
   const mainThread = directory.mainThread;
@@ -644,355 +659,277 @@ export function AccountWorkbench({
 
   return (
     <UserProfileProvider identity={identity} clients={clients}>
-      <div className={`app-shell${navigationOpen ? ' navigation-open' : ''}`}>
-        <a className="skip-link" href="#main-content">
-          跳到消息区
-        </a>
-        <aside className="thread-sidebar" aria-label="工作台导航">
-          <div className="brand-row">
-            <button type="button" className="brand" onClick={openMain} aria-label="Kairos 主对话">
-              <EntityMark mainAgent className="brand-mark" />
-              <img className="brand-wordmark" src={wordmark} alt="" />
-            </button>
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="搜索，暂不可用"
-              title="搜索暂不可用"
-              disabled
-            >
-              <Icon name="search" />
-            </button>
-          </div>
-          <nav className="thread-list" aria-label="主要页面">
-            <button
-              type="button"
-              className={mainVisible ? 'selected' : ''}
-              aria-current={mainVisible ? 'page' : undefined}
-              onClick={openMain}
-            >
-              <Icon name="chat" />
-              <span className="nav-label">主对话</span>
-              <kbd>⌘ J</kbd>
-            </button>
-            <button
-              type="button"
-              className={
-                directory.page === 'automations' || directory.page === 'automationThread'
-                  ? 'selected'
-                  : ''
-              }
-              aria-current={
-                directory.page === 'automations' || directory.page === 'automationThread'
-                  ? 'page'
-                  : undefined
-              }
-              onClick={() => openAutomations()}
-            >
-              <Icon name="clock" />
-              <span className="nav-label">定时任务</span>
-            </button>
-            <button type="button" aria-label="看板，暂不可用" title="看板暂不可用" disabled>
-              <Icon name="tasks" />
-              <span className="nav-label">看板</span>
-            </button>
-          </nav>
-          <section className="sidebar-section" aria-label="工作空间">
-            <div className="sidebar-label">
-              <span>工作空间</span>
+      <ThreadWorkspaceProvider value={threadWorkspaces}>
+        <div className={`app-shell${navigationOpen ? ' navigation-open' : ''}`}>
+          <a className="skip-link" href="#main-content">
+            跳到消息区
+          </a>
+          <aside className="thread-sidebar" aria-label="工作台导航">
+            <div className="brand-row">
+              <button type="button" className="brand" onClick={openMain} aria-label="Kairos 主对话">
+                <EntityMark mainAgent className="brand-mark" />
+                <img className="brand-wordmark" src={wordmark} alt="" />
+              </button>
               <button
                 type="button"
                 className="icon-button"
-                aria-label="管理工作空间"
-                title="管理工作空间"
-                onClick={openWorkspaces}
+                aria-label="搜索，暂不可用"
+                title="搜索暂不可用"
+                disabled
               >
-                <Icon name="settings" className="i-sm" />
+                <Icon name="search" />
               </button>
             </div>
-            {workspaceDirectory.loading && workspaceDirectory.groups.length === 0 && (
-              <p className="muted">正在加载工作空间</p>
-            )}
-            {workspaceDirectory.error && (
-              <p className="sidebar-error" role="alert">
-                {workspaceDirectory.error}
-              </p>
-            )}
-            {workspaceDirectory.groups.map((group) => (
-              <div className="workspace-group" key={group.workspace?.workspaceId ?? 'unknown'}>
-                <div
-                  className="workspace-header"
-                  title={
-                    group.workspace
-                      ? `${group.workspace.envId} · ${group.workspace.path}`
-                      : undefined
-                  }
-                >
-                  <span className="workspace-name">{group.workspace?.name ?? '工作空间'}</span>
+            <nav className="thread-list" aria-label="主要页面">
+              <button
+                type="button"
+                className={mainVisible ? 'selected' : ''}
+                aria-current={mainVisible ? 'page' : undefined}
+                onClick={openMain}
+              >
+                <Icon name="chat" />
+                <span className="nav-label">主对话</span>
+                <kbd>⌘ J</kbd>
+              </button>
+              <button
+                type="button"
+                className={
+                  directory.page === 'automations' || directory.page === 'automationThread'
+                    ? 'selected'
+                    : ''
+                }
+                aria-current={
+                  directory.page === 'automations' || directory.page === 'automationThread'
+                    ? 'page'
+                    : undefined
+                }
+                onClick={() => openAutomations()}
+              >
+                <Icon name="clock" />
+                <span className="nav-label">定时任务</span>
+              </button>
+              <button type="button" aria-label="看板，暂不可用" title="看板暂不可用" disabled>
+                <Icon name="tasks" />
+                <span className="nav-label">看板</span>
+              </button>
+            </nav>
+            <section className="sidebar-section" aria-label="工作空间">
+              <div className="sidebar-label">
+                <span>工作空间</span>
+                <span className="sidebar-label-actions">
                   <button
                     type="button"
                     className="icon-button"
-                    aria-label={`在 ${group.workspace?.name ?? '工作空间'} 新建话题`}
-                    title="新建话题"
-                    onClick={() => openDraft(group.workspace?.workspaceId ?? null)}
+                    aria-label="管理工作空间"
+                    title="管理工作空间"
+                    onClick={openWorkspaces}
                   >
-                    <Icon name="plus" className="i-sm" />
+                    <Icon name="settings" className="i-xs" />
                   </button>
-                </div>
-                {group.mainThread ? (
-                  <RecentTopicItem
-                    thread={group.mainThread}
-                    current={selectedThreadId === group.mainThread.threadId}
-                    busy={actions.busy}
-                    onOpen={() => openFullThread(group.mainThread?.threadId ?? '', null, null)}
-                    onRename={async (title) =>
-                      (await actions.execute(
-                        `rename-thread:${group.mainThread?.threadId ?? ''}`,
-                        'renameThread',
-                        { threadId: group.mainThread?.threadId ?? '', title },
-                      )) !== undefined
-                    }
-                  />
-                ) : (
-                  <p className="muted">工作空间主对话缺失</p>
-                )}
-                {group.tasks.map((thread) => (
-                  <RecentTopicItem
-                    key={thread.threadId}
-                    thread={thread}
-                    current={selectedThreadId === thread.threadId}
-                    busy={actions.busy}
-                    onOpen={() => openFullThread(thread.threadId, null, null)}
-                    onRename={async (title) =>
-                      (await actions.execute(`rename-thread:${thread.threadId}`, 'renameThread', {
-                        threadId: thread.threadId,
-                        title,
-                      })) !== undefined
-                    }
-                  />
-                ))}
-              </div>
-            ))}
-            {workspaceDirectory.temporary.length > 0 && (
-              <div className="workspace-group">
-                <div className="workspace-header">
-                  <span className="workspace-name">临时对话</span>
                   <button
                     type="button"
-                    className="icon-button"
-                    aria-label="新建临时对话"
-                    title="新建临时对话"
-                    onClick={() => openDraft(null)}
+                    className={`icon-button${directory.page === 'directory' ? ' current' : ''}`}
+                    aria-label="查看全部对话"
+                    title="查看全部对话"
+                    aria-current={directory.page === 'directory' ? 'page' : undefined}
+                    onClick={openDirectory}
                   >
-                    <Icon name="plus" className="i-sm" />
+                    <Icon name="chevron" className="i-xs" />
                   </button>
-                </div>
-                {workspaceDirectory.temporary.map((thread) => (
-                  <RecentTopicItem
-                    key={thread.threadId}
-                    thread={thread}
-                    current={selectedThreadId === thread.threadId}
-                    busy={actions.busy}
-                    onOpen={() => openFullThread(thread.threadId, null, null)}
-                    onRename={async (title) =>
-                      (await actions.execute(`rename-thread:${thread.threadId}`, 'renameThread', {
-                        threadId: thread.threadId,
-                        title,
-                      })) !== undefined
-                    }
-                  />
-                ))}
+                </span>
               </div>
-            )}
-            <button
-              type="button"
-              className={`recent-view-all${directory.page === 'directory' ? ' current' : ''}`}
-              aria-current={directory.page === 'directory' ? 'page' : undefined}
-              onClick={openDirectory}
-            >
-              <span>查看全部</span>
-              <Icon name="chevron" className="i-sm" />
-            </button>
-          </section>
-          <div className="sidebar-bottom">
-            <button
-              type="button"
-              className="connection-banner"
-              aria-label="连接设备"
-              title="连接设备"
-              aria-current={directory.page === 'devices' ? 'page' : undefined}
-              onClick={openDevices}
-            >
-              <Icon name="monitor" />
-              <span className="nav-label">连接设备</span>
-            </button>
-            <button
-              type="button"
-              className="connection-banner"
-              aria-label="设置"
-              title="设置"
-              aria-current={directory.page === 'settings' ? 'page' : undefined}
-              onClick={openSettings}
-            >
-              <Icon name="settings" />
-              <span className="nav-label">设置</span>
-            </button>
-            <div className="profile">
-              <Dropdown
-                className="account-menu"
-                triggerClassName="account-trigger"
-                panelClassName="profile-popover"
-                label="账号菜单"
-                placement="top"
-                trigger={
-                  <>
-                    <UserAvatar className="avatar" />
-                    <span className="profile-info">{identity.username}</span>
-                  </>
-                }
-                header={
-                  <>
-                    <strong>{identity.username}</strong>
-                    <span>{identity.email}</span>
-                  </>
-                }
-                items={[{ value: 'logout', label: '退出登录' }]}
-                onSelect={() =>
-                  navigate(() => {
-                    void onLogout();
-                  })
-                }
-              />
-              <button
-                type="button"
-                className="icon-button theme-toggle"
-                aria-label={theme === 'dark' ? '切换浅色' : '切换深色'}
-                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              >
-                <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
-              </button>
-            </div>
-          </div>
-        </aside>
-        <button
-          type="button"
-          className="phone-scrim"
-          aria-label="关闭导航"
-          onClick={() => setNavigationOpen(false)}
-        />
-        <main id="main-content" className="workspace">
-          <button
-            type="button"
-            className="icon-button mobile-menu"
-            aria-label="打开导航"
-            aria-expanded={navigationOpen}
-            onClick={() => setNavigationOpen(true)}
-          >
-            <Icon name="menu" />
-          </button>
-          {health !== 'ready' && (
-            <span
-              className={`server-status health-${health}`}
-              role="status"
-              title={health === 'loading' ? '正在连接服务' : '服务连接失败'}
-            >
-              <Icon
-                name={health === 'loading' ? 'spinner' : 'alert'}
-                className={`i-sm${health === 'loading' ? ' spinning' : ''}`}
-              />
-              <span className="sr-only">
-                {health === 'loading' ? '正在连接服务' : '服务连接失败'}
-              </span>
-            </span>
-          )}
-          {notice && (
-            <div className="workspace-notice" role="status">
-              <span title={notice}>{notice}</span>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label="关闭通知"
-                onClick={() => setNotice(null)}
-              >
-                <Icon name="close" className="i-sm" />
-              </button>
-            </div>
-          )}
-          {actions.failures.length > 0 && (
-            <div className="operation-failures">
-              {actions.failures.map((failure) => (
-                <FailureNotice
-                  key={failure.key}
-                  label="操作失败"
-                  message={`${failure.message}${failure.outcome === 'unknown' ? ' 操作结果未知，重试将沿用原操作编号。' : ' 本次操作失败，可以重新提交。'}`}
+              {workspaceDirectory.loading && workspaceDirectory.groups.length === 0 && (
+                <p className="muted">正在加载工作空间</p>
+              )}
+              {workspaceDirectory.error && (
+                <p className="sidebar-error" role="alert">
+                  {workspaceDirectory.error}
+                </p>
+              )}
+              {workspaceDirectory.groups.map((group) => (
+                <WorkspaceGroupSection
+                  key={group.workspace?.workspaceId ?? 'unknown'}
+                  group={group}
+                  selectedThreadId={selectedThreadId}
                   busy={actions.busy}
-                  onRetry={
-                    failure.outcome === 'unknown'
-                      ? () => void actions.retry(failure.key)
-                      : undefined
+                  onOpenThread={(threadId) => openFullThread(threadId, null, null)}
+                  onNewTopic={() => openDraft(group.workspace?.workspaceId ?? null)}
+                  onRename={async (threadId, title) =>
+                    (await actions.execute(`rename-thread:${threadId}`, 'renameThread', {
+                      threadId,
+                      title,
+                    })) !== undefined
                   }
-                  onDismiss={() => actions.dismiss(failure.key)}
                 />
               ))}
-            </div>
-          )}
-          <div className="workbench-viewport">
-            {mainThreadId && directory.page !== 'draft' && (
-              <DualPaneLayout
-                mainVisible={mainVisible}
-                hasTopic={activeTopic !== null || activeSubagent !== null}
-                narrowViewport={narrowViewport}
-              >
-                <ConversationPane
-                  key={mainThreadId}
-                  clients={clients}
-                  threadSyncManager={threadSyncManager}
-                  variant="main"
-                  displayMode={conversationDisplay.mode}
-                  onOpenDisplaySettings={() => {
-                    setSettingsSection('display');
-                    openSettings();
-                  }}
-                  composerOwner="main"
-                  threadId={mainThreadId}
-                  thread={mainThread}
-                  mainThreadId={mainThreadId}
-                  draftOwner={mainThreadId}
-                  actions={actions}
-                  drafts={drafts}
-                  topicCards={allCards}
-                  previewRevision={previewRevision}
-                  toolExpansionChoices={toolExpansionChoices}
-                  onToolExpansionChange={onToolExpansionChange}
-                  highlightedCallId={highlightedCallId}
-                  hidden={!mainVisible}
-                  onOpenTopic={openTopic}
-                  onOpenSubagent={openSubagent}
-                  onOpenDirectory={openDirectory}
-                  onOpenMain={openMain}
-                  onCloseTopic={closeDetail}
-                  onShowOrigin={showOrigin}
-                  showNotice={showNotice}
+              {workspaceDirectory.temporary.length > 0 && (
+                <TemporaryThreadsSection
+                  threads={workspaceDirectory.temporary}
+                  selectedThreadId={selectedThreadId}
+                  busy={actions.busy}
+                  onOpenThread={(threadId) => openFullThread(threadId, null, null)}
+                  onNewTopic={() => openDraft(null)}
+                  onRename={async (threadId, title) =>
+                    (await actions.execute(`rename-thread:${threadId}`, 'renameThread', {
+                      threadId,
+                      title,
+                    })) !== undefined
+                  }
                 />
-                {activeTopic && mainVisible && (
+              )}
+            </section>
+            <div className="sidebar-bottom">
+              <button
+                type="button"
+                className="connection-banner"
+                aria-label="连接设备"
+                title="连接设备"
+                aria-current={directory.page === 'devices' ? 'page' : undefined}
+                onClick={openDevices}
+              >
+                <Icon name="monitor" />
+                <span className="nav-label">连接设备</span>
+              </button>
+              <button
+                type="button"
+                className="connection-banner"
+                aria-label="设置"
+                title="设置"
+                aria-current={directory.page === 'settings' ? 'page' : undefined}
+                onClick={openSettings}
+              >
+                <Icon name="settings" />
+                <span className="nav-label">设置</span>
+              </button>
+              <div className="profile">
+                <Dropdown
+                  className="account-menu"
+                  triggerClassName="account-trigger"
+                  panelClassName="profile-popover"
+                  label="账号菜单"
+                  placement="top"
+                  trigger={
+                    <>
+                      <UserAvatar className="avatar" />
+                      <span className="profile-info">{identity.username}</span>
+                    </>
+                  }
+                  header={
+                    <>
+                      <strong>{identity.username}</strong>
+                      <span>{identity.email}</span>
+                    </>
+                  }
+                  items={[{ value: 'logout', label: '退出登录' }]}
+                  onSelect={() =>
+                    navigate(() => {
+                      void onLogout();
+                    })
+                  }
+                />
+                <button
+                  type="button"
+                  className="icon-button theme-toggle"
+                  aria-label={theme === 'dark' ? '切换浅色' : '切换深色'}
+                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                >
+                  <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
+                </button>
+              </div>
+            </div>
+          </aside>
+          <button
+            type="button"
+            className="phone-scrim"
+            aria-label="关闭导航"
+            onClick={() => setNavigationOpen(false)}
+          />
+          <main id="main-content" className="workspace">
+            <button
+              type="button"
+              className="icon-button mobile-menu"
+              aria-label="打开导航"
+              aria-expanded={navigationOpen}
+              onClick={() => setNavigationOpen(true)}
+            >
+              <Icon name="menu" />
+            </button>
+            {health !== 'ready' && (
+              <span
+                className={`server-status health-${health}`}
+                role="status"
+                title={health === 'loading' ? '正在连接服务' : '服务连接失败'}
+              >
+                <Icon
+                  name={health === 'loading' ? 'spinner' : 'alert'}
+                  className={`i-sm${health === 'loading' ? ' spinning' : ''}`}
+                />
+                <span className="sr-only">
+                  {health === 'loading' ? '正在连接服务' : '服务连接失败'}
+                </span>
+              </span>
+            )}
+            {notice && (
+              <div className="workspace-notice" role="status">
+                <span title={notice}>{notice}</span>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="关闭通知"
+                  onClick={() => setNotice(null)}
+                >
+                  <Icon name="close" className="i-sm" />
+                </button>
+              </div>
+            )}
+            {actions.failures.length > 0 && (
+              <div className="operation-failures">
+                {actions.failures.map((failure) => (
+                  <FailureNotice
+                    key={failure.key}
+                    label="操作失败"
+                    message={`${failure.message}${failure.outcome === 'unknown' ? ' 操作结果未知，重试将沿用原操作编号。' : ' 本次操作失败，可以重新提交。'}`}
+                    busy={actions.busy}
+                    onRetry={
+                      failure.outcome === 'unknown'
+                        ? () => void actions.retry(failure.key)
+                        : undefined
+                    }
+                    onDismiss={() => actions.dismiss(failure.key)}
+                  />
+                ))}
+              </div>
+            )}
+            <div className="workbench-viewport">
+              {mainThreadId && directory.page !== 'draft' && (
+                <DualPaneLayout
+                  mainVisible={mainVisible}
+                  hasTopic={activeTopic !== null || activeSubagent !== null}
+                  narrowViewport={narrowViewport}
+                >
                   <ConversationPane
-                    key={activeTopic.threadId}
+                    key={mainThreadId}
                     clients={clients}
                     threadSyncManager={threadSyncManager}
-                    variant="topic"
-                    composerOwner="topic"
-                    threadId={activeTopic.threadId}
-                    thread={activeThread}
+                    variant="main"
+                    displayMode={conversationDisplay.mode}
+                    onOpenDisplaySettings={() => {
+                      setSettingsSection('display');
+                      openSettings();
+                    }}
+                    composerOwner="main"
+                    threadId={mainThreadId}
+                    thread={mainThread}
                     mainThreadId={mainThreadId}
-                    draftOwner={activeTopic.threadId}
+                    draftOwner={mainThreadId}
                     actions={actions}
                     drafts={drafts}
                     topicCards={allCards}
                     previewRevision={previewRevision}
                     toolExpansionChoices={toolExpansionChoices}
                     onToolExpansionChange={onToolExpansionChange}
-                    origin={activeTopic.origin}
-                    invocationId={activeTopic.invocationId}
+                    highlightedCallId={highlightedCallId}
+                    hidden={!mainVisible}
                     onOpenTopic={openTopic}
                     onOpenSubagent={openSubagent}
                     onOpenDirectory={openDirectory}
@@ -1001,197 +938,230 @@ export function AccountWorkbench({
                     onShowOrigin={showOrigin}
                     showNotice={showNotice}
                   />
-                )}
-                {activeSubagent && mainVisible && renderSubagentPane()}
-              </DualPaneLayout>
-            )}
-            {directory.page === 'automationThread' &&
-            directory.automationScheduleId &&
-            directory.automationThreadId ? (
-              <ConversationPane
-                key={`${directory.automationScheduleId}:${directory.automationThreadId}`}
-                clients={clients}
-                threadSyncManager={threadSyncManager}
-                variant="automation"
-                automationScheduleId={directory.automationScheduleId}
-                composerOwner="automation"
-                threadId={directory.automationThreadId}
-                thread={null}
-                mainThreadId={mainThreadId}
-                draftOwner={`automation:${directory.automationScheduleId}:${directory.automationThreadId}`}
-                actions={actions}
-                drafts={drafts}
-                topicCards={allCards}
-                previewRevision={previewRevision}
-                toolExpansionChoices={toolExpansionChoices}
-                onToolExpansionChange={onToolExpansionChange}
-                onOpenTopic={openTopic}
-                onOpenSubagent={openSubagent}
-                onOpenDirectory={openDirectory}
-                onOpenMain={openMain}
-                onCloseTopic={() => openAutomations(directory.automationScheduleId)}
-                onShowOrigin={() => {}}
-                showNotice={showNotice}
-              />
-            ) : directory.page === 'automations' ? (
-              <AutomationPage
-                clients={clients}
-                actions={actions}
-                mainThreadId={mainThreadId}
-                selectedScheduleId={directory.automationScheduleId}
-                revision={automationRevision}
-                onSelect={openAutomations}
-                onOpenThread={openAutomationTarget}
-              />
-            ) : directory.page === 'settings' ? (
-              <SettingsPage
-                clients={clients}
-                identity={identity}
-                section={settingsSection}
-                onSectionChange={(section) => {
-                  if (section !== settingsSection) navigate(() => setSettingsSection(section));
-                }}
-                onIdentityChange={onIdentityChange}
-                onDirtyChange={onSettingsDirty}
-                conversationDisplayMode={conversationDisplay.mode}
-                conversationDisplayError={conversationDisplay.error}
-                onConversationDisplayChange={changeConversationDisplay}
-              />
-            ) : directory.page === 'devices' ? (
-              <ConnectedDevicesPage clients={clients} />
-            ) : directory.page === 'workspaces' ? (
-              <WorkspacesPage
-                clients={clients}
-                groups={workspaceDirectory.groups}
-                loading={workspaceDirectory.loading}
-                error={workspaceDirectory.error}
-                onChanged={workspaceDirectory.refresh}
-                onOpenThread={(threadId) => openFullThread(threadId, null, null)}
-              />
-            ) : directory.page === 'directory' ? (
-              <ThreadListPage
-                cards={topics.state.cards}
-                sort={topics.state.sort}
-                mainThreadId={mainThreadId}
-                loading={topics.state.loading}
-                error={topics.state.error}
-                hasMore={topics.state.hasMore}
-                workspaceNames={
-                  new Map(
-                    workspaceDirectory.groups
-                      .filter((group) => group.workspace !== null)
-                      .map((group) => [
-                        group.workspace?.workspaceId ?? '',
-                        group.workspace?.name ?? '',
-                      ]),
-                  )
-                }
-                onOpen={(card) =>
-                  openFullThread(
-                    card.thread.threadId,
-                    card.origin,
-                    card.origin?.delegation.sourceToolCallId ?? null,
-                  )
-                }
-                onSort={(sort) => void topics.setSort(sort)}
-                onLoadMore={topics.loadMore}
-                onReload={topics.openDirectory}
-              />
-            ) : directory.page === 'draft' ? (
-              <ConversationPane
-                clients={clients}
-                threadSyncManager={threadSyncManager}
-                variant="draft"
-                composerOwner="draft"
-                threadId={null}
-                thread={null}
-                mainThreadId={mainThreadId}
-                draftOwner={localTaskDraftId}
-                draftWorkspaceId={directory.draftWorkspaceId}
-                actions={actions}
-                drafts={drafts}
-                topicCards={allCards}
-                previewRevision={previewRevision}
-                toolExpansionChoices={toolExpansionChoices}
-                onToolExpansionChange={onToolExpansionChange}
-                onOpenTopic={openTopic}
-                onOpenSubagent={openSubagent}
-                onOpenDirectory={openDirectory}
-                onOpenMain={openMain}
-                onCloseTopic={closeDetail}
-                onShowOrigin={() => {}}
-                showNotice={showNotice}
-              />
-            ) : !mainVisible && selectedThreadId ? (
-              <DualPaneLayout
-                mainVisible
-                hasTopic={activeSubagent !== null}
-                narrowViewport={narrowViewport}
-              >
+                  {activeTopic && mainVisible && (
+                    <ConversationPane
+                      key={activeTopic.threadId}
+                      clients={clients}
+                      threadSyncManager={threadSyncManager}
+                      variant="topic"
+                      composerOwner="topic"
+                      threadId={activeTopic.threadId}
+                      thread={activeThread}
+                      mainThreadId={mainThreadId}
+                      draftOwner={activeTopic.threadId}
+                      actions={actions}
+                      drafts={drafts}
+                      topicCards={allCards}
+                      previewRevision={previewRevision}
+                      toolExpansionChoices={toolExpansionChoices}
+                      onToolExpansionChange={onToolExpansionChange}
+                      origin={activeTopic.origin}
+                      invocationId={activeTopic.invocationId}
+                      onOpenTopic={openTopic}
+                      onOpenSubagent={openSubagent}
+                      onOpenDirectory={openDirectory}
+                      onOpenMain={openMain}
+                      onCloseTopic={closeDetail}
+                      onShowOrigin={showOrigin}
+                      showNotice={showNotice}
+                    />
+                  )}
+                  {activeSubagent && mainVisible && renderSubagentPane()}
+                </DualPaneLayout>
+              )}
+              {directory.page === 'automationThread' &&
+              directory.automationScheduleId &&
+              directory.automationThreadId ? (
                 <ConversationPane
-                  key={selectedThreadId}
+                  key={`${directory.automationScheduleId}:${directory.automationThreadId}`}
                   clients={clients}
                   threadSyncManager={threadSyncManager}
-                  variant="fullscreen"
-                  composerOwner="fullscreen"
-                  threadId={selectedThreadId}
-                  thread={selectedThread}
+                  variant="automation"
+                  automationScheduleId={directory.automationScheduleId}
+                  composerOwner="automation"
+                  threadId={directory.automationThreadId}
+                  thread={null}
                   mainThreadId={mainThreadId}
-                  draftOwner={selectedThreadId}
+                  draftOwner={`automation:${directory.automationScheduleId}:${directory.automationThreadId}`}
                   actions={actions}
                   drafts={drafts}
                   topicCards={allCards}
                   previewRevision={previewRevision}
                   toolExpansionChoices={toolExpansionChoices}
                   onToolExpansionChange={onToolExpansionChange}
-                  origin={fullTopic.origin}
-                  invocationId={fullTopic.invocationId}
+                  onOpenTopic={openTopic}
+                  onOpenSubagent={openSubagent}
+                  onOpenDirectory={openDirectory}
+                  onOpenMain={openMain}
+                  onCloseTopic={() => openAutomations(directory.automationScheduleId)}
+                  onShowOrigin={() => {}}
+                  showNotice={showNotice}
+                />
+              ) : directory.page === 'automations' ? (
+                <AutomationPage
+                  clients={clients}
+                  actions={actions}
+                  mainThreadId={mainThreadId}
+                  selectedScheduleId={directory.automationScheduleId}
+                  revision={automationRevision}
+                  onSelect={openAutomations}
+                  onOpenThread={openAutomationTarget}
+                />
+              ) : directory.page === 'settings' ? (
+                <SettingsPage
+                  clients={clients}
+                  identity={identity}
+                  section={settingsSection}
+                  onSectionChange={(section) => {
+                    if (section !== settingsSection) navigate(() => setSettingsSection(section));
+                  }}
+                  onIdentityChange={onIdentityChange}
+                  onDirtyChange={onSettingsDirty}
+                  conversationDisplayMode={conversationDisplay.mode}
+                  conversationDisplayError={conversationDisplay.error}
+                  onConversationDisplayChange={changeConversationDisplay}
+                />
+              ) : directory.page === 'devices' ? (
+                <ConnectedDevicesPage clients={clients} />
+              ) : directory.page === 'workspaces' ? (
+                <WorkspacesPage
+                  clients={clients}
+                  groups={workspaceDirectory.groups}
+                  loading={workspaceDirectory.loading}
+                  error={workspaceDirectory.error}
+                  onChanged={workspaceDirectory.refresh}
+                  onOpenThread={(threadId) => openFullThread(threadId, null, null)}
+                />
+              ) : directory.page === 'directory' ? (
+                <ThreadListPage
+                  cards={topics.state.cards}
+                  sort={topics.state.sort}
+                  mainThreadId={mainThreadId}
+                  loading={topics.state.loading}
+                  error={topics.state.error}
+                  hasMore={topics.state.hasMore}
+                  workspaceNames={
+                    new Map(
+                      workspaceDirectory.groups
+                        .filter((group) => group.workspace !== null)
+                        .map((group) => [
+                          group.workspace?.workspaceId ?? '',
+                          group.workspace?.name ?? '',
+                        ]),
+                    )
+                  }
+                  onOpen={(card) =>
+                    openFullThread(
+                      card.thread.threadId,
+                      card.origin,
+                      card.origin?.delegation.sourceToolCallId ?? null,
+                    )
+                  }
+                  onSort={(sort) => void topics.setSort(sort)}
+                  onLoadMore={topics.loadMore}
+                  onReload={topics.openDirectory}
+                />
+              ) : directory.page === 'draft' ? (
+                <ConversationPane
+                  clients={clients}
+                  threadSyncManager={threadSyncManager}
+                  variant="draft"
+                  composerOwner="draft"
+                  threadId={null}
+                  thread={null}
+                  mainThreadId={mainThreadId}
+                  draftOwner={localTaskDraftId}
+                  draftWorkspaceId={directory.draftWorkspaceId}
+                  actions={actions}
+                  drafts={drafts}
+                  topicCards={allCards}
+                  previewRevision={previewRevision}
+                  toolExpansionChoices={toolExpansionChoices}
+                  onToolExpansionChange={onToolExpansionChange}
                   onOpenTopic={openTopic}
                   onOpenSubagent={openSubagent}
                   onOpenDirectory={openDirectory}
                   onOpenMain={openMain}
                   onCloseTopic={closeDetail}
-                  onShowOrigin={showOrigin}
+                  onShowOrigin={() => {}}
                   showNotice={showNotice}
                 />
-                {renderSubagentPane()}
-              </DualPaneLayout>
-            ) : null}
-          </div>
-        </main>
-      </div>
-      {leaveAction && (
-        <AppDialog
-          title="放弃未保存的修改"
-          subtitle="设置中有未保存的修改或尚未确认的操作。离开后请重新进入核对保存结果。"
-          onClose={() => setLeaveAction(null)}
-          actions={
-            <>
-              <button
-                type="button"
-                className="device-secondary"
-                onClick={() => setLeaveAction(null)}
-              >
-                继续编辑
-              </button>
-              <button
-                type="button"
-                className="device-primary"
-                onClick={() => {
-                  dirtySettings.current = false;
-                  const action = leaveAction;
-                  setLeaveAction(null);
-                  action();
-                }}
-              >
-                放弃并离开
-              </button>
-            </>
-          }
-        >
-          <p>已完成的保存不会撤销。</p>
-        </AppDialog>
-      )}
+              ) : !mainVisible && selectedThreadId ? (
+                <DualPaneLayout
+                  mainVisible
+                  hasTopic={activeSubagent !== null}
+                  narrowViewport={narrowViewport}
+                >
+                  <ConversationPane
+                    key={selectedThreadId}
+                    clients={clients}
+                    threadSyncManager={threadSyncManager}
+                    variant="fullscreen"
+                    displayMode={conversationDisplay.mode}
+                    onOpenDisplaySettings={() => {
+                      setSettingsSection('display');
+                      openSettings();
+                    }}
+                    composerOwner="fullscreen"
+                    threadId={selectedThreadId}
+                    thread={selectedThread}
+                    mainThreadId={mainThreadId}
+                    draftOwner={selectedThreadId}
+                    actions={actions}
+                    drafts={drafts}
+                    topicCards={allCards}
+                    previewRevision={previewRevision}
+                    toolExpansionChoices={toolExpansionChoices}
+                    onToolExpansionChange={onToolExpansionChange}
+                    origin={fullTopic.origin}
+                    invocationId={fullTopic.invocationId}
+                    onOpenTopic={openTopic}
+                    onOpenSubagent={openSubagent}
+                    onOpenDirectory={openDirectory}
+                    onOpenMain={openMain}
+                    onCloseTopic={closeDetail}
+                    onShowOrigin={showOrigin}
+                    showNotice={showNotice}
+                  />
+                  {renderSubagentPane()}
+                </DualPaneLayout>
+              ) : null}
+            </div>
+          </main>
+        </div>
+        {leaveAction && (
+          <AppDialog
+            title="放弃未保存的修改"
+            subtitle="设置中有未保存的修改或尚未确认的操作。离开后请重新进入核对保存结果。"
+            onClose={() => setLeaveAction(null)}
+            actions={
+              <>
+                <button
+                  type="button"
+                  className="device-secondary"
+                  onClick={() => setLeaveAction(null)}
+                >
+                  继续编辑
+                </button>
+                <button
+                  type="button"
+                  className="device-primary"
+                  onClick={() => {
+                    dirtySettings.current = false;
+                    const action = leaveAction;
+                    setLeaveAction(null);
+                    action();
+                  }}
+                >
+                  放弃并离开
+                </button>
+              </>
+            }
+          >
+            <p>已完成的保存不会撤销。</p>
+          </AppDialog>
+        )}
+      </ThreadWorkspaceProvider>
     </UserProfileProvider>
   );
 }

@@ -103,10 +103,10 @@ export function ConversationDisplaySettings({
   return (
     <div className="settings-form">
       <div className="settings-section-heading">
-        <h2>主对话视图</h2>
-        <p>仅调整主对话的内容展示。话题与子代理详情保持完整视图。</p>
+        <h2>主对话展示模式</h2>
+        <p>控制主对话与工作空间主对话的内容展示。任务话题与子代理详情保持完整视图。</p>
       </div>
-      <fieldset className="settings-display-options" aria-label="主对话视图">
+      <fieldset className="settings-display-options" aria-label="主对话展示模式">
         <label className="settings-display-option">
           <input
             type="radio"

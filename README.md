@@ -6,7 +6,11 @@
 
 open-kairos 是 Kairos 的单用户开源版本，一个本地优先的 AI Agent 工作台。在主电脑执行 `kairos start` 一条命令启动 Server、内嵌 Daemon 与本地网页；Agent 以本机为主环境工作，也可以连接其他 Linux/macOS 设备执行文件与命令操作。对话按工作空间组织，每个工作空间有自己的主对话。
 
-![open-kairos 界面](docs/assets/gui-overview.png)
+![全局 main：send_to_user 回复与 thread_call 委派](docs/assets/gui-main.png)
+
+![工作空间 main：bash 工具调用、创建任务线程与 thread_notify 通知](docs/assets/gui-workspace.png)
+
+![任务 Thread：bash 工具调用与 thread_notify](docs/assets/gui-task.png)
 
 ## 功能特性
 
