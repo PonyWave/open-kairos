@@ -137,7 +137,7 @@ async function startFixture(directory: string, config: RealModelConfig) {
       outputReserveTokens: config.outputReserve,
       countTokens: (request) => tracked.source.estimateRequestTokens(request),
     },
-    periodicRecap: { messageThreshold: 1000, responseWindowMs: 600_000 },
+    periodicRecap: { triggerMessages: 1000, idleAfterMs: 0, maxMessages: 20 },
     maxStepsPerRun: 12,
   });
   await server.listen({ host: '127.0.0.1', port: 0 });

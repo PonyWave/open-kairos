@@ -1474,7 +1474,7 @@ it('REQ-05 isolates target tools, temporary Subagents and hard cuts while reusin
     ]);
     expect(generatedTarget?.request.messages.at(-1)).toEqual({
       role: 'user',
-      content: expect.stringContaining('Kairos internal Recap operation; instruction version 3'),
+      content: expect.stringContaining('Kairos internal Recap operation; instruction version 4'),
     });
     const targetSource = fixture.database
       .prepare(

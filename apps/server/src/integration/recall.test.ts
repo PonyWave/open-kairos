@@ -54,7 +54,7 @@ async function startRecallFixture(
       contextWindowTokens: 128_000,
       outputReserveTokens: 4096,
     },
-    periodicRecap: { messageThreshold: 1000, responseWindowMs: 600_000 },
+    periodicRecap: { triggerMessages: 1000, idleAfterMs: 0, maxMessages: 20 },
     sqlRecall: { ...DEFAULT_SQL_RECALL_LIMITS, ...limits },
     maxStepsPerRun: 30,
   });

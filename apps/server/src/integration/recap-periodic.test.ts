@@ -116,8 +116,9 @@ it('applies X at the exact message count, preserves request bytes and cache usag
     modelServer.enqueue({ kind: 'normal', content: 'after hard cut', cachedTokens: 15 });
     fixture = await startPeriodicFixture(directory, modelServer, {
       clock,
-      messageThreshold: 4,
-      responseWindowMs: 1000,
+      triggerMessages: 3,
+      idleAfterMs: 0,
+      maxMessages: 20,
       countTokens: (request) => {
         if (!forceHardCut) return 100;
         return request.messages.some((message) => message.content === 'first') ? 801 : 800;
@@ -270,8 +271,9 @@ it('waits for a long Run tool boundary, single-flights requests and deduplicates
     });
     fixture = await startPeriodicFixture(directory, modelServer, {
       clock,
-      messageThreshold: 3,
-      responseWindowMs: 1000,
+      triggerMessages: 4,
+      idleAfterMs: 0,
+      maxMessages: 20,
     });
     const threadId = await createPeriodicThread(fixture, 'periodic-tool-thread');
     const first = await sendMessage(fixture, threadId, 'first', 'periodic-tool-first');
@@ -326,8 +328,9 @@ it('waits for a long Run tool boundary, single-flights requests and deduplicates
     await closeFixture(fixture);
     fixture = await startPeriodicFixture(directory, modelServer, {
       clock,
-      messageThreshold: 3,
-      responseWindowMs: 1000,
+      triggerMessages: 4,
+      idleAfterMs: 0,
+      maxMessages: 20,
     });
     expect(recapRows(fixture)).toHaveLength(1);
     await closeFixture(fixture);
@@ -349,8 +352,9 @@ it('keeps normal Runs and Context usable after a periodic Recap failure', async 
     modelServer.enqueue({ kind: 'recap', content: 'recovered recap' });
     fixture = await startPeriodicFixture(directory, modelServer, {
       clock,
-      messageThreshold: 2,
-      responseWindowMs: 1000,
+      triggerMessages: 1,
+      idleAfterMs: 0,
+      maxMessages: 20,
     });
     const threadId = await createPeriodicThread(fixture, 'periodic-failure-thread');
     const first = await sendMessage(fixture, threadId, 'first', 'periodic-failure-first');
@@ -388,8 +392,9 @@ it('rejects a delayed Recap after an edit automatically reruns the latest messag
     modelServer.enqueue({ kind: 'recap', content: 'current edited recap' });
     fixture = await startPeriodicFixture(directory, modelServer, {
       clock,
-      messageThreshold: 2,
-      responseWindowMs: 1000,
+      triggerMessages: 1,
+      idleAfterMs: 0,
+      maxMessages: 20,
     });
     const threadId = await createPeriodicThread(fixture, 'periodic-edit-thread');
     const run = await sendMessage(fixture, threadId, 'edit me', 'periodic-edit-input');
@@ -449,8 +454,9 @@ it('rejects a stale Rerun Recap and generates only from the new current view', a
     modelServer.enqueue({ kind: 'recap', content: 'current rerun recap' });
     fixture = await startPeriodicFixture(directory, modelServer, {
       clock,
-      messageThreshold: 2,
-      responseWindowMs: 1000,
+      triggerMessages: 1,
+      idleAfterMs: 0,
+      maxMessages: 20,
     });
     const threadId = await createPeriodicThread(fixture, 'periodic-rerun-thread');
     const original = await sendMessage(fixture, threadId, 'rerun me', 'periodic-rerun-input');
@@ -508,8 +514,9 @@ it('aborts and waits on close, then recovers the interrupted operation at the in
     modelServer.enqueue({ kind: 'recap', content: 'must not commit', gate: gate.promise });
     fixture = await startPeriodicFixture(directory, modelServer, {
       clock,
-      messageThreshold: 2,
-      responseWindowMs: 1000,
+      triggerMessages: 1,
+      idleAfterMs: 0,
+      maxMessages: 20,
     });
     const threadId = await createPeriodicThread(fixture, 'periodic-close-thread');
     const run = await sendMessage(fixture, threadId, 'close me', 'periodic-close-input');
@@ -530,8 +537,9 @@ it('aborts and waits on close, then recovers the interrupted operation at the in
     modelServer.enqueue({ kind: 'recap', content: 'recovered after restart' });
     fixture = await startPeriodicFixture(directory, modelServer, {
       clock,
-      messageThreshold: 2,
-      responseWindowMs: 1000,
+      triggerMessages: 1,
+      idleAfterMs: 0,
+      maxMessages: 20,
     });
     await waitRecapCount(fixture, 1);
     expect(operationRows(fixture)).toEqual([
@@ -550,7 +558,7 @@ it('aborts and waits on close, then recovers the interrupted operation at the in
   }
 }, 30_000);
 
-it('does not resume periodic generation after the Y window expires', async () => {
+it('does not resume periodic generation before the idle threshold', async () => {
   const directory = await makeDirectory();
   const modelServer = await ModelServer.listen();
   const clock: PeriodicClock = { now: initialTime };
@@ -559,8 +567,9 @@ it('does not resume periodic generation after the Y window expires', async () =>
     modelServer.enqueue({ kind: 'normal', content: 'old answer' });
     fixture = await startPeriodicFixture(directory, modelServer, {
       clock,
-      messageThreshold: 20,
-      responseWindowMs: 1000,
+      triggerMessages: 20,
+      idleAfterMs: 0,
+      maxMessages: 20,
     });
     const threadId = await createPeriodicThread(fixture, 'periodic-y-thread');
     const run = await sendMessage(fixture, threadId, 'old response', 'periodic-y-input');
@@ -570,8 +579,9 @@ it('does not resume periodic generation after the Y window expires', async () =>
     clock.now += 1001;
     fixture = await startPeriodicFixture(directory, modelServer, {
       clock,
-      messageThreshold: 2,
-      responseWindowMs: 1000,
+      triggerMessages: 2,
+      idleAfterMs: 600_000,
+      maxMessages: 20,
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(modelServer.byKind('recap')).toHaveLength(0);

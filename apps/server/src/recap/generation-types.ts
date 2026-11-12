@@ -11,6 +11,12 @@ export interface RecapSourceMessageIndex {
   messageIndex: number;
 }
 
+export interface RecapPriorReference {
+  sourceSeqStart: number;
+  sourceSeqEnd: number;
+  content: string;
+}
+
 export interface RecapGenerationInput {
   threadId: string;
   agentId: string;
@@ -20,6 +26,7 @@ export interface RecapGenerationInput {
   request: ModelRequest;
   viewVersion: number;
   trigger: 'hard_cut' | 'periodic';
+  priorRecaps?: readonly RecapPriorReference[];
 }
 
 export type RecapGenerator = (

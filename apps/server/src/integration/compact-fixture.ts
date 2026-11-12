@@ -202,7 +202,7 @@ interface SlashFixtureOptions {
   countTokens?: (request: ModelRequest) => number | Promise<number>;
   workspaceDirectory: string;
   workspaceResourceLoader?: WorkspaceResourceSource;
-  periodicRecap?: { messageThreshold: number; responseWindowMs: number };
+  periodicRecap?: { triggerMessages: number; idleAfterMs: number; maxMessages: number };
   now?: () => Date;
 }
 
@@ -228,8 +228,9 @@ export async function startSlashFixture(directory: string, options: SlashFixture
     workspaceDirectory: options.workspaceDirectory,
     workspaceResourceLoader,
     periodicRecap: options.periodicRecap ?? {
-      messageThreshold: 1000,
-      responseWindowMs: 600_000,
+      triggerMessages: 1000,
+      idleAfterMs: 0,
+      maxMessages: 20,
     },
     maxStepsPerRun: 12,
     ...(options.now ? { now: options.now } : {}),

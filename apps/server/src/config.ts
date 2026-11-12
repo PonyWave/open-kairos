@@ -20,8 +20,9 @@ import {
 export { DEFAULT_SQL_RECALL_LIMITS } from './recall/types.js';
 
 export const DEFAULT_PERIODIC_RECAP_CONFIGURATION: PeriodicRecapConfiguration = {
-  messageThreshold: 20,
-  responseWindowMs: 600_000,
+  triggerMessages: 10,
+  idleAfterMs: 180_000,
+  maxMessages: 20,
 };
 
 function readTrustedProxies(value: string | undefined): string[] {
@@ -86,18 +87,24 @@ const environmentSchema = z.object({
     .max(1024 * 1024)
     .default(DEFAULT_MEMORY_INDEX_MAX_BYTES),
   KAIROS_MEMORY_DREAM_ENABLED: z.enum(['true', 'false']).default('true'),
-  KAIROS_RECAP_PERIODIC_MESSAGE_THRESHOLD: z.coerce
+  KAIROS_RECAP_PERIODIC_TRIGGER_MESSAGES: z.coerce
     .number()
     .int()
     .positive()
     .safe()
-    .default(DEFAULT_PERIODIC_RECAP_CONFIGURATION.messageThreshold),
-  KAIROS_RECAP_PERIODIC_RESPONSE_WINDOW_MS: z.coerce
+    .default(DEFAULT_PERIODIC_RECAP_CONFIGURATION.triggerMessages),
+  KAIROS_RECAP_PERIODIC_IDLE_AFTER_MS: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .safe()
+    .default(DEFAULT_PERIODIC_RECAP_CONFIGURATION.idleAfterMs),
+  KAIROS_RECAP_PERIODIC_MAX_MESSAGES: z.coerce
     .number()
     .int()
     .positive()
     .safe()
-    .default(DEFAULT_PERIODIC_RECAP_CONFIGURATION.responseWindowMs),
+    .default(DEFAULT_PERIODIC_RECAP_CONFIGURATION.maxMessages),
   KAIROS_RECALL_SQL_TIMEOUT_MS: z.coerce
     .number()
     .int()
@@ -365,8 +372,9 @@ export function readPeriodicRecapConfig(
 ): PeriodicRecapConfiguration {
   const config = environmentSchema.parse(environment);
   return {
-    messageThreshold: config.KAIROS_RECAP_PERIODIC_MESSAGE_THRESHOLD,
-    responseWindowMs: config.KAIROS_RECAP_PERIODIC_RESPONSE_WINDOW_MS,
+    triggerMessages: config.KAIROS_RECAP_PERIODIC_TRIGGER_MESSAGES,
+    idleAfterMs: config.KAIROS_RECAP_PERIODIC_IDLE_AFTER_MS,
+    maxMessages: config.KAIROS_RECAP_PERIODIC_MAX_MESSAGES,
   };
 }
 

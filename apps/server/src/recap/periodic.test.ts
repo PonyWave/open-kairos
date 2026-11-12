@@ -87,8 +87,9 @@ function createService(
   provider: ModelProvider,
   now: () => number,
   options: {
-    messageThreshold?: number;
-    responseWindowMs?: number;
+    triggerMessages?: number;
+    idleAfterMs?: number;
+    maxMessages?: number;
     onError?: (error: unknown) => void;
     modelId?: string;
     recapStore?: RecapStore;
@@ -104,8 +105,9 @@ function createService(
       outputReserveTokens: 100,
     },
     configuration: {
-      messageThreshold: options.messageThreshold ?? 20,
-      responseWindowMs: options.responseWindowMs ?? 600_000,
+      triggerMessages: options.triggerMessages ?? 10,
+      idleAfterMs: options.idleAfterMs ?? 0,
+      maxMessages: options.maxMessages ?? 20,
     },
     clock: clockAt(now),
     ...(options.recapStore ? { recapStore: options.recapStore } : {}),
@@ -375,10 +377,10 @@ it('does not schedule without a reliable completed response', async () => {
 });
 
 it.each([
-  { userCount: 18, expected: 0 },
-  { userCount: 19, expected: 1 },
+  { userCount: 9, expected: 0 },
+  { userCount: 10, expected: 1 },
 ])(
-  'applies the actual-message X boundary with $userCount prior users',
+  'applies the trigger-message boundary with $userCount prior users',
   async ({ userCount, expected }) => {
     const database = openDatabase(':memory:');
     const now = initialTime;
@@ -395,7 +397,7 @@ it.each([
       expect(provider.requests).toHaveLength(expected);
       if (expected === 1) {
         expect(database.prepare('SELECT source_message_seqs FROM recaps').get()).toEqual({
-          source_message_seqs: JSON.stringify(Array.from({ length: 20 }, (_, index) => index + 1)),
+          source_message_seqs: JSON.stringify(Array.from({ length: 11 }, (_, index) => index + 1)),
         });
       }
     } finally {
@@ -404,35 +406,37 @@ it.each([
   },
 );
 
-it.each([
-  { elapsed: 599_999, expected: 1 },
-  { elapsed: 600_000, expected: 1 },
-  { elapsed: 600_001, expected: 0 },
-])('applies the inclusive Y boundary at $elapsed ms', async ({ elapsed, expected }) => {
-  const database = openDatabase(':memory:');
-  let now = initialTime;
-  await completedExchange(database, () => now, { requestId: 'y', userCount: 19 });
-  now += elapsed;
-  const provider = new ScriptedProvider([response('periodic recap')]);
-  const service = createService(database, provider, () => now);
-  try {
-    service.resume();
-    if (expected === 1) {
+it.each([{ elapsed: 179_999 }, { elapsed: 180_000 }, { elapsed: 180_001 }])(
+  'applies the idle boundary at $elapsed ms',
+  async ({ elapsed }) => {
+    const database = openDatabase(':memory:');
+    let now = initialTime;
+    await completedExchange(database, () => now, { requestId: 'y', userCount: 19 });
+    now += elapsed;
+    const provider = new ScriptedProvider([response('periodic recap')]);
+    const service = createService(database, provider, () => now, { idleAfterMs: 180_000 });
+    try {
+      service.resume();
+      if (elapsed < 180_000) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(provider.requests).toHaveLength(0);
+        now += 1;
+      }
       await vi.waitFor(() => {
         expect(database.prepare('SELECT COUNT(*) AS count FROM recaps').get()).toEqual({
           count: 1,
         });
       });
+      await service.close();
+      expect(provider.requests).toHaveLength(1);
+      expect(database.prepare('SELECT COUNT(*) AS count FROM recaps').get()).toEqual({
+        count: 1,
+      });
+    } finally {
+      if (database.isOpen) database.close();
     }
-    await service.close();
-    expect(provider.requests).toHaveLength(expected);
-    expect(database.prepare('SELECT COUNT(*) AS count FROM recaps').get()).toEqual({
-      count: expected,
-    });
-  } finally {
-    if (database.isOpen) database.close();
-  }
-});
+  },
+);
 
 it('waits for complete tool groups, preserves the normal prefix and excludes later input and other Agents', async () => {
   const database = openDatabase(':memory:');
@@ -443,7 +447,7 @@ it('waits for complete tool groups, preserves the normal prefix and excludes lat
   ];
   const exchange = await completedExchange(database, () => now, {
     requestId: 'tools',
-    userCount: 18,
+    userCount: 17,
     toolCalls: calls,
     otherAgentMessage: true,
   });
@@ -504,15 +508,15 @@ it('waits for complete tool groups, preserves the normal prefix and excludes lat
     const recap = database.prepare('SELECT source_message_seqs FROM recaps').get();
     expect(recap).toEqual({
       source_message_seqs: JSON.stringify([
-        ...Array.from({ length: 18 }, (_, index) => index + 1 + (index >= 5 ? 1 : 0)),
-        20,
+        ...Array.from({ length: 17 }, (_, index) => index + 1 + (index >= 5 ? 1 : 0)),
+        19,
         first.seq,
         second.seq,
       ]),
     });
     expect(pending.seq).toBeGreaterThan(second.seq);
     expect(database.prepare('SELECT COUNT(*) AS count FROM context_messages').get()).toEqual({
-      count: 23,
+      count: 22,
     });
     expect(
       JSON.stringify(database.prepare('SELECT content FROM context_messages').all()),
@@ -523,7 +527,7 @@ it('waits for complete tool groups, preserves the normal prefix and excludes lat
   }
 });
 
-it('uses one interval beyond X and resumes from the latest valid Recap frontier', async () => {
+it('resumes from the latest valid Recap frontier with capped batches', async () => {
   const database = openDatabase(':memory:');
   const now = initialTime;
   const provider = new ScriptedProvider([response('first recap'), response('second recap')]);
@@ -544,11 +548,56 @@ it('uses one interval beyond X and resumes from the latest valid Recap frontier'
       .all();
     expect(rows).toEqual([
       { source_message_seqs: JSON.stringify(Array.from({ length: 20 }, (_, index) => index + 1)) },
-      { source_message_seqs: JSON.stringify(Array.from({ length: 26 }, (_, index) => index + 21)) },
+      { source_message_seqs: JSON.stringify(Array.from({ length: 20 }, (_, index) => index + 21)) },
     ]);
     expect(provider.requests).toHaveLength(2);
+    expect(provider.requests[0]?.messages.at(-1)?.content).not.toContain('source_seq_end');
+    expect(provider.requests[1]?.messages.at(-1)?.content).toContain(
+      '"source_seq_start":1,"source_seq_end":20,"content":"first recap"',
+    );
   } finally {
     await finish(service, database);
+  }
+});
+
+it('caps each periodic Recap at maxMessages without splitting a tool group', async () => {
+  const database = openDatabase(':memory:');
+  const now = initialTime;
+  const calls = [
+    { id: 'call-1', name: 'read', arguments: { path: 'one' } },
+    { id: 'call-2', name: 'read', arguments: { path: 'two' } },
+  ];
+  const exchange = await completedExchange(database, () => now, {
+    requestId: 'cap',
+    userCount: 18,
+    toolCalls: calls,
+  });
+  for (const [index, call] of calls.entries()) {
+    exchange.context.append({
+      threadId: 'thread',
+      agentId: 'thread',
+      message: {
+        role: 'tool',
+        content: `result-${index + 1}`,
+        tool_call_id: call.id,
+        tool_name: call.name,
+      },
+    });
+  }
+  const provider = new ScriptedProvider([response('capped recap')]);
+  const service = createService(database, provider, () => now);
+  try {
+    service.schedule('thread', 'thread');
+    await vi.waitFor(() => {
+      expect(database.prepare('SELECT COUNT(*) AS count FROM recaps').get()).toEqual({ count: 1 });
+    });
+    await service.close();
+    expect(provider.requests).toHaveLength(1);
+    expect(database.prepare('SELECT source_message_seqs FROM recaps').get()).toEqual({
+      source_message_seqs: JSON.stringify(Array.from({ length: 18 }, (_, index) => index + 1)),
+    });
+  } finally {
+    if (database.isOpen) database.close();
   }
 });
 
@@ -754,7 +803,7 @@ describe('periodic Recap source indexes in the final Provider request', () => {
     };
     const errors: unknown[] = [];
     const service = createService(database, materializingProvider, () => now, {
-      messageThreshold: 1,
+      triggerMessages: 1,
       onError: (error) => errors.push(error),
     });
     try {

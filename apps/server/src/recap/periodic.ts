@@ -4,7 +4,7 @@ import type { ModelMessage, ModelProvider } from '@kairos/agent-core';
 import { z } from 'zod';
 import { ContextStore } from '../context/context-store.js';
 import { ModelInputService } from '../context/model-input-service.js';
-import type { Clock } from '../context/types.js';
+import type { Clock, ContextMessage, ToolCallRelation } from '../context/types.js';
 import { currentModelMessage, jsonText, systemClock } from '../context/types.js';
 import { RECAP_INSTRUCTION_VERSION, RecapModelGenerator } from './generation.js';
 import {
@@ -16,9 +16,12 @@ import type { RecapGenerationInput } from './generation-types.js';
 import { RecapStore } from './recap-store.js';
 
 export interface PeriodicRecapConfiguration {
-  messageThreshold: number;
-  responseWindowMs: number;
+  triggerMessages: number;
+  idleAfterMs: number;
+  maxMessages: number;
 }
+
+const PRIOR_RECAP_INSTRUCTION_LIMIT = 3;
 
 export interface PeriodicRecapModelParameters {
   providerId: string;
@@ -46,18 +49,24 @@ interface ActiveGeneration {
 
 interface PeriodicPlan {
   operation: RecapGenerationOperationInput;
-  responseCompletedAt: string;
 }
+
+type PeriodicAssessment =
+  | { kind: 'generate'; plan: PeriodicPlan }
+  | { kind: 'wait'; delayMs: number }
+  | { kind: 'skip' };
 
 function validateConfiguration(configuration: PeriodicRecapConfiguration): void {
   if (
-    !Number.isSafeInteger(configuration.messageThreshold) ||
-    configuration.messageThreshold <= 0 ||
-    !Number.isSafeInteger(configuration.responseWindowMs) ||
-    configuration.responseWindowMs <= 0
+    !Number.isSafeInteger(configuration.triggerMessages) ||
+    configuration.triggerMessages <= 0 ||
+    !Number.isSafeInteger(configuration.idleAfterMs) ||
+    configuration.idleAfterMs < 0 ||
+    !Number.isSafeInteger(configuration.maxMessages) ||
+    configuration.maxMessages <= 0
   ) {
     throw new Error(
-      'Periodic Recap message threshold and response window must be positive safe integers.',
+      'Periodic Recap trigger messages, max messages and idle duration must be safe integers; the idle duration may be zero.',
     );
   }
 }
@@ -91,6 +100,7 @@ export class PeriodicRecapService {
   readonly #clock: Clock;
   readonly #onError: ((error: unknown) => void) | undefined;
   readonly #active = new Map<string, ActiveGeneration>();
+  readonly #timers = new Map<string, ReturnType<typeof setTimeout>>();
   #closing = false;
 
   constructor(options: PeriodicRecapOptions) {
@@ -154,6 +164,7 @@ export class PeriodicRecapService {
   async close(): Promise<void> {
     if (this.#closing) return;
     this.#closing = true;
+    for (const key of [...this.#timers.keys()]) this.#clearTimer(key);
     const active = [...this.#active.values()];
     for (const state of active) {
       state.evaluateAgain = false;
@@ -184,22 +195,22 @@ export class PeriodicRecapService {
 
   async #evaluate(threadId: string, agentId: string, signal: AbortSignal): Promise<void> {
     signal.throwIfAborted();
-    const plan = this.#createPlan(threadId, agentId);
-    if (!plan) return;
+    const assessment = this.#assess(threadId, agentId);
+    if (assessment.kind === 'wait') {
+      this.#armTimer(threadId, agentId, assessment.delayMs);
+      return;
+    }
+    this.#clearTimer(`${threadId}\0${agentId}`);
+    if (assessment.kind === 'skip') return;
+    const plan = assessment.plan;
     const started = this.#operations.begin(plan.operation);
     if (started.status !== 'started') return;
     try {
       signal.throwIfAborted();
-      if (!this.#withinResponseWindow(plan.responseCompletedAt)) {
-        this.#operations.fail(
-          plan.operation,
-          new Error('The latest complete response is outside the periodic Recap window.'),
-        );
-        return;
-      }
       const output = await this.#generator.generate(plan.operation.generation, signal);
       signal.throwIfAborted();
       this.#operations.complete(plan.operation, output);
+      this.schedule(threadId, agentId);
     } catch (error) {
       this.#operations.fail(
         plan.operation,
@@ -210,15 +221,25 @@ export class PeriodicRecapService {
     }
   }
 
-  #withinResponseWindow(responseCompletedAt: string): boolean {
-    const completed = new Date(responseCompletedAt).getTime();
-    return (
-      Number.isFinite(completed) &&
-      this.#clock().getTime() - completed <= this.#configuration.responseWindowMs
-    );
+  #armTimer(threadId: string, agentId: string, delayMs: number): void {
+    if (this.#closing) return;
+    const key = `${threadId}\0${agentId}`;
+    this.#clearTimer(key);
+    const timer = setTimeout(() => {
+      this.#timers.delete(key);
+      this.schedule(threadId, agentId);
+    }, delayMs);
+    this.#timers.set(key, timer);
   }
 
-  #createPlan(threadId: string, agentId: string): PeriodicPlan | undefined {
+  #clearTimer(key: string): void {
+    const timer = this.#timers.get(key);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.#timers.delete(key);
+  }
+
+  #assess(threadId: string, agentId: string): PeriodicAssessment {
     const state = this.#modelInputs.getState(threadId, agentId);
     const requestRow = z
       .object({ request_id: z.string() })
@@ -232,12 +253,13 @@ export class PeriodicRecapService {
           )
           .get(threadId, agentId, state.viewVersion),
       );
-    if (requestRow && this.#acceptRequest && !this.#acceptRequest(requestRow.request_id))
-      return undefined;
+    if (requestRow && this.#acceptRequest && !this.#acceptRequest(requestRow.request_id)) {
+      return { kind: 'skip' };
+    }
     const record = requestRow
       ? this.#modelInputs.getRequestRecord(requestRow.request_id)
       : undefined;
-    if (!record?.request || !this.#withinResponseWindow(record.updatedAt)) return undefined;
+    if (!record?.request) return { kind: 'skip' };
     const snapshot = this.#context.query({ threadId, agentId, currentOnly: true });
     const snapshotBySeq = new Map(snapshot.map((message) => [message.seq, message]));
     const inputBoundary = Math.max(record.readThroughSeq, 0, ...record.contextMessageSeqs);
@@ -247,7 +269,7 @@ export class PeriodicRecapService {
       response.createdAt > record.updatedAt ||
       response.responseUsage === undefined
     ) {
-      return undefined;
+      return { kind: 'skip' };
     }
     const relations = this.#context.listToolCallRelations(threadId, agentId, {
       currentOnly: true,
@@ -255,32 +277,38 @@ export class PeriodicRecapService {
     const responseRelations = relations.filter(
       (relation) => relation.assistantSeq === response.seq,
     );
-    if (responseRelations.some((relation) => relation.resultSeq === null)) return undefined;
+    if (responseRelations.some((relation) => relation.resultSeq === null)) return { kind: 'skip' };
     const toolSeqs = responseRelations
       .map((relation) => relation.resultSeq)
       .filter((seq): seq is number => seq !== null)
       .sort((left, right) => left - right);
     const boundary = Math.max(response.seq, ...toolSeqs);
     const currentSeqs = new Set(snapshot.map((message) => message.seq));
-    const frontier = this.#recaps
+    const currentRecaps = this.#recaps
       .query({ threadId, agentId, validity: 'valid' })
-      .filter((recap) => recap.sourceMessageSeqs.every((seq) => currentSeqs.has(seq)))
-      .reduce((maximum, recap) => Math.max(maximum, recap.sourceSeqEnd), 0);
+      .filter((recap) => recap.sourceMessageSeqs.every((seq) => currentSeqs.has(seq)));
+    const frontier = currentRecaps.reduce(
+      (maximum, recap) => Math.max(maximum, recap.sourceSeqEnd),
+      0,
+    );
     const sources = snapshot.filter((message) => message.seq > frontier && message.seq <= boundary);
-    if (sources.length < this.#configuration.messageThreshold || sources.length === 0) {
-      return undefined;
-    }
+    if (sources.length <= this.#configuration.triggerMessages) return { kind: 'skip' };
     const sourceSeqs = new Set(sources.map((message) => message.seq));
     for (const relation of relations) {
       const hasAssistant = sourceSeqs.has(relation.assistantSeq);
       const hasResult = relation.resultSeq !== null && sourceSeqs.has(relation.resultSeq);
       if (hasAssistant === hasResult && (!hasAssistant || relation.resultSeq !== null)) continue;
-      return undefined;
+      return { kind: 'skip' };
     }
-    const sourceMessageSeqs = sources.map((message) => message.seq);
+    const completedAt = new Date(record.updatedAt).getTime();
+    if (!Number.isFinite(completedAt)) return { kind: 'skip' };
+    const idleRemaining = this.#configuration.idleAfterMs - (this.#clock().getTime() - completedAt);
+    if (idleRemaining > 0) return { kind: 'wait', delayMs: idleRemaining };
+    const capped = this.#capSources(sources, snapshotBySeq, relations);
+    if (capped.length === 0) return { kind: 'skip' };
     const normalRequest = record.request;
     const contextOffset = normalRequest.messages.length - record.contextMessageSeqs.length;
-    if (contextOffset < 0) return undefined;
+    if (contextOffset < 0) return { kind: 'skip' };
     const requestIndexes = new Map(
       record.contextMessageSeqs.map((seq, index) => [seq, contextOffset + index]),
     );
@@ -288,15 +316,15 @@ export class PeriodicRecapService {
       toolSeqs.map((seq, index) => [seq, normalRequest.messages.length + index + 1]),
     );
     const sourceMessageIndexes: Array<{ seq: number; messageIndex: number }> = [];
-    for (const source of sources) {
+    for (const source of capped) {
       const requestIndex = requestIndexes.get(source.seq);
       const appendedIndex =
         source.seq === response.seq ? normalRequest.messages.length : toolIndexes.get(source.seq);
       const messageIndex = requestIndex ?? appendedIndex;
-      if (messageIndex === undefined) return undefined;
+      if (messageIndex === undefined) return { kind: 'skip' };
       if (requestIndex !== undefined) {
         const sent = normalRequest.messages[requestIndex];
-        if (!sent || !sameMessage(sent, currentModelMessage(source))) return undefined;
+        if (!sent || !sameMessage(sent, currentModelMessage(source))) return { kind: 'skip' };
       }
       sourceMessageIndexes.push({ seq: source.seq, messageIndex });
     }
@@ -308,12 +336,20 @@ export class PeriodicRecapService {
         return currentModelMessage(tool);
       }),
     ];
+    const priorRecaps = [...currentRecaps]
+      .sort((left, right) => left.sourceSeqEnd - right.sourceSeqEnd)
+      .slice(-PRIOR_RECAP_INSTRUCTION_LIMIT)
+      .map((recap) => ({
+        sourceSeqStart: recap.sourceSeqStart,
+        sourceSeqEnd: recap.sourceSeqEnd,
+        content: recap.content,
+      }));
     const generation: RecapGenerationInput = {
       threadId,
       agentId,
-      sourceMessageSeqs,
+      sourceMessageSeqs: capped.map((message) => message.seq),
       sourceMessageIndexes,
-      messages: sources.map((source) => ({
+      messages: capped.map((source) => ({
         seq: source.seq,
         createdAt: source.createdAt,
         message: currentModelMessage(source),
@@ -324,6 +360,7 @@ export class PeriodicRecapService {
       },
       viewVersion: state.viewVersion,
       trigger: 'periodic',
+      ...(priorRecaps.length > 0 ? { priorRecaps } : {}),
     };
     const recapRequest = this.#generator.prepareRequest(generation);
     const requestFingerprint = createHash('sha256')
@@ -335,13 +372,46 @@ export class PeriodicRecapService {
       )
       .digest('hex');
     return {
-      operation: {
-        generation,
-        sourceFingerprint: fingerprintRecapSources(sources),
-        instructionVersion: RECAP_INSTRUCTION_VERSION,
-        requestFingerprint,
+      kind: 'generate',
+      plan: {
+        operation: {
+          generation,
+          sourceFingerprint: fingerprintRecapSources(capped),
+          instructionVersion: RECAP_INSTRUCTION_VERSION,
+          requestFingerprint,
+        },
       },
-      responseCompletedAt: record.updatedAt,
     };
+  }
+
+  #capSources(
+    sources: readonly ContextMessage[],
+    snapshotBySeq: ReadonlyMap<number, ContextMessage>,
+    relations: readonly ToolCallRelation[],
+  ): ContextMessage[] {
+    const limit = this.#configuration.maxMessages;
+    const resultSeqsByAssistant = new Map<number, number[]>();
+    for (const relation of relations) {
+      if (relation.resultSeq === null) continue;
+      const group = resultSeqsByAssistant.get(relation.assistantSeq) ?? [];
+      group.push(relation.resultSeq);
+      resultSeqsByAssistant.set(relation.assistantSeq, group);
+    }
+    const included = new Set<number>();
+    const capped: ContextMessage[] = [];
+    for (const message of sources) {
+      if (included.has(message.seq)) continue;
+      const unit = [message];
+      for (const resultSeq of resultSeqsByAssistant.get(message.seq) ?? []) {
+        const result = snapshotBySeq.get(resultSeq);
+        if (result && !included.has(result.seq)) unit.push(result);
+      }
+      if (capped.length + unit.length > limit) break;
+      for (const entry of unit) {
+        included.add(entry.seq);
+        capped.push(entry);
+      }
+    }
+    return capped;
   }
 }

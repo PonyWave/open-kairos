@@ -529,7 +529,7 @@ it('AT-07/AT-09/AT-10 preserves hard-cut evidence and recalls it after Server re
     ]);
     expect(recapRequest?.messages.at(-1)).toEqual({
       role: 'user',
-      content: expect.stringContaining('Kairos internal Recap operation; instruction version 3'),
+      content: expect.stringContaining('Kairos internal Recap operation; instruction version 4'),
     });
     expect(recapRequest?.messages.at(-1)?.content).toContain('[{"seq":1,"message_index":4}]');
     expect(recapRequest?.tools).toEqual(prepared?.tools);

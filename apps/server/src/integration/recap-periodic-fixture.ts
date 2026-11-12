@@ -218,8 +218,9 @@ export interface PeriodicClock {
 
 interface FixtureOptions {
   clock: PeriodicClock;
-  messageThreshold: number;
-  responseWindowMs: number;
+  triggerMessages: number;
+  idleAfterMs: number;
+  maxMessages: number;
   contextWindowTokens?: number;
   outputReserveTokens?: number;
   countTokens?: (request: ModelRequest) => number;
@@ -256,8 +257,9 @@ export async function startPeriodicFixture(
       countTokens: options.countTokens ?? (() => 100),
     },
     periodicRecap: {
-      messageThreshold: options.messageThreshold,
-      responseWindowMs: options.responseWindowMs,
+      triggerMessages: options.triggerMessages,
+      idleAfterMs: options.idleAfterMs,
+      maxMessages: options.maxMessages,
     },
     maxStepsPerRun: 10,
     environmentOperations,

@@ -185,26 +185,30 @@ describe('trusted proxy configuration', () => {
 describe('periodic Recap configuration', () => {
   it('uses centralized defaults and reads environment overrides', () => {
     expect(DEFAULT_PERIODIC_RECAP_CONFIGURATION).toEqual({
-      messageThreshold: 20,
-      responseWindowMs: 600_000,
+      triggerMessages: 10,
+      idleAfterMs: 180_000,
+      maxMessages: 20,
     });
     expect(readServerConfig({ KAIROS_DATA_DIR: '/tmp/kairos-test' }).periodicRecap).toEqual({
-      messageThreshold: 20,
-      responseWindowMs: 600_000,
+      triggerMessages: 10,
+      idleAfterMs: 180_000,
+      maxMessages: 20,
     });
     expect(
       readPeriodicRecapConfig({
-        KAIROS_RECAP_PERIODIC_MESSAGE_THRESHOLD: '25',
-        KAIROS_RECAP_PERIODIC_RESPONSE_WINDOW_MS: '300000',
+        KAIROS_RECAP_PERIODIC_TRIGGER_MESSAGES: '25',
+        KAIROS_RECAP_PERIODIC_IDLE_AFTER_MS: '300000',
+        KAIROS_RECAP_PERIODIC_MAX_MESSAGES: '30',
       }),
-    ).toEqual({ messageThreshold: 25, responseWindowMs: 300_000 });
+    ).toEqual({ triggerMessages: 25, idleAfterMs: 300_000, maxMessages: 30 });
   });
 
   it.each([
-    { KAIROS_RECAP_PERIODIC_MESSAGE_THRESHOLD: '0' },
-    { KAIROS_RECAP_PERIODIC_MESSAGE_THRESHOLD: '1.5' },
-    { KAIROS_RECAP_PERIODIC_RESPONSE_WINDOW_MS: '-1' },
-    { KAIROS_RECAP_PERIODIC_RESPONSE_WINDOW_MS: 'not-a-number' },
+    { KAIROS_RECAP_PERIODIC_TRIGGER_MESSAGES: '0' },
+    { KAIROS_RECAP_PERIODIC_TRIGGER_MESSAGES: '1.5' },
+    { KAIROS_RECAP_PERIODIC_IDLE_AFTER_MS: '-1' },
+    { KAIROS_RECAP_PERIODIC_IDLE_AFTER_MS: 'not-a-number' },
+    { KAIROS_RECAP_PERIODIC_MAX_MESSAGES: '0' },
   ])('rejects invalid runtime values: %o', (environment) => {
     expect(() => readPeriodicRecapConfig(environment)).toThrow();
   });

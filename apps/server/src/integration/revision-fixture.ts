@@ -70,7 +70,7 @@ interface RevisionFixtureOptions {
   contextWindowTokens?: number;
   outputReserveTokens?: number;
   countTokens?: (request: ModelRequest) => number;
-  periodicRecap?: { messageThreshold: number; responseWindowMs: number };
+  periodicRecap?: { triggerMessages: number; idleAfterMs: number; maxMessages: number };
 }
 
 export async function startRevisionFixture(directory: string, options: RevisionFixtureOptions) {

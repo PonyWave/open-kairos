@@ -70,7 +70,7 @@ describe('unified Recap generation', () => {
       content: expect.stringContaining('[{"seq":4,"message_index":1},{"seq":9,"message_index":2}]'),
     });
     const instruction = request.messages.at(-1)?.content ?? '';
-    expect(instruction).toContain('instruction version 3');
+    expect(instruction).toContain('instruction version 4');
     expect(instruction).toContain('Return exactly one concise plain-text sentence');
     expect(instruction).toContain(
       'at most 30 Unicode characters after trimming surrounding whitespace',
@@ -86,6 +86,27 @@ describe('unified Recap generation', () => {
     );
     expect(instruction).toContain('Do not describe unknown work as completed.');
     expect(instruction).not.toContain('Preserve requirements, progress');
+  });
+
+  it('lists prior Recaps with their source ranges as context-only continuation anchors', () => {
+    const generation = input();
+    const request = buildRecapGenerationRequest({
+      ...generation,
+      priorRecaps: [
+        { sourceSeqStart: 1, sourceSeqEnd: 3, content: 'earlier recap' },
+        { sourceSeqStart: 4, sourceSeqEnd: 8, content: 'latest recap' },
+      ],
+    });
+    const instruction = request.messages.at(-1)?.content ?? '';
+    expect(instruction).toContain(
+      'they are context only: continue from where they end, and do not summarize or restate them:\n' +
+        '[{"source_seq_start":1,"source_seq_end":3,"content":"earlier recap"},' +
+        '{"source_seq_start":4,"source_seq_end":8,"content":"latest recap"}]\n',
+    );
+    const withoutPrior = buildRecapGenerationRequest(generation);
+    expect(withoutPrior.messages.at(-1)?.content).not.toContain('source_seq_end');
+    const withEmptyPrior = buildRecapGenerationRequest({ ...generation, priorRecaps: [] });
+    expect(withEmptyPrior.messages.at(-1)?.content).not.toContain('source_seq_end');
   });
 
   it('returns 30 Unicode characters after trimming and preserves the actual cache usage', async () => {

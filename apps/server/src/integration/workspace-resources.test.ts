@@ -887,7 +887,7 @@ it('preserves completed and manual compact audits and the periodic Recap v1 pref
   let fixture = await startSlashFixture(directory, {
     provider,
     workspaceDirectory: workspace,
-    periodicRecap: { messageThreshold: 1000, responseWindowMs: 600_000 },
+    periodicRecap: { triggerMessages: 1000, idleAfterMs: 0, maxMessages: 20 },
   });
   try {
     const threadId = await createSlashThread(fixture, 'create-reload-audit');
@@ -966,7 +966,7 @@ it('preserves completed and manual compact audits and the periodic Recap v1 pref
     fixture = await startSlashFixture(directory, {
       provider: restartedProvider,
       workspaceDirectory: workspace,
-      periodicRecap: { messageThreshold: 2, responseWindowMs: 600_000 },
+      periodicRecap: { triggerMessages: 1, idleAfterMs: 0, maxMessages: 20 },
     });
     await waitSlashRequests(restartedProvider, 'recap', 1);
     await vi.waitFor(() => {

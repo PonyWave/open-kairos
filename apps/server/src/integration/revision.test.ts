@@ -685,7 +685,7 @@ it('invalidates periodic Recaps on Rerun and revision before Agent recall', asyn
   provider.respond('recap:generate', response('periodic stale marker'));
   const fixture = await startRevisionFixture(directory, {
     provider,
-    periodicRecap: { messageThreshold: 2, responseWindowMs: 600_000 },
+    periodicRecap: { triggerMessages: 1, idleAfterMs: 0, maxMessages: 20 },
   });
   try {
     const threadId = await createTask(fixture, 'create-periodic-recap');

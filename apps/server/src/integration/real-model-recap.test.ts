@@ -272,7 +272,7 @@ async function startFixture(
           tracked.source.estimateRequestTokens(request),
         ),
     },
-    periodicRecap: { messageThreshold: 2, responseWindowMs: 600_000 },
+    periodicRecap: { triggerMessages: 1, idleAfterMs: 0, maxMessages: 20 },
     maxStepsPerRun: 4,
   });
   await server.listen({ host: '127.0.0.1', port: 0 });
@@ -469,7 +469,7 @@ describe('real Recap acceptance budget controls', () => {
     const fallback: ModelRequest = {
       messages: [
         { role: 'user', content: firstPrompt },
-        { role: 'user', content: 'Kairos internal Recap operation; instruction version 3.' },
+        { role: 'user', content: 'Kairos internal Recap operation; instruction version 4.' },
       ],
       tools: [],
     };

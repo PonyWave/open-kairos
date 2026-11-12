@@ -1671,7 +1671,7 @@ it('does not fail a normal Run when periodic Recap generation fails', async () =
   const { database, store, coordinator, thread, directory } = await fixture(
     provider,
     {},
-    { periodicRecap: { messageThreshold: 1, responseWindowMs: 600_000 } },
+    { periodicRecap: { triggerMessages: 1, idleAfterMs: 0, maxMessages: 20 } },
   );
   try {
     const sent = send(store, thread.threadId, 'normal request');
