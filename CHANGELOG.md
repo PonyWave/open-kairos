@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 787cc9f - 2026-11-13
+
+来源分支：main，合并提交 787cc9f。
+
+### 移除
+
+- 平台 sandbox 遗留协议：`EnvironmentKind` 的平台环境枚举值、`PlatformLifecycleState` 枚举、`Environment.lifecycle_state` 字段与 `ERROR_CODE_SANDBOX_CAPACITY_EXHAUSTED`、`ERROR_CODE_SANDBOX_UNAVAILABLE` 错误码（编号与名称保留）。Server 的平台环境守卫与 sandbox 容量失败分支、GUI 的容量提示卡片一并删除；主环境未就绪时快照通过 `statusReason` 表达。
+- 迁移命令中 Kairos 历史数据的转换逻辑（interaction 交付、目录 Operation 初始形态、agent 编号改写等约 500 行不可达代码）；版本预检、备份与逐表复制的迁移框架保留，命令行为不变。
+- 无读取方的配置项 `KAIROS_DEVICE_BASH_ENABLED`；设置页账户资料中的邮箱展示行。
+
+### 变更
+
+- `DEVICE_BASH_MAX_TIMEOUT_SECONDS` 更名为 `BASH_MAX_TIMEOUT_SECONDS`，取值不变。
+- GUI 测试文件调整：排队输入展示用例迁移至 conversation-queued-input.test.ts，sandbox-draft.test.ts 更名为 topic-drafts.test.ts。
+
 ## 3f66760 - 2026-11-13
 
 来源分支：main，合并提交 3f66760。
