@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 9f78714 - 2026-11-13
+
+来源分支：main，合并提交 9f78714。
+
+### 变更
+
+- GUI 的 Origin 校验默认策略从「仅回环来源」放宽为「回环 + 同源」：未设置 `KAIROS_PUBLIC_ORIGIN` 时，浏览器地址与请求 Host 一致的请求放行。已绑定 Daemon 的设备现在可以直接用 Server 地址打开 GUI 并登录，无需额外配置；显式设置 `KAIROS_PUBLIC_ORIGIN` 时仍按精确匹配校验。
+
 ## f16b2e2 - 2026-11-13
 
 来源分支：main，合并提交 f16b2e2。
