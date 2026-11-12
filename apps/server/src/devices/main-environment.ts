@@ -121,23 +121,66 @@ export class MainEnvironmentUseGateway implements EnvironmentUseGateway {
   }
 
   reserveUse(input: EnvironmentUse): void {
-    this.#requireDevice(input);
+    if (this.#isMain(input)) {
+      this.#requireDevice(input);
+      return;
+    }
+    this.#requireRegistered(input);
   }
 
   async ensureReady(input: EnvironmentUse & { signal: AbortSignal }): Promise<void> {
     input.signal.throwIfAborted();
-    this.#requireDevice(input);
+    const main = this.#isMain(input);
+    if (main) {
+      this.#requireDevice(input);
+    } else {
+      this.#requireRegistered(input);
+    }
+    const pwd = input.pwd ?? (main ? this.#configuration.workspace : undefined);
+    if (pwd === undefined) {
+      throw new SessionError(
+        'failed_precondition',
+        'The workspace directory of the execution environment is unknown.',
+      );
+    }
     await this.#workspace.ensureWorkspaceReady({
       tenantId: input.tenantId,
       envId: input.envId,
-      pwd: this.#configuration.workspace,
+      pwd,
       signal: input.signal,
     });
-    this.#requireDevice(input);
+    if (main) this.#requireDevice(input);
     this.#environments.requireReady(input.tenantId, input.envId);
   }
 
   releaseUse(_input: EnvironmentUse): void {}
+
+  #isMain(input: EnvironmentUse): boolean {
+    return (
+      input.envId ===
+      mainEnvironmentIdFor(this.#environments.database, this.#configuration, input.tenantId)
+    );
+  }
+
+  #requireRegistered(input: EnvironmentUse) {
+    let environment: ReturnType<EnvironmentStore['get']>;
+    try {
+      environment = this.#environments.get(input.tenantId, input.envId);
+    } catch (cause) {
+      if (cause instanceof SessionError && cause.code === 'not_found') {
+        throw new SessionError(
+          'failed_precondition',
+          'The execution environment is not registered.',
+          { cause, retryable: true },
+        );
+      }
+      throw cause;
+    }
+    if (environment.bindingStatus === 'revoked') {
+      throw new SessionError('permission_denied', 'The execution environment is revoked.');
+    }
+    return environment;
+  }
 
   #requireDevice(input: EnvironmentUse) {
     if (

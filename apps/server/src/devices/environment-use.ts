@@ -5,6 +5,8 @@ export interface EnvironmentUse {
   envId: string;
   usageId: string;
   kind: EnvironmentUseKind;
+  /** Workspace directory checked during ensureReady; defaults to the main environment root. */
+  pwd?: string;
 }
 
 /** Server execution reserves the default environment through this port before scheduling work. */
