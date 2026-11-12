@@ -1,0 +1,142 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opensandbox-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: opensandbox
+    meta.helm.sh/release-namespace: opensandbox-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opensandbox
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kairos-registry
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: kairos-local-retain
+provisioner: rancher.io/local-path
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: opensandbox-metadata
+  namespace: opensandbox-system
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: kairos-local-retain
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: p3-m0-workspace
+  namespace: opensandbox
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: kairos-local-retain
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: p3-m0-home
+  namespace: opensandbox
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: kairos-local-retain
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: snapshots
+  namespace: kairos-registry
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: kairos-local-retain
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: snapshot-registry
+  namespace: kairos-registry
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: snapshot-registry
+  template:
+    metadata:
+      labels:
+        app: snapshot-registry
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: registry
+          image: docker.io/library/registry:3.0.0@sha256:5b12b22f21522fe69443079df04c0f3f42cb9977857f3c20404386652a6c6d8e
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: https, containerPort: 5000 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          env:
+            - { name: REGISTRY_HTTP_ADDR, value: ":5000" }
+            - { name: REGISTRY_HTTP_TLS_CERTIFICATE, value: /tls/tls.crt }
+            - { name: REGISTRY_HTTP_TLS_KEY, value: /tls/tls.key }
+            - { name: REGISTRY_AUTH, value: htpasswd }
+            - { name: REGISTRY_AUTH_HTPASSWD_REALM, value: kairos }
+            - { name: REGISTRY_AUTH_HTPASSWD_PATH, value: /auth/htpasswd }
+          volumeMounts:
+            - { name: state, mountPath: /var/lib/registry }
+            - { name: tls, mountPath: /tls, readOnly: true }
+            - { name: auth, mountPath: /auth, readOnly: true }
+      volumes:
+        - name: state
+          persistentVolumeClaim: { claimName: snapshots }
+        - name: tls
+          secret: { secretName: registry-tls }
+        - name: auth
+          secret: { secretName: registry-auth }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: snapshot-registry
+  namespace: kairos-registry
+spec:
+  clusterIP: 10.251.0.50
+  selector:
+    app: snapshot-registry
+  ports:
+    - { name: https, port: 5000, targetPort: https }

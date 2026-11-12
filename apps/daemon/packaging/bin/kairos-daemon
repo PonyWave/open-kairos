@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+set +x
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+RELEASE_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+KAIROS_DAEMON_VERSION=$(cat "$RELEASE_ROOT/VERSION")
+export KAIROS_DAEMON_VERSION
+exec "$RELEASE_ROOT/node/bin/node" "$RELEASE_ROOT/app/apps/daemon/dist/main.js" "$@"

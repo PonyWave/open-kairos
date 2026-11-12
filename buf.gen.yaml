@@ -1,0 +1,7 @@
+version: v2
+inputs:
+  - directory: packages/contracts/proto
+plugins:
+  - local: protoc-gen-es
+    out: packages/contracts/src/gen
+    opt: target=ts,import_extension=js

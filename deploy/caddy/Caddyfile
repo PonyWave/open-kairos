@@ -1,0 +1,33 @@
+{
+	admin off
+	auto_https off
+}
+
+(backend) {
+	reverse_proxy 127.0.0.1:{$KAIROS_SERVER_PORT} {
+		header_up Host {http.request.header.Host}
+		header_up Origin {http.request.header.Origin}
+		flush_interval -1
+	}
+}
+
+:{$KAIROS_CADDY_PORT} {
+	root * {$KAIROS_GUI_ROOT}
+	encode zstd gzip
+
+	@api path /api /api/*
+	handle @api {
+		uri strip_prefix /api
+		import backend
+	}
+
+	@server path /devices/wss /health
+	handle @server {
+		import backend
+	}
+
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}

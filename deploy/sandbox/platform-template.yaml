@@ -1,0 +1,37 @@
+# M1 foreground runtime template; all tenant volumes are attached by the lifecycle request.
+metadata: {}
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        kairos.io/network-role: tenant
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: snapshot-pull
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: sandbox
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - name: platform-pod-identity
+              mountPath: /etc/kairos-pod
+              readOnly: true
+      volumes:
+        - name: platform-pod-identity
+          downwardAPI:
+            defaultMode: 0444
+            items:
+              - path: name
+                fieldRef: { fieldPath: metadata.name }
+              - path: uid
+                fieldRef: { fieldPath: metadata.uid }

@@ -1,0 +1,51 @@
+{
+  "baselineCommit": "5ae75718cac081187adaf857254dd190c53d8aad",
+  "reason": "User-authorized sandbox workspace unification removes per-Agent defaults and the tenant default-device preference. Historical database records remain available for audit.",
+  "changes": [
+    {
+      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
+      "type": "FIELD_NO_DELETE",
+      "message": "Previously present field \"6\" with name \"default_env_id\" on message \"Identity\" was deleted."
+    },
+    {
+      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
+      "type": "MESSAGE_NO_DELETE",
+      "message": "Previously present message \"SetDefaultEnvironmentRequest\" was deleted from file."
+    },
+    {
+      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
+      "type": "MESSAGE_NO_DELETE",
+      "message": "Previously present message \"SetDefaultEnvironmentResponse\" was deleted from file."
+    },
+    {
+      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
+      "type": "FIELD_NO_DELETE",
+      "message": "Previously present field \"22\" with name \"is_default\" on message \"Environment\" was deleted."
+    },
+    {
+      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
+      "type": "FIELD_NO_DELETE",
+      "message": "Previously present field \"2\" with name \"default_env\" on message \"EnvironmentPolicy\" was deleted."
+    },
+    {
+      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
+      "type": "FIELD_NO_DELETE",
+      "message": "Previously present field \"3\" with name \"default_pwd\" on message \"EnvironmentPolicy\" was deleted."
+    },
+    {
+      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
+      "type": "FIELD_NO_DELETE",
+      "message": "Previously present field \"2\" with name \"default_env_id\" on message \"ListEnvironmentsResponse\" was deleted."
+    },
+    {
+      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
+      "type": "FIELD_NO_DELETE",
+      "message": "Previously present field \"3\" with name \"default_env_id\" on message \"RevokeEnvironmentResponse\" was deleted."
+    },
+    {
+      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
+      "type": "RPC_NO_DELETE",
+      "message": "Previously present RPC \"SetDefaultEnvironment\" on service \"EnvironmentService\" was deleted."
+    }
+  ]
+}

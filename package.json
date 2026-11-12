@@ -1,0 +1,41 @@
+{
+  "name": "kairos",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=26.4.0 <27",
+    "pnpm": ">=11.22.0 <12"
+  },
+  "scripts": {
+    "dev": "pnpm build:packages && pnpm --parallel --filter @kairos/contracts --filter @kairos/agent-core --filter @kairos/server --filter @kairos/gui dev",
+    "dev:server": "pnpm build:packages && pnpm --filter @kairos/server dev",
+    "dev:gui": "pnpm build:packages && pnpm --filter @kairos/gui dev",
+    "dev:daemon": "pnpm build:packages && pnpm --filter @kairos/daemon dev",
+    "build": "pnpm -r build",
+    "build:packages": "pnpm --filter './packages/*' build",
+    "build:server-release": "node scripts/build-server-release.mjs",
+    "typecheck": "pnpm build:packages && pnpm -r typecheck && tsc -p tsconfig.test.json",
+    "test": "pnpm build:packages && vitest run && pnpm test:operations",
+    "test:operations": "node --test deploy/tests/*.test.mjs",
+    "test:watch": "pnpm build:packages && vitest",
+    "test:real-model": "pnpm build:packages && bash scripts/real-model.sh",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check:docs": "node scripts/check-docs.mjs",
+    "check:proto": "node scripts/check-proto.mjs",
+    "proto:generate": "buf generate && biome check --write packages/contracts/src/gen",
+    "check": "pnpm check:boundaries && pnpm check:docs && pnpm check:proto && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.4",
+    "@bufbuild/buf": "1.75.0",
+    "@bufbuild/protoc-gen-es": "2.16.0",
+    "@types/node": "26.6.6",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}

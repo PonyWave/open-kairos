@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package kairos.gui.v1;
+
+import "kairos/gui/v1/auth.proto";
+
+enum ModelApiType {
+  MODEL_API_TYPE_UNSPECIFIED = 0;
+  MODEL_API_TYPE_OPENAI_CHAT_COMPLETIONS = 1;
+  MODEL_API_TYPE_OPENAI_RESPONSES = 2;
+  MODEL_API_TYPE_ANTHROPIC_MESSAGES = 3;
+}
+
+message ConfiguredModel {
+  string id = 1;
+  string name = 2;
+  string model_id = 3;
+  uint32 context_window = 4;
+  uint32 max_output_tokens = 5;
+  uint32 timeout_ms = 6;
+  bool supports_vision = 7;
+}
+
+message ModelConnection {
+  string id = 1;
+  string name = 2;
+  ModelApiType api_type = 3;
+  string base_url = 4;
+  bool has_key = 5;
+  repeated ConfiguredModel models = 6;
+}
+
+message GetSettingsRequest {}
+message ModelSettings {
+  uint32 version = 1;
+  repeated ModelConnection connections = 2;
+  string default_model_id = 3;
+  optional ConfiguredModel platform_model = 4;
+}
+
+message GetSettingsResponse {
+  ModelSettings settings = 1;
+}
+message SaveModelConnectionResponse {
+  ModelSettings settings = 1;
+}
+message DeleteModelConnectionResponse {
+  ModelSettings settings = 1;
+}
+message SetDefaultModelResponse {
+  ModelSettings settings = 1;
+}
+
+message SaveModelConnectionRequest {
+  string client_action_id = 1;
+  uint32 expected_version = 2;
+  string id = 3;
+  string name = 4;
+  ModelApiType api_type = 5;
+  string base_url = 6;
+  oneof key_change {
+    string replace_key = 7;
+    bool remove_key = 8;
+  }
+  repeated ConfiguredModel models = 9;
+}
+
+message DeleteModelConnectionRequest {
+  string client_action_id = 1;
+  uint32 expected_version = 2;
+  string id = 3;
+}
+
+message SetDefaultModelRequest {
+  string client_action_id = 1;
+  uint32 expected_version = 2;
+  string model_id = 3;
+}
+
+message TestConfiguredModelRequest {
+  string model_id = 1;
+  uint32 expected_version = 2;
+}
+message TestConfiguredModelResponse {
+  bool passed = 1;
+  string message = 2;
+}
+
+message UpdateProfileRequest {
+  string client_action_id = 1;
+  uint32 expected_version = 2;
+  string username = 3;
+  oneof avatar_change {
+    bytes replace_avatar = 4;
+    bool remove_avatar = 5;
+  }
+}
+message UpdateProfileResponse {
+  Identity identity = 1;
+}
+message ReadAvatarRequest {
+  string avatar_id = 1;
+}
+message ReadAvatarResponse {
+  bytes content = 1;
+  string media_type = 2;
+}
+
+service SettingsService {
+  rpc GetSettings(GetSettingsRequest) returns (GetSettingsResponse);
+  rpc SaveModelConnection(SaveModelConnectionRequest) returns (SaveModelConnectionResponse);
+  rpc DeleteModelConnection(DeleteModelConnectionRequest) returns (DeleteModelConnectionResponse);
+  rpc SetDefaultModel(SetDefaultModelRequest) returns (SetDefaultModelResponse);
+  rpc TestConfiguredModel(TestConfiguredModelRequest) returns (TestConfiguredModelResponse);
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
+  rpc ReadAvatar(ReadAvatarRequest) returns (ReadAvatarResponse);
+}

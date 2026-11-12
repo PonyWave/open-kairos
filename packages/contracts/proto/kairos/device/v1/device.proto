@@ -1,0 +1,471 @@
+syntax = "proto3";
+
+package kairos.device.v1;
+
+import "google/protobuf/timestamp.proto";
+
+enum DeviceCapability {
+  DEVICE_CAPABILITY_UNSPECIFIED = 0;
+  DEVICE_CAPABILITY_BASH = 1;
+  DEVICE_CAPABILITY_FILE_READ = 2;
+  DEVICE_CAPABILITY_FILE_WRITE = 3;
+  DEVICE_CAPABILITY_FILE_EDIT = 4;
+  DEVICE_CAPABILITY_DIRECTORY_CHECK = 5;
+  DEVICE_CAPABILITY_DIRECTORY_LIST = 6;
+}
+
+enum BashStatus {
+  BASH_STATUS_UNSPECIFIED = 0;
+  BASH_STATUS_CREATED = 1;
+  BASH_STATUS_ACCEPTED = 2;
+  BASH_STATUS_RUNNING = 3;
+  BASH_STATUS_CANCEL_REQUESTED = 4;
+  BASH_STATUS_COMPLETED = 5;
+  BASH_STATUS_FAILED = 6;
+  BASH_STATUS_CANCELLED = 7;
+  BASH_STATUS_EXPIRED = 8;
+  BASH_STATUS_UNKNOWN = 9;
+}
+
+enum OperationStatus {
+  OPERATION_STATUS_UNSPECIFIED = 0;
+  OPERATION_STATUS_CREATED = 1;
+  OPERATION_STATUS_ACCEPTED = 2;
+  OPERATION_STATUS_RUNNING = 3;
+  OPERATION_STATUS_CANCEL_REQUESTED = 4;
+  OPERATION_STATUS_COMPLETED = 5;
+  OPERATION_STATUS_FAILED = 6;
+  OPERATION_STATUS_CANCELLED = 7;
+  OPERATION_STATUS_EXPIRED = 8;
+  OPERATION_STATUS_UNKNOWN = 9;
+}
+
+enum OutputStream {
+  OUTPUT_STREAM_UNSPECIFIED = 0;
+  OUTPUT_STREAM_STDOUT = 1;
+  OUTPUT_STREAM_STDERR = 2;
+}
+
+enum DeviceErrorCode {
+  DEVICE_ERROR_CODE_UNSPECIFIED = 0;
+  DEVICE_ERROR_CODE_UNAUTHENTICATED = 1;
+  DEVICE_ERROR_CODE_PERMISSION_DENIED = 2;
+  DEVICE_ERROR_CODE_VERSION_CONFLICT = 3;
+  DEVICE_ERROR_CODE_OPERATION_CONFLICT = 4;
+  DEVICE_ERROR_CODE_DEVICE_REVOKED = 5;
+  DEVICE_ERROR_CODE_OPERATION_UNKNOWN = 6;
+  DEVICE_ERROR_CODE_OPERATION_EXPIRED = 7;
+  DEVICE_ERROR_CODE_MESSAGE_TOO_LARGE = 8;
+  DEVICE_ERROR_CODE_PROTOCOL_INCOMPATIBLE = 9;
+  DEVICE_ERROR_CODE_INVALID_MESSAGE = 10;
+  DEVICE_ERROR_CODE_INTERNAL = 11;
+  DEVICE_ERROR_CODE_ENVIRONMENT_OFFLINE = 12;
+  DEVICE_ERROR_CODE_ENVIRONMENT_REVOKED = 13;
+  DEVICE_ERROR_CODE_IDENTITY_CONFLICT = 14;
+  DEVICE_ERROR_CODE_CAPABILITY_UNAVAILABLE = 15;
+  DEVICE_ERROR_CODE_BINDING_CONFLICT = 16;
+  DEVICE_ERROR_CODE_DIRECTORY_INVALID = 17;
+  DEVICE_ERROR_CODE_PATH_INVALID = 18;
+  DEVICE_ERROR_CODE_FILE_VERSION_CONFLICT = 19;
+  DEVICE_ERROR_CODE_FILE_TOO_LARGE = 20;
+}
+
+enum DeviceErrorAction {
+  DEVICE_ERROR_ACTION_UNSPECIFIED = 0;
+  DEVICE_ERROR_ACTION_RETRY = 1;
+  DEVICE_ERROR_ACTION_RECONNECT = 2;
+  DEVICE_ERROR_ACTION_REAUTHENTICATE = 3;
+  DEVICE_ERROR_ACTION_QUERY_OPERATION = 4;
+  DEVICE_ERROR_ACTION_ABORT = 5;
+}
+
+message DeviceError {
+  DeviceErrorCode code = 1;
+  string message = 2;
+  optional string request_id = 3;
+  optional string operation_id = 4;
+  DeviceErrorAction action = 5;
+}
+
+message DeviceHello {
+  string device_id = 1;
+  string instance_id = 2;
+  uint32 protocol_major = 3;
+  string device_name = 4;
+  oneof authentication {
+    string pairing_credential = 5;
+    string device_credential = 6;
+  }
+  repeated DeviceCapability capabilities = 7;
+  string env_id = 8;
+  string daemon_version = 9;
+  string os = 10;
+  string architecture = 11;
+  string device_binding_id = 12;
+  string home_directory = 13;
+  bool control_only = 14;
+  optional string platform_pod_uid = 15;
+  optional string platform_pod_name = 16;
+}
+
+message ServerHello {
+  string device_id = 1;
+  string instance_id = 2;
+  uint32 protocol_major = 3;
+  repeated DeviceCapability capabilities = 4;
+  google.protobuf.Timestamp server_time = 5;
+  optional string device_credential = 6;
+  string env_id = 7;
+  string device_binding_id = 8;
+  bool control_only = 9;
+  optional string platform_pod_uid = 10;
+  optional string platform_pod_name = 11;
+}
+
+message Heartbeat {
+  uint64 sequence = 1;
+  google.protobuf.Timestamp sent_at = 2;
+}
+
+message HeartbeatAck {
+  uint64 sequence = 1;
+  google.protobuf.Timestamp received_at = 2;
+}
+
+message OperationTarget {
+  string env_id = 1;
+  string device_binding_id = 2;
+  string instance_id = 3;
+  optional uint64 binding_version = 4;
+}
+
+message ReadAction {
+  string path = 1;
+  string cwd = 2;
+  optional uint32 offset = 3;
+  optional uint32 limit = 4;
+}
+
+message ReadImageAction {
+  string path = 1;
+  string cwd = 2;
+}
+
+message WriteAction {
+  string path = 1;
+  string cwd = 2;
+  string content = 3;
+  bool overwrite = 4;
+  optional bytes binary_content = 5;
+  optional bool create_parents = 6;
+  optional string transfer_id = 7;
+  optional uint64 offset = 8;
+  optional uint64 total_size = 9;
+  optional string expected_sha256 = 10;
+  optional bool executable = 11;
+  optional bool create_directory = 12;
+}
+
+enum SyncEntryKind {
+  SYNC_ENTRY_KIND_UNSPECIFIED = 0;
+  SYNC_ENTRY_KIND_MISSING = 1;
+  SYNC_ENTRY_KIND_FILE = 2;
+  SYNC_ENTRY_KIND_DIRECTORY = 3;
+  SYNC_ENTRY_KIND_SYMLINK = 4;
+  SYNC_ENTRY_KIND_SPECIAL = 5;
+}
+
+message SyncScanAction {
+  string path = 1;
+  string cwd = 2;
+  optional bool conflict_scan = 3;
+  repeated string relative_paths = 4;
+}
+
+message SyncEntry {
+  string relative_path = 1;
+  SyncEntryKind kind = 2;
+  uint64 size = 3;
+  string sha256 = 4;
+  bool executable = 5;
+}
+
+message SyncScanOutcome {
+  string path = 1;
+  SyncEntryKind kind = 2;
+  uint64 size = 3;
+  string sha256 = 4;
+  bool executable = 5;
+  repeated SyncEntry entries = 6;
+  optional string reason = 7;
+  bool conflict_scan = 8;
+}
+
+message SyncReadAction {
+  string path = 1;
+  string cwd = 2;
+  uint64 offset = 3;
+  uint32 limit = 4;
+}
+
+message SyncReadOutcome {
+  string path = 1;
+  uint64 offset = 2;
+  bytes data = 3;
+  uint64 size = 4;
+  bool executable = 5;
+  optional string reason = 6;
+}
+
+message EditAction {
+  string path = 1;
+  string cwd = 2;
+  string old_text = 3;
+  string new_text = 4;
+  optional uint32 expected_occurrences = 5;
+  string expected_file_version = 6;
+}
+
+message BashAction {
+  string command = 1;
+  string cwd = 2;
+  uint32 timeout_seconds = 3;
+}
+
+message DirectoryCheckAction {
+  string path = 1;
+  bool load_workspace = 2;
+}
+
+message DirectoryListAction {
+  string path = 1;
+  uint32 offset = 2;
+  uint32 limit = 3;
+}
+
+message DirectoryEntry {
+  string name = 1;
+  string path = 2;
+}
+
+message DirectoryListOutcome {
+  string normalized_path = 1;
+  repeated DirectoryEntry entries = 2;
+  bool has_more = 3;
+  optional uint32 next_offset = 4;
+  optional string reason = 5;
+}
+
+message WorkspaceResource {
+  string path = 1;
+  string content = 2;
+  string sha256 = 3;
+}
+
+message ReadOutcome {
+  string path = 1;
+  string content = 2;
+  uint32 start_line = 3;
+  uint32 end_line = 4;
+  bool has_more = 5;
+  optional uint32 next_offset = 6;
+  string file_version = 7;
+  bool truncated = 8;
+}
+
+message ReadImageOutcome {
+  string path = 1;
+  bytes data = 2;
+  string file_version = 3;
+}
+
+message WriteOutcome {
+  string path = 1;
+  uint64 bytes_written = 2;
+  string file_version = 3;
+  optional uint64 next_offset = 4;
+  optional bool transfer_complete = 5;
+}
+
+message EditOutcome {
+  string path = 1;
+  uint32 replacements = 2;
+  uint64 bytes_written = 3;
+  string file_version = 4;
+}
+
+message BashOutcome {
+  optional int32 exit_code = 1;
+  bool output_complete = 2;
+  optional uint64 end_offset = 3;
+}
+
+message DirectoryCheckOutcome {
+  string normalized_path = 1;
+  bool exists = 2;
+  bool directory = 3;
+  bool readable = 4;
+  bool writable = 5;
+  bool executable = 6;
+  string os = 7;
+  string architecture = 8;
+  repeated DeviceCapability capabilities = 9;
+  repeated WorkspaceResource resources = 10;
+  optional string reason = 11;
+}
+
+message OperationStart {
+  string operation_id = 1;
+  string request_id = 2;
+  OperationTarget target = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  oneof action {
+    ReadAction read = 5;
+    WriteAction write = 6;
+    EditAction edit = 7;
+    BashAction bash = 8;
+    DirectoryCheckAction directory_check = 9;
+    DirectoryListAction directory_list = 10;
+    ReadImageAction read_image = 11;
+    SyncScanAction sync_scan = 12;
+    SyncReadAction sync_read = 13;
+  }
+}
+
+message OperationAccepted {
+  string operation_id = 1;
+  optional string request_id = 2;
+  OperationTarget target = 3;
+  OperationStatus status = 4;
+  google.protobuf.Timestamp accepted_at = 5;
+}
+
+message OperationState {
+  string operation_id = 1;
+  OperationTarget target = 2;
+  OperationStatus status = 3;
+  google.protobuf.Timestamp observed_at = 4;
+  optional string request_id = 5;
+}
+
+message OperationQuery {
+  string request_id = 1;
+  string operation_id = 2;
+  OperationTarget target = 3;
+}
+
+message OperationCancel {
+  string request_id = 1;
+  string operation_id = 2;
+  OperationTarget target = 3;
+  string reason = 4;
+}
+
+message OperationResult {
+  string operation_id = 1;
+  OperationTarget target = 2;
+  OperationStatus status = 3;
+  google.protobuf.Timestamp observed_at = 4;
+  optional string request_id = 5;
+  oneof outcome {
+    ReadOutcome read = 6;
+    WriteOutcome write = 7;
+    EditOutcome edit = 8;
+    BashOutcome bash = 9;
+    DirectoryCheckOutcome directory_check = 10;
+    DirectoryListOutcome directory_list = 11;
+    ReadImageOutcome read_image = 12;
+    SyncScanOutcome sync_scan = 13;
+    SyncReadOutcome sync_read = 14;
+  }
+}
+
+message OperationResultAck {
+  string operation_id = 1;
+  OperationTarget target = 2;
+  optional string request_id = 3;
+}
+
+message OperationOutputChunk {
+  string operation_id = 1;
+  OperationTarget target = 2;
+  uint64 offset = 3;
+  OutputStream stream = 4;
+  bytes data = 5;
+}
+
+message OperationOutputAck {
+  string operation_id = 1;
+  OperationTarget target = 2;
+  uint64 next_offset = 3;
+}
+
+message EnvironmentRevoke {
+  string request_id = 1;
+  string env_id = 2;
+  string device_binding_id = 3;
+  string reason = 4;
+}
+
+message EnvironmentRevokeAck {
+  string request_id = 1;
+  string env_id = 2;
+  string device_binding_id = 3;
+  google.protobuf.Timestamp revoked_at = 4;
+}
+
+enum EnvironmentMaintenanceMode {
+  ENVIRONMENT_MAINTENANCE_MODE_UNSPECIFIED = 0;
+  ENVIRONMENT_MAINTENANCE_MODE_NORMAL = 1;
+  ENVIRONMENT_MAINTENANCE_MODE_DRAINING = 2;
+}
+
+message EnvironmentMaintenanceQuery {
+  string request_id = 1;
+  string env_id = 2;
+  string device_binding_id = 3;
+}
+
+message EnvironmentMaintenanceReport {
+  string request_id = 1;
+  string env_id = 2;
+  string device_binding_id = 3;
+  EnvironmentMaintenanceMode maintenance_mode = 4;
+  uint64 maintenance_version = 5;
+  uint64 active_operation_count = 6;
+}
+
+message DaemonMessage {
+  reserved 4, 5, 6, 7;
+  reserved "bash_accepted", "bash_state", "bash_output_chunk", "bash_result";
+  uint32 protocol_major = 1;
+  oneof payload {
+    DeviceHello device_hello = 2;
+    Heartbeat heartbeat = 3;
+    DeviceError error = 8;
+    OperationAccepted operation_accepted = 9;
+    OperationState operation_state = 10;
+    OperationOutputChunk operation_output_chunk = 11;
+    OperationResult operation_result = 12;
+    EnvironmentRevoke environment_revoke = 13;
+    EnvironmentMaintenanceQuery environment_maintenance_query = 14;
+  }
+}
+
+message ServerMessage {
+  reserved 4, 5, 6, 7, 8;
+  reserved "bash_start", "bash_query", "bash_cancel", "bash_output_ack", "bash_result_ack";
+  uint32 protocol_major = 1;
+  oneof payload {
+    ServerHello server_hello = 2;
+    HeartbeatAck heartbeat_ack = 3;
+    DeviceError error = 9;
+    OperationStart operation_start = 10;
+    OperationQuery operation_query = 11;
+    OperationCancel operation_cancel = 12;
+    OperationOutputAck operation_output_ack = 13;
+    OperationResultAck operation_result_ack = 14;
+    EnvironmentRevokeAck environment_revoke_ack = 15;
+    EnvironmentMaintenanceReport environment_maintenance_report = 16;
+  }
+}

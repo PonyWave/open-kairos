@@ -1,0 +1,286 @@
+syntax = "proto3";
+
+package kairos.gui.v1;
+
+import "google/protobuf/timestamp.proto";
+
+enum EnvironmentCapability {
+  ENVIRONMENT_CAPABILITY_UNSPECIFIED = 0;
+  ENVIRONMENT_CAPABILITY_BASH = 1;
+  ENVIRONMENT_CAPABILITY_FILE_READ = 2;
+  ENVIRONMENT_CAPABILITY_FILE_WRITE = 3;
+  ENVIRONMENT_CAPABILITY_FILE_EDIT = 4;
+  ENVIRONMENT_CAPABILITY_DIRECTORY_CHECK = 5;
+  ENVIRONMENT_CAPABILITY_DIRECTORY_LIST = 6;
+}
+
+enum EnvironmentKind {
+  ENVIRONMENT_KIND_UNSPECIFIED = 0;
+  ENVIRONMENT_KIND_SELF_HOSTED_LINUX = 1;
+  ENVIRONMENT_KIND_SELF_HOSTED_MACOS = 2;
+  ENVIRONMENT_KIND_PLATFORM_SANDBOX = 3;
+}
+
+enum PlatformLifecycleState {
+  PLATFORM_LIFECYCLE_STATE_UNSPECIFIED = 0;
+  PLATFORM_LIFECYCLE_STATE_UNINITIALIZED = 1;
+  PLATFORM_LIFECYCLE_STATE_STARTING = 2;
+  PLATFORM_LIFECYCLE_STATE_RUNNING = 3;
+  PLATFORM_LIFECYCLE_STATE_PAUSING = 4;
+  PLATFORM_LIFECYCLE_STATE_PAUSED = 5;
+  PLATFORM_LIFECYCLE_STATE_RESUMING = 6;
+  PLATFORM_LIFECYCLE_STATE_DELETING = 7;
+  PLATFORM_LIFECYCLE_STATE_DELETED = 8;
+  PLATFORM_LIFECYCLE_STATE_ERROR = 9;
+}
+
+enum EnvironmentBindingStatus {
+  ENVIRONMENT_BINDING_STATUS_UNSPECIFIED = 0;
+  ENVIRONMENT_BINDING_STATUS_PAIRING = 1;
+  ENVIRONMENT_BINDING_STATUS_ACTIVE = 2;
+  ENVIRONMENT_BINDING_STATUS_REVOKED = 3;
+}
+
+enum EnvironmentConnectionStatus {
+  ENVIRONMENT_CONNECTION_STATUS_UNSPECIFIED = 0;
+  ENVIRONMENT_CONNECTION_STATUS_OFFLINE = 1;
+  ENVIRONMENT_CONNECTION_STATUS_ONLINE = 2;
+}
+
+enum EnvironmentCapabilityStatus {
+  ENVIRONMENT_CAPABILITY_STATUS_UNSPECIFIED = 0;
+  ENVIRONMENT_CAPABILITY_STATUS_PENDING = 1;
+  ENVIRONMENT_CAPABILITY_STATUS_READY = 2;
+  ENVIRONMENT_CAPABILITY_STATUS_FAILED = 3;
+}
+
+enum EnvironmentDirectoryStatus {
+  ENVIRONMENT_DIRECTORY_STATUS_UNSPECIFIED = 0;
+  ENVIRONMENT_DIRECTORY_STATUS_PENDING = 1;
+  ENVIRONMENT_DIRECTORY_STATUS_READY = 2;
+  ENVIRONMENT_DIRECTORY_STATUS_FAILED = 3;
+}
+
+enum EnvironmentMaintenanceMode {
+  ENVIRONMENT_MAINTENANCE_MODE_UNSPECIFIED = 0;
+  ENVIRONMENT_MAINTENANCE_MODE_NORMAL = 1;
+  ENVIRONMENT_MAINTENANCE_MODE_DRAINING = 2;
+}
+
+message Environment {
+  string env_id = 1;
+  string name = 2;
+  EnvironmentKind kind = 3;
+  string recommended_pwd = 4;
+  EnvironmentBindingStatus binding_status = 5;
+  EnvironmentConnectionStatus connection_status = 6;
+  EnvironmentCapabilityStatus capability_status = 7;
+  EnvironmentDirectoryStatus directory_status = 8;
+  repeated EnvironmentCapability granted_capabilities = 9;
+  optional string device_id = 10;
+  optional string device_binding_id = 11;
+  optional string instance_id = 12;
+  optional string daemon_version = 13;
+  optional string os = 14;
+  optional string architecture = 15;
+  optional string status_reason = 16;
+  google.protobuf.Timestamp created_at = 17;
+  google.protobuf.Timestamp updated_at = 18;
+  google.protobuf.Timestamp paired_at = 19;
+  google.protobuf.Timestamp revoked_at = 20;
+  google.protobuf.Timestamp last_seen_at = 21;
+  reserved 22;
+  reserved "is_default";
+  bool ready = 23;
+  optional string normalized_pwd = 24;
+  google.protobuf.Timestamp checked_at = 25;
+  EnvironmentMaintenanceMode maintenance_mode = 26;
+  uint64 maintenance_version = 27;
+  uint64 settings_version = 28;
+  repeated string favorite_directories = 29;
+  optional PlatformLifecycleState lifecycle_state = 30;
+}
+
+message EnvironmentInstallation {
+  string release_version = 1;
+  string download_url = 2;
+}
+
+message EnvironmentPolicy {
+  repeated string allowed_env = 1;
+  reserved 2, 3;
+  reserved "default_env", "default_pwd";
+  uint64 policy_version = 4;
+}
+
+message AgentEnvironmentBinding {
+  string env_id = 1;
+  string pwd = 2;
+  uint64 binding_version = 3;
+  optional string resource_version = 4;
+}
+
+message RegisterEnvironmentRequest {
+  string client_action_id = 1;
+  string name = 2;
+  string recommended_pwd = 3;
+  EnvironmentKind kind = 4;
+}
+
+message RegisterEnvironmentResponse {
+  string client_action_id = 1;
+  Environment environment = 2;
+  string pairing_credential = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  optional EnvironmentInstallation installation = 5;
+  string install_command = 6;
+}
+
+message BeginDeviceConnectionRequest {
+  string client_action_id = 1;
+}
+
+message BeginDeviceConnectionResponse {
+  string client_action_id = 1;
+  Environment environment = 2;
+  string pairing_credential = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  optional EnvironmentInstallation installation = 5;
+  string install_command = 6;
+}
+
+message CancelDeviceConnectionRequest {
+  string client_action_id = 1;
+  string env_id = 2;
+}
+
+message CancelDeviceConnectionResponse {
+  string client_action_id = 1;
+  Environment environment = 2;
+}
+
+message UpdateEnvironmentRequest {
+  string client_action_id = 1;
+  string env_id = 2;
+  uint64 expected_settings_version = 3;
+  optional string name = 4;
+  optional string recommended_pwd = 5;
+}
+
+message UpdateEnvironmentResponse {
+  string client_action_id = 1;
+  Environment environment = 2;
+}
+
+message SetFavoriteDirectoryRequest {
+  string client_action_id = 1;
+  string env_id = 2;
+  string path = 3;
+  bool enabled = 4;
+}
+
+message SetFavoriteDirectoryResponse {
+  string client_action_id = 1;
+  Environment environment = 2;
+}
+
+message ListEnvironmentDirectoriesRequest {
+  string env_id = 1;
+  string path = 2;
+  uint32 offset = 3;
+  uint32 limit = 4;
+}
+
+message EnvironmentDirectoryEntry {
+  string name = 1;
+  string path = 2;
+}
+
+message ListEnvironmentDirectoriesResponse {
+  string path = 1;
+  repeated EnvironmentDirectoryEntry entries = 2;
+  bool has_more = 3;
+  optional uint32 next_offset = 4;
+}
+
+message ListEnvironmentsRequest {}
+
+message ListEnvironmentsResponse {
+  repeated Environment environments = 1;
+  reserved 2;
+  reserved "default_env_id";
+  optional string main_env_id = 3;
+}
+
+message GetEnvironmentRequest {
+  string env_id = 1;
+}
+
+message GetEnvironmentResponse {
+  Environment environment = 1;
+}
+
+message GetEnvironmentDaemonCommandsRequest {
+  string env_id = 1;
+}
+
+message GetEnvironmentDaemonCommandsResponse {
+  string start_command = 1;
+  string status_command = 2;
+  string stop_command = 3;
+}
+
+message ReissueEnvironmentPairingRequest {
+  string client_action_id = 1;
+  string env_id = 2;
+}
+
+message ReissueEnvironmentPairingResponse {
+  string client_action_id = 1;
+  Environment environment = 2;
+  string pairing_credential = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  optional EnvironmentInstallation installation = 5;
+  string install_command = 6;
+}
+
+message RevokeEnvironmentRequest {
+  string client_action_id = 1;
+  string env_id = 2;
+}
+
+message RevokeEnvironmentResponse {
+  string client_action_id = 1;
+  Environment environment = 2;
+  reserved 3;
+  reserved "default_env_id";
+}
+
+message SetEnvironmentMaintenanceRequest {
+  string client_action_id = 1;
+  string env_id = 2;
+  EnvironmentMaintenanceMode mode = 3;
+  uint64 expected_version = 4;
+}
+
+message SetEnvironmentMaintenanceResponse {
+  string client_action_id = 1;
+  string env_id = 2;
+  EnvironmentMaintenanceMode mode = 3;
+  uint64 maintenance_version = 4;
+}
+
+service EnvironmentService {
+  rpc BeginDeviceConnection(BeginDeviceConnectionRequest) returns (BeginDeviceConnectionResponse);
+  rpc CancelDeviceConnection(CancelDeviceConnectionRequest) returns (CancelDeviceConnectionResponse);
+  rpc UpdateEnvironment(UpdateEnvironmentRequest) returns (UpdateEnvironmentResponse);
+  rpc SetFavoriteDirectory(SetFavoriteDirectoryRequest) returns (SetFavoriteDirectoryResponse);
+  rpc ListEnvironmentDirectories(ListEnvironmentDirectoriesRequest) returns (ListEnvironmentDirectoriesResponse);
+  rpc RegisterEnvironment(RegisterEnvironmentRequest) returns (RegisterEnvironmentResponse);
+  rpc ListEnvironments(ListEnvironmentsRequest) returns (ListEnvironmentsResponse);
+  rpc GetEnvironment(GetEnvironmentRequest) returns (GetEnvironmentResponse);
+  rpc GetEnvironmentDaemonCommands(GetEnvironmentDaemonCommandsRequest) returns (GetEnvironmentDaemonCommandsResponse);
+  rpc ReissueEnvironmentPairing(ReissueEnvironmentPairingRequest) returns (ReissueEnvironmentPairingResponse);
+  rpc RevokeEnvironment(RevokeEnvironmentRequest) returns (RevokeEnvironmentResponse);
+  rpc SetEnvironmentMaintenance(SetEnvironmentMaintenanceRequest) returns (SetEnvironmentMaintenanceResponse);
+}

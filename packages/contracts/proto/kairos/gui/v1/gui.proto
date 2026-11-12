@@ -1,0 +1,1159 @@
+syntax = "proto3";
+
+package kairos.gui.v1;
+
+import "google/protobuf/timestamp.proto";
+import "kairos/gui/v1/environment.proto";
+
+enum InputMode {
+  INPUT_MODE_UNSPECIFIED = 0;
+  INPUT_MODE_FOLLOW_UP = 1;
+  INPUT_MODE_STEER = 2;
+}
+
+enum ThreadType {
+  THREAD_TYPE_UNSPECIFIED = 0;
+  THREAD_TYPE_MAIN = 1;
+  THREAD_TYPE_TASK = 2;
+}
+
+enum MessageSource {
+  MESSAGE_SOURCE_UNSPECIFIED = 0;
+  MESSAGE_SOURCE_USER = 1;
+  MESSAGE_SOURCE_THREAD_CALL = 2;
+  MESSAGE_SOURCE_THREAD_RESPONSE = 3;
+  MESSAGE_SOURCE_SUBAGENT_RESPONSE = 4;
+  MESSAGE_SOURCE_AUTOMATION = 5;
+  MESSAGE_SOURCE_THREAD_NOTIFICATION = 6;
+}
+
+enum RunExecutionMode {
+  RUN_EXECUTION_MODE_UNSPECIFIED = 0;
+  RUN_EXECUTION_MODE_FOREGROUND = 1;
+  RUN_EXECUTION_MODE_BACKGROUND = 2;
+}
+
+enum InputStatus {
+  INPUT_STATUS_UNSPECIFIED = 0;
+  INPUT_STATUS_QUEUED = 1;
+  INPUT_STATUS_CONSUMED = 2;
+  INPUT_STATUS_CANCELLED = 3;
+}
+
+enum MessageRole {
+  MESSAGE_ROLE_UNSPECIFIED = 0;
+  MESSAGE_ROLE_SYSTEM = 1;
+  MESSAGE_ROLE_USER = 2;
+  MESSAGE_ROLE_ASSISTANT = 3;
+  MESSAGE_ROLE_TOOL = 4;
+}
+
+enum ToolResultStatus {
+  TOOL_RESULT_STATUS_UNSPECIFIED = 0;
+  TOOL_RESULT_STATUS_SUCCESS = 1;
+  TOOL_RESULT_STATUS_ERROR = 2;
+}
+
+message ToolResultError {
+  string code = 1;
+  string message = 2;
+}
+
+enum RunStatus {
+  RUN_STATUS_UNSPECIFIED = 0;
+  RUN_STATUS_QUEUED = 1;
+  RUN_STATUS_RUNNING = 2;
+  RUN_STATUS_WAITING = 3;
+  RUN_STATUS_CANCEL_REQUESTED = 4;
+  RUN_STATUS_COMPLETED = 5;
+  RUN_STATUS_FAILED = 6;
+  RUN_STATUS_CANCELLED = 7;
+  RUN_STATUS_INTERRUPTED = 8;
+}
+
+enum RecapValidity {
+  RECAP_VALIDITY_UNSPECIFIED = 0;
+  RECAP_VALIDITY_VALID = 1;
+  RECAP_VALIDITY_INVALID = 2;
+}
+
+enum BashOperationStatus {
+  BASH_OPERATION_STATUS_UNSPECIFIED = 0;
+  BASH_OPERATION_STATUS_CREATED = 1;
+  BASH_OPERATION_STATUS_ACCEPTED = 2;
+  BASH_OPERATION_STATUS_RUNNING = 3;
+  BASH_OPERATION_STATUS_CANCEL_REQUESTED = 4;
+  BASH_OPERATION_STATUS_COMPLETED = 5;
+  BASH_OPERATION_STATUS_FAILED = 6;
+  BASH_OPERATION_STATUS_CANCELLED = 7;
+  BASH_OPERATION_STATUS_EXPIRED = 8;
+  BASH_OPERATION_STATUS_UNKNOWN = 9;
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_UNAUTHENTICATED = 1;
+  ERROR_CODE_PERMISSION_DENIED = 2;
+  ERROR_CODE_VERSION_CONFLICT = 3;
+  ERROR_CODE_ACTION_CONFLICT = 4;
+  ERROR_CODE_DEVICE_OFFLINE = 5;
+  ERROR_CODE_OPERATION_UNKNOWN = 6;
+  ERROR_CODE_RECAP_INVALID = 7;
+  ERROR_CODE_INPUT_TOO_LARGE = 8;
+  ERROR_CODE_PROTOCOL_INCOMPATIBLE = 9;
+  ERROR_CODE_INVALID_ARGUMENT = 10;
+  ERROR_CODE_NOT_FOUND = 11;
+  ERROR_CODE_FAILED_PRECONDITION = 12;
+  ERROR_CODE_INTERNAL = 13;
+  ERROR_CODE_SANDBOX_CAPACITY_EXHAUSTED = 14;
+  ERROR_CODE_SANDBOX_UNAVAILABLE = 15;
+}
+
+message ErrorDetail {
+  ErrorCode code = 1;
+  string message = 2;
+  optional string client_action_id = 3;
+  bool retryable = 4;
+  optional bool terminal = 5;
+}
+
+message Thread {
+  string thread_id = 1;
+  string title = 2;
+  uint64 seq = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+  optional ThreadType thread_type = 6;
+  optional EnvironmentPolicy environment_policy = 7;
+  optional AgentEnvironmentBinding current_binding = 8;
+  optional bool automation_only = 9;
+  optional bool new_conversation = 10;
+}
+
+message ToolCall {
+  string tool_call_id = 1;
+  string tool_name = 2;
+  string arguments_json = 3;
+  optional uint32 block_index = 4;
+}
+
+message MessageRevision {
+  string revision_id = 1;
+  string message_id = 2;
+  string text = 3;
+  optional string previous_revision_id = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+enum ContentBlockType {
+  CONTENT_BLOCK_TYPE_UNSPECIFIED = 0;
+  CONTENT_BLOCK_TYPE_TEXT = 1;
+  CONTENT_BLOCK_TYPE_THINKING = 2;
+}
+
+message ContentBlock {
+  ContentBlockType type = 1;
+  uint32 block_index = 2;
+  string text = 3;
+}
+
+message DelegationReference {
+  string source_thread_id = 1;
+  string source_agent_id = 2;
+  string source_tool_call_id = 3;
+}
+
+enum AttachmentSource {
+  ATTACHMENT_SOURCE_UNSPECIFIED = 0;
+  ATTACHMENT_SOURCE_FILE = 1;
+  ATTACHMENT_SOURCE_CLIPBOARD = 2;
+}
+
+enum AutomationTrigger {
+  AUTOMATION_TRIGGER_UNSPECIFIED = 0;
+  AUTOMATION_TRIGGER_SCHEDULED = 1;
+  AUTOMATION_TRIGGER_RUN_NOW = 2;
+}
+
+message AutomationReference {
+  string schedule_id = 1;
+  string fire_id = 2;
+  AutomationTrigger trigger = 3;
+  google.protobuf.Timestamp scheduled_at = 4;
+}
+
+message Attachment {
+  reserved 10;
+  reserved "env_id";
+  string attachment_id = 1;
+  string file_name = 2;
+  string media_type = 3;
+  uint64 size_bytes = 4;
+  optional uint32 width = 5;
+  optional uint32 height = 6;
+  string sha256 = 7;
+  google.protobuf.Timestamp created_at = 8;
+  AttachmentSource source = 9;
+  optional string path = 11;
+}
+
+message Message {
+  reserved 13;
+  reserved "interaction_id";
+  string message_id = 1;
+  string thread_id = 2;
+  string agent_id = 3;
+  uint64 seq = 4;
+  MessageRole role = 5;
+  string content = 6;
+  repeated ToolCall tool_calls = 7;
+  string tool_call_id = 8;
+  string tool_name = 9;
+  google.protobuf.Timestamp created_at = 10;
+  optional string revision_id = 11;
+  optional MessageSource source = 12;
+  optional string source_input_id = 14;
+  optional string source_thread_id = 15;
+  optional string source_agent_id = 16;
+  repeated ContentBlock content_blocks = 17;
+  optional string run_id = 18;
+  optional TokenUsage usage = 19;
+  optional string superseded_by_run_id = 20;
+  optional string original_content = 21;
+  repeated MessageRevision revisions = 22;
+  optional DelegationReference delegation = 23;
+  repeated Attachment attachments = 24;
+  ToolResultStatus tool_status = 25;
+  optional ToolResultError tool_error = 26;
+  optional AutomationReference automation = 27;
+  optional bool send_to_user_enabled = 28;
+}
+
+message Input {
+  reserved 11;
+  reserved "interaction_id";
+  string input_id = 1;
+  string thread_id = 2;
+  string text = 3;
+  InputMode mode = 4;
+  InputStatus status = 5;
+  uint64 position = 6;
+  uint64 version = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  optional MessageSource source = 10;
+  optional string source_thread_id = 12;
+  optional string source_agent_id = 13;
+  optional DelegationReference delegation = 14;
+  repeated Attachment attachments = 15;
+  optional AutomationReference automation = 16;
+}
+
+message TokenUsage {
+  uint64 input_tokens = 1;
+  uint64 output_tokens = 2;
+}
+
+message Run {
+  string run_id = 1;
+  string thread_id = 2;
+  RunStatus status = 3;
+  repeated string input_ids = 4;
+  optional string parent_run_id = 5;
+  ErrorDetail error = 6;
+  optional TokenUsage usage = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp started_at = 9;
+  google.protobuf.Timestamp finished_at = 10;
+  optional RunExecutionMode execution_mode = 11;
+  optional uint64 rerun_from_message_seq = 12;
+  optional string superseded_by_run_id = 13;
+  optional string agent_id = 14;
+  optional bool send_to_user_enabled = 15;
+}
+
+message Recap {
+  reserved 8;
+  reserved "title";
+  string recap_id = 1;
+  string thread_id = 2;
+  string agent_id = 3;
+  uint64 seq = 4;
+  uint64 source_seq_start = 5;
+  uint64 source_seq_end = 6;
+  repeated uint64 source_message_seqs = 7;
+  string content = 9;
+  google.protobuf.Timestamp created_at = 10;
+  RecapValidity validity = 11;
+}
+
+message Device {
+  string device_id = 1;
+  string device_name = 2;
+  bool bash_enabled = 3;
+  string account_description = 4;
+  google.protobuf.Timestamp paired_at = 5;
+  google.protobuf.Timestamp revoked_at = 6;
+  google.protobuf.Timestamp last_seen_at = 7;
+}
+
+message BashOperation {
+  string operation_id = 1;
+  string run_id = 2;
+  string device_id = 3;
+  string command = 4;
+  string cwd = 5;
+  BashOperationStatus status = 6;
+  optional int32 exit_code = 7;
+  bool output_complete = 8;
+  optional uint64 end_offset = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+enum BashLogStream {
+  BASH_LOG_STREAM_UNSPECIFIED = 0;
+  BASH_LOG_STREAM_STDOUT = 1;
+  BASH_LOG_STREAM_STDERR = 2;
+}
+
+message BashLogChunk {
+  uint64 offset = 1;
+  BashLogStream stream = 2;
+  bytes data = 3;
+}
+
+message BashLogGap {
+  uint64 start_offset = 1;
+  optional uint64 end_offset = 2;
+}
+
+message ReadBashLogRequest {
+  string operation_id = 1;
+  optional uint64 offset = 2;
+  uint32 limit_bytes = 3;
+}
+
+message ReadBashLogResponse {
+  string operation_id = 1;
+  repeated BashLogChunk chunks = 2;
+  optional uint64 next_offset = 3;
+  optional bool output_complete = 4;
+  repeated BashLogGap gaps = 5;
+  string device_id = 6;
+  string cwd = 7;
+  optional bool expired = 8;
+}
+
+message ModelConfigurationError {
+  string code = 1;
+  string message = 2;
+}
+
+message GetModelStatusRequest {}
+
+message GetModelStatusResponse {
+  string provider_id = 1;
+  string model_id = 2;
+  optional uint32 context_capacity = 3;
+  optional uint32 output_reserve = 4;
+  optional bool available = 5;
+  repeated ModelConfigurationError configuration_errors = 6;
+}
+
+enum ThreadNotificationStatus {
+  THREAD_NOTIFICATION_STATUS_UNSPECIFIED = 0;
+  THREAD_NOTIFICATION_STATUS_PENDING = 1;
+  THREAD_NOTIFICATION_STATUS_QUEUED = 2;
+  THREAD_NOTIFICATION_STATUS_CONSUMED = 3;
+  THREAD_NOTIFICATION_STATUS_SUPERSEDED = 4;
+}
+
+message ThreadNotification {
+  DelegationReference delegation = 1;
+  string source_run_id = 2;
+  string reply_thread_id = 3;
+  string content = 4;
+  ThreadNotificationStatus status = 5;
+  optional uint64 context_message_seq = 6;
+  optional string run_id = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  optional google.protobuf.Timestamp consumed_at = 10;
+}
+
+message ThreadSnapshot {
+  Thread thread = 1;
+  repeated Message messages = 2;
+  repeated Input inputs = 3;
+  repeated Run runs = 4;
+  repeated Device devices = 5;
+  uint64 queue_version = 6;
+  optional Environment main_environment = 7;
+  repeated Recap recaps = 8;
+  repeated ThreadNotification notifications = 9;
+}
+
+message CreateThreadRequest {
+  string client_action_id = 1;
+  string title = 2;
+  optional string initial_text = 3;
+  optional InputMode initial_mode = 4;
+  repeated string initial_attachment_ids = 5;
+  bool auto_summarize_title = 6;
+  optional EnvironmentPolicy environment_policy = 7;
+  repeated string initial_clipboard_attachment_ids = 8;
+}
+
+message CreateThreadResponse {
+  string client_action_id = 1;
+  Thread thread = 2;
+  optional string input_id = 3;
+  optional string run_id = 4;
+}
+
+message GetOrCreateMainRequest {}
+
+message GetOrCreateMainResponse {
+  Thread thread = 1;
+}
+
+message StartNewMainRequest {
+  string client_action_id = 1;
+  string thread_id = 2;
+}
+
+message StartNewMainResponse {
+  string client_action_id = 1;
+  Thread thread = 2;
+}
+
+message ThreadSnapshotCollectionCursor {
+  uint64 after_rowid = 1;
+  uint64 max_rowid = 2;
+}
+
+message ThreadSnapshotCursor {
+  string thread_id = 1;
+  uint64 through_seq = 2;
+  ThreadSnapshotCollectionCursor messages = 3;
+  ThreadSnapshotCollectionCursor inputs = 4;
+  ThreadSnapshotCollectionCursor runs = 5;
+  ThreadSnapshotCollectionCursor devices = 6;
+  ThreadSnapshotCollectionCursor recaps = 7;
+  ThreadSnapshotCollectionCursor notifications = 8;
+}
+
+message GetThreadRequest {
+  string thread_id = 1;
+  optional uint32 limit = 2;
+  optional ThreadSnapshotCursor cursor = 3;
+}
+
+message GetThreadResponse {
+  ThreadSnapshot snapshot = 1;
+  uint64 through_seq = 2;
+  optional ThreadSnapshotCursor next_cursor = 3;
+  bool has_more = 4;
+}
+
+message ListThreadsRequest {
+  uint64 after_seq = 1;
+  uint32 limit = 2;
+}
+
+message ListThreadsResponse {
+  repeated Thread threads = 1;
+  optional uint64 next_seq = 2;
+  bool has_more = 3;
+}
+
+enum ThreadCardSort {
+  THREAD_CARD_SORT_UNSPECIFIED = 0;
+  THREAD_CARD_SORT_LAST_MESSAGE_AT = 1;
+  THREAD_CARD_SORT_CREATED_AT = 2;
+}
+
+message ThreadMessagePreview {
+  string message_id = 1;
+  uint64 seq = 2;
+  MessageRole role = 3;
+  string text = 4;
+  bool text_truncated = 5;
+  google.protobuf.Timestamp created_at = 6;
+  optional MessageSource source = 7;
+  optional string source_thread_id = 8;
+  repeated Attachment attachments = 9;
+}
+
+message ThreadCallReference {
+  DelegationReference delegation = 1;
+  string source_message_id = 2;
+  uint64 source_message_seq = 3;
+}
+
+message ThreadCard {
+  Thread thread = 1;
+  optional google.protobuf.Timestamp last_message_at = 2;
+  repeated ThreadMessagePreview messages = 3;
+  optional ThreadCallReference source_call = 4;
+}
+
+message ThreadCardCursor {
+  ThreadCardSort sort = 1;
+  google.protobuf.Timestamp sort_at = 2;
+  uint64 thread_seq = 3;
+}
+
+message ListThreadCardsRequest {
+  uint32 limit = 1;
+  ThreadCardSort sort = 2;
+  optional ThreadCardCursor cursor = 3;
+}
+
+message ListThreadCardsResponse {
+  repeated ThreadCard cards = 1;
+  optional ThreadCardCursor next_cursor = 2;
+  bool has_more = 3;
+}
+
+message ListThreadCallPreviewsRequest {
+  repeated DelegationReference calls = 1;
+}
+
+message ThreadCallPreview {
+  ThreadCallReference call = 1;
+  string target_thread_id = 2;
+  string target_title = 3;
+  RunStatus status = 4;
+  uint64 reply_count = 5;
+  repeated ThreadMessagePreview replies = 6;
+  optional uint64 response_message_seq = 7;
+}
+
+message ListThreadCallPreviewsResponse {
+  repeated ThreadCallPreview previews = 1;
+}
+
+message ListSubagentCallViewsRequest {
+  repeated DelegationReference calls = 1;
+}
+
+message SubagentCallView {
+  ThreadCallReference call = 1;
+  string thread_id = 2;
+  string agent_id = 3;
+  optional string run_id = 4;
+  string task = 5;
+  RunStatus status = 6;
+  RunExecutionMode execution_mode = 7;
+}
+
+message ListSubagentCallViewsResponse {
+  repeated SubagentCallView views = 1;
+}
+
+message RenameThreadRequest {
+  string client_action_id = 1;
+  string thread_id = 2;
+  string title = 3;
+}
+
+message RenameThreadResponse {
+  string client_action_id = 1;
+  Thread thread = 2;
+}
+
+message SendMessageRequest {
+  string client_action_id = 1;
+  string thread_id = 2;
+  string text = 3;
+  InputMode mode = 4;
+  repeated string attachment_ids = 5;
+  repeated string clipboard_attachment_ids = 6;
+}
+
+message SendMessageResponse {
+  string client_action_id = 1;
+  string input_id = 2;
+  string thread_id = 3;
+}
+
+message ReviseMessageRequest {
+  string client_action_id = 1;
+  string thread_id = 2;
+  string message_id = 3;
+  string text = 4;
+  optional string expected_revision_id = 5;
+}
+
+message ReviseMessageResponse {
+  string client_action_id = 1;
+  string message_id = 2;
+  string revision_id = 3;
+}
+
+message EditInputRequest {
+  string client_action_id = 1;
+  string thread_id = 2;
+  string input_id = 3;
+  string text = 4;
+  uint64 expected_version = 5;
+}
+
+message EditInputResponse {
+  string client_action_id = 1;
+  string input_id = 2;
+  uint64 version = 3;
+}
+
+message RemoveInputRequest {
+  string client_action_id = 1;
+  string thread_id = 2;
+  string input_id = 3;
+  uint64 expected_version = 4;
+}
+
+message RemoveInputResponse {
+  string client_action_id = 1;
+  string input_id = 2;
+  uint64 queue_version = 3;
+}
+
+message ReorderInputsRequest {
+  string client_action_id = 1;
+  string thread_id = 2;
+  repeated string input_ids = 3;
+  uint64 expected_version = 4;
+}
+
+message ReorderInputsResponse {
+  string client_action_id = 1;
+  repeated Input inputs = 2;
+  uint64 queue_version = 3;
+}
+
+message CancelRunRequest {
+  string client_action_id = 1;
+  string thread_id = 2;
+  string run_id = 3;
+  string reason = 4;
+}
+
+message CancelRunResponse {
+  string client_action_id = 1;
+  string run_id = 2;
+  RunStatus status = 3;
+}
+
+message ContinueRunRequest {
+  string client_action_id = 1;
+  string thread_id = 2;
+  string run_id = 3;
+}
+
+message ContinueRunResponse {
+  string client_action_id = 1;
+  string run_id = 2;
+  RunStatus status = 3;
+}
+
+message RerunRequest {
+  string client_action_id = 1;
+  string thread_id = 2;
+  string message_id = 3;
+}
+
+message RerunResponse {
+  string client_action_id = 1;
+  string run_id = 2;
+  RunStatus status = 3;
+}
+
+message ReadContextRequest {
+  string thread_id = 1;
+  string agent_id = 2;
+  uint64 after_seq = 3;
+  uint32 limit = 4;
+}
+
+message ReadContextResponse {
+  repeated Message messages = 1;
+  optional uint64 next_seq = 2;
+  bool has_more = 3;
+}
+
+message ReadRecapsRequest {
+  string thread_id = 1;
+  string agent_id = 2;
+  uint64 after_seq = 3;
+  uint32 limit = 4;
+}
+
+message ReadRecapsResponse {
+  repeated Recap recaps = 1;
+  optional uint64 next_seq = 2;
+  bool has_more = 3;
+}
+
+enum CompactContextStatus {
+  COMPACT_CONTEXT_STATUS_UNSPECIFIED = 0;
+  COMPACT_CONTEXT_STATUS_CHANGED = 1;
+  COMPACT_CONTEXT_STATUS_NOOP = 2;
+}
+
+message CompactContextRequest {
+  string thread_id = 1;
+  string client_action_id = 2;
+}
+
+message CompactContextResponse {
+  string operation_id = 1;
+  CompactContextStatus status = 2;
+  uint64 read_through_seq = 3;
+  repeated string recap_ids = 4;
+}
+
+message ReloadResourcesRequest {
+  string thread_id = 1;
+  string client_action_id = 2;
+}
+
+message ReloadResourcesResponse {
+  string snapshot_id = 1;
+  bool changed = 2;
+  repeated string resources = 3;
+  repeated string added = 4;
+  repeated string updated = 5;
+  repeated string removed = 6;
+  optional string runtime_fingerprint = 7;
+  optional bool runtime_changed = 8;
+}
+
+message ThreadCreated {
+  Thread thread = 1;
+}
+
+message ThreadRenamed {
+  Thread thread = 1;
+}
+
+message InputAccepted {
+  Input input = 1;
+}
+
+message InputEdited {
+  Input input = 1;
+}
+
+message InputRemoved {
+  Input input = 1;
+  uint64 queue_version = 2;
+}
+
+message InputsReordered {
+  repeated Input inputs = 1;
+  uint64 queue_version = 2;
+}
+
+message MessageCommitted {
+  Message message = 1;
+}
+
+message MessageRevised {
+  string message_id = 1;
+  MessageRevision revision = 2;
+}
+
+message RunChanged {
+  Run run = 1;
+}
+
+message ContextViewChanged {
+  string agent_id = 1;
+  uint64 view_version = 2;
+  optional uint64 anchor_message_seq = 3;
+}
+
+message ContextHardCutStarted {
+  string run_id = 1;
+  optional string operation_id = 2;
+}
+
+message ContextHardCutCompleted {
+  repeated uint64 replaced_source_seqs = 1;
+  repeated string recap_ids = 2;
+  uint32 injected_message_count = 3;
+  string run_id = 4;
+  optional string operation_id = 5;
+}
+
+message ContextHardCutFailed {
+  string run_id = 1;
+  ErrorDetail error = 2;
+  optional string operation_id = 3;
+}
+
+message RecapCreated {
+  Recap recap = 1;
+}
+
+message RecapInvalidated {
+  string recap_id = 1;
+  string reason = 2;
+}
+
+message DeviceChanged {
+  Device device = 1;
+}
+
+message BashOperationChanged {
+  BashOperation operation = 1;
+}
+
+message AgentEnvironmentBindingChanged {
+  string agent_id = 1;
+  AgentEnvironmentBinding binding = 2;
+}
+
+message ThreadNotificationChanged {
+  ThreadNotification notification = 1;
+}
+
+message WatchThreadRequest {
+  string thread_id = 1;
+  uint64 after_seq = 2;
+  optional string schedule_id = 3;
+}
+
+message PersistedThreadEvent {
+  string event_id = 1;
+  string thread_id = 2;
+  uint64 seq = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+  oneof payload {
+    ContextHardCutCompleted hard_cut_completed = 10;
+    ThreadCreated thread_created = 11;
+    ThreadRenamed thread_renamed = 12;
+    InputAccepted input_accepted = 13;
+    InputEdited input_edited = 14;
+    InputRemoved input_removed = 15;
+    InputsReordered inputs_reordered = 16;
+    MessageCommitted message_committed = 17;
+    MessageRevised message_revised = 18;
+    RunChanged run_changed = 19;
+    ContextHardCutStarted hard_cut_started = 20;
+    ContextHardCutFailed hard_cut_failed = 21;
+    RecapInvalidated recap_invalidated = 22;
+    DeviceChanged device_changed = 23;
+    BashOperationChanged bash_operation_changed = 24;
+    ContextViewChanged context_view_changed = 25;
+    AgentEnvironmentBindingChanged environment_binding_changed = 26;
+    Environment main_environment_changed = 27;
+    RecapCreated recap_created = 28;
+    ThreadNotificationChanged thread_notification_changed = 29;
+  }
+}
+
+message TextDelta {
+  string thread_id = 1;
+  string message_id = 2;
+  uint64 delta_seq = 3;
+  string text = 4;
+  optional uint32 block_index = 5;
+  optional string run_id = 6;
+  optional string agent_id = 7;
+}
+
+message ThinkingDelta {
+  string thread_id = 1;
+  string message_id = 2;
+  uint64 delta_seq = 3;
+  string text = 4;
+  uint32 block_index = 5;
+  string run_id = 6;
+  optional string agent_id = 7;
+}
+
+message WatchThreadResponse {
+  oneof payload {
+    PersistedThreadEvent event = 1;
+    TextDelta text_delta = 2;
+    ThinkingDelta thinking_delta = 3;
+  }
+}
+
+enum AutomationScheduleKind {
+  AUTOMATION_SCHEDULE_KIND_UNSPECIFIED = 0;
+  AUTOMATION_SCHEDULE_KIND_CRON = 1;
+  AUTOMATION_SCHEDULE_KIND_ONCE = 2;
+}
+
+enum AutomationTargetKind {
+  AUTOMATION_TARGET_KIND_UNSPECIFIED = 0;
+  AUTOMATION_TARGET_KIND_MAIN = 1;
+  AUTOMATION_TARGET_KIND_EXISTING_THREAD = 2;
+  AUTOMATION_TARGET_KIND_NEW_TASK = 3;
+  AUTOMATION_TARGET_KIND_NEW_AUTOMATION_ONLY = 4;
+}
+
+enum AutomationFireStatus {
+  AUTOMATION_FIRE_STATUS_UNSPECIFIED = 0;
+  AUTOMATION_FIRE_STATUS_QUEUED = 1;
+  AUTOMATION_FIRE_STATUS_RUNNING = 2;
+  AUTOMATION_FIRE_STATUS_COMPLETED = 3;
+  AUTOMATION_FIRE_STATUS_FAILED = 4;
+  AUTOMATION_FIRE_STATUS_CANCELLED = 5;
+  AUTOMATION_FIRE_STATUS_INTERRUPTED = 6;
+}
+
+message AutomationSchedule {
+  AutomationScheduleKind kind = 1;
+  optional string cron_expression = 2;
+  string time_zone = 3;
+  optional google.protobuf.Timestamp run_at = 4;
+}
+
+message AutomationTarget {
+  AutomationTargetKind kind = 1;
+  optional string thread_id = 2;
+  optional EnvironmentPolicy environment_policy = 3;
+}
+
+message Automation {
+  uint64 seq = 1;
+  string schedule_id = 2;
+  string name = 3;
+  string prompt = 4;
+  AutomationSchedule schedule = 5;
+  AutomationTarget target = 6;
+  bool enabled = 7;
+  uint64 version = 8;
+  optional google.protobuf.Timestamp next_fire_at = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message AutomationFire {
+  uint64 seq = 1;
+  string fire_id = 2;
+  string schedule_id = 3;
+  AutomationTrigger trigger = 4;
+  uint64 schedule_version = 5;
+  google.protobuf.Timestamp scheduled_at = 6;
+  google.protobuf.Timestamp actual_at = 7;
+  uint32 coalesced_count = 8;
+  string prompt = 9;
+  AutomationTargetKind target_kind = 10;
+  optional string target_thread_id = 11;
+  optional string input_id = 12;
+  optional string accepted_run_id = 13;
+  optional string consumed_run_id = 14;
+  AutomationFireStatus status = 15;
+  optional ErrorDetail error = 16;
+  google.protobuf.Timestamp created_at = 17;
+  google.protobuf.Timestamp updated_at = 18;
+  optional google.protobuf.Timestamp finished_at = 19;
+  optional string target_thread_title = 20;
+}
+
+message CreateAutomationRequest {
+  string client_action_id = 1;
+  string name = 2;
+  string prompt = 3;
+  AutomationSchedule schedule = 4;
+  AutomationTarget target = 5;
+  optional bool enabled = 6;
+}
+
+message CreateAutomationResponse {
+  string client_action_id = 1;
+  Automation automation = 2;
+}
+
+message GetAutomationRequest {
+  string schedule_id = 1;
+}
+
+message GetAutomationResponse {
+  Automation automation = 1;
+}
+
+message ListAutomationsRequest {
+  uint64 after_seq = 1;
+  uint32 limit = 2;
+}
+
+message ListAutomationsResponse {
+  repeated Automation automations = 1;
+  optional uint64 next_seq = 2;
+  bool has_more = 3;
+}
+
+message UpdateAutomationRequest {
+  string client_action_id = 1;
+  string schedule_id = 2;
+  uint64 expected_version = 3;
+  optional string name = 4;
+  optional string prompt = 5;
+  optional AutomationSchedule schedule = 6;
+  optional AutomationTarget target = 7;
+  optional bool enabled = 8;
+}
+
+message UpdateAutomationResponse {
+  string client_action_id = 1;
+  Automation automation = 2;
+}
+
+message DeleteAutomationRequest {
+  string client_action_id = 1;
+  string schedule_id = 2;
+  uint64 expected_version = 3;
+}
+
+message DeleteAutomationResponse {
+  string client_action_id = 1;
+  string schedule_id = 2;
+  bool deleted = 3;
+}
+
+message RunAutomationNowRequest {
+  string client_action_id = 1;
+  string schedule_id = 2;
+}
+
+message RunAutomationNowResponse {
+  string client_action_id = 1;
+  AutomationFire fire = 2;
+}
+
+message ListAutomationFiresRequest {
+  string schedule_id = 1;
+  uint64 after_seq = 2;
+  uint32 limit = 3;
+}
+
+message ListAutomationFiresResponse {
+  repeated AutomationFire fires = 1;
+  optional uint64 next_seq = 2;
+  bool has_more = 3;
+}
+
+message GetAutomationThreadRequest {
+  string schedule_id = 1;
+  string thread_id = 2;
+  optional uint32 limit = 3;
+  optional ThreadSnapshotCursor cursor = 4;
+}
+
+message GetAutomationThreadResponse {
+  ThreadSnapshot snapshot = 1;
+  uint64 through_seq = 2;
+  optional ThreadSnapshotCursor next_cursor = 3;
+  bool has_more = 4;
+}
+
+message UploadAttachmentRequest {
+  string client_action_id = 1;
+  string file_name = 2;
+  bytes data = 3;
+  string declared_media_type = 4;
+  AttachmentSource source = 5;
+}
+
+message UploadAttachmentResponse {
+  string client_action_id = 1;
+  Attachment attachment = 2;
+}
+
+message DeleteAttachmentRequest {
+  string client_action_id = 1;
+  string attachment_id = 2;
+}
+
+message DeleteAttachmentResponse {
+  string client_action_id = 1;
+  string attachment_id = 2;
+  bool deleted = 3;
+}
+
+message DownloadAttachmentRequest {
+  string attachment_id = 1;
+  optional uint64 offset = 2;
+  uint32 limit_bytes = 3;
+}
+
+message DownloadAttachmentResponse {
+  Attachment attachment = 1;
+  bytes data = 2;
+  optional uint64 next_offset = 3;
+}
+
+service AutomationService {
+  rpc CreateAutomation(CreateAutomationRequest) returns (CreateAutomationResponse);
+  rpc GetAutomation(GetAutomationRequest) returns (GetAutomationResponse);
+  rpc ListAutomations(ListAutomationsRequest) returns (ListAutomationsResponse);
+  rpc UpdateAutomation(UpdateAutomationRequest) returns (UpdateAutomationResponse);
+  rpc DeleteAutomation(DeleteAutomationRequest) returns (DeleteAutomationResponse);
+  rpc RunAutomationNow(RunAutomationNowRequest) returns (RunAutomationNowResponse);
+  rpc ListAutomationFires(ListAutomationFiresRequest) returns (ListAutomationFiresResponse);
+  rpc GetAutomationThread(GetAutomationThreadRequest) returns (GetAutomationThreadResponse);
+}
+
+service AttachmentService {
+  rpc UploadAttachment(UploadAttachmentRequest) returns (UploadAttachmentResponse);
+  rpc DeleteAttachment(DeleteAttachmentRequest) returns (DeleteAttachmentResponse);
+  rpc DownloadAttachment(DownloadAttachmentRequest) returns (DownloadAttachmentResponse);
+}
+
+service ThreadService {
+  rpc CreateThread(CreateThreadRequest) returns (CreateThreadResponse);
+  rpc GetOrCreateMain(GetOrCreateMainRequest) returns (GetOrCreateMainResponse);
+  rpc StartNewMain(StartNewMainRequest) returns (StartNewMainResponse);
+  rpc GetThread(GetThreadRequest) returns (GetThreadResponse);
+  rpc ListThreads(ListThreadsRequest) returns (ListThreadsResponse);
+  rpc ListThreadCards(ListThreadCardsRequest) returns (ListThreadCardsResponse);
+  rpc ListThreadCallPreviews(ListThreadCallPreviewsRequest) returns (ListThreadCallPreviewsResponse);
+  rpc ListSubagentCallViews(ListSubagentCallViewsRequest) returns (ListSubagentCallViewsResponse);
+  rpc RenameThread(RenameThreadRequest) returns (RenameThreadResponse);
+}
+
+service MessageService {
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+  rpc ReviseMessage(ReviseMessageRequest) returns (ReviseMessageResponse);
+}
+
+service QueueService {
+  rpc EditInput(EditInputRequest) returns (EditInputResponse);
+  rpc RemoveInput(RemoveInputRequest) returns (RemoveInputResponse);
+  rpc ReorderInputs(ReorderInputsRequest) returns (ReorderInputsResponse);
+}
+
+service RunService {
+  rpc CancelRun(CancelRunRequest) returns (CancelRunResponse);
+  rpc ContinueRun(ContinueRunRequest) returns (ContinueRunResponse);
+  rpc Rerun(RerunRequest) returns (RerunResponse);
+}
+
+service ContextService {
+  rpc ReadContext(ReadContextRequest) returns (ReadContextResponse);
+  rpc ReadRecaps(ReadRecapsRequest) returns (ReadRecapsResponse);
+  rpc CompactContext(CompactContextRequest) returns (CompactContextResponse);
+}
+
+service WorkspaceService {
+  rpc ReloadResources(ReloadResourcesRequest) returns (ReloadResourcesResponse);
+}
+
+service BashLogService {
+  rpc ReadBashLog(ReadBashLogRequest) returns (ReadBashLogResponse);
+}
+
+service ModelService {
+  rpc GetModelStatus(GetModelStatusRequest) returns (GetModelStatusResponse);
+}
+
+service EventService {
+  rpc WatchThread(WatchThreadRequest) returns (stream WatchThreadResponse);
+}

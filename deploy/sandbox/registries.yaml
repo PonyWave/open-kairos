@@ -1,0 +1,4 @@
+configs:
+  "10.251.0.50:5000":
+    tls:
+      ca_file: /etc/rancher/k3s/registry-ca.crt

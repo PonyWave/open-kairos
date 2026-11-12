@@ -1,0 +1,12 @@
+packages:
+  - apps/*
+  - packages/*
+
+storeDir: .pnpm-store
+
+allowBuilds:
+  "@bufbuild/buf": true
+  esbuild: true
+
+minimumReleaseAgeExclude:
+  - "@vitejs/plugin-react@6.2.1"

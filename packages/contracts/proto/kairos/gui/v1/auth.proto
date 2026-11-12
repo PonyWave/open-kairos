@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package kairos.gui.v1;
+
+import "google/protobuf/timestamp.proto";
+
+enum AuthenticationState {
+  AUTHENTICATION_STATE_UNSPECIFIED = 0;
+  AUTHENTICATION_STATE_ANONYMOUS = 1;
+  AUTHENTICATION_STATE_PROFILE_REQUIRED = 2;
+  AUTHENTICATION_STATE_AUTHENTICATED = 3;
+}
+
+message Identity {
+  string user_id = 1;
+  string email = 2;
+  string username = 3;
+  string tenant_id = 4;
+  string main_thread_id = 5;
+  reserved 6;
+  reserved "default_env_id";
+  optional string avatar_id = 7;
+  uint32 profile_version = 8;
+}
+
+message RequestEmailCodeRequest {
+  string email = 1;
+  string client_action_id = 2;
+}
+
+message RequestEmailCodeResponse {
+  string verification_id = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message VerifyEmailCodeRequest {
+  string email = 1;
+  string verification_id = 2;
+  string code = 3;
+}
+
+message VerifyEmailCodeResponse {
+  AuthenticationState state = 1;
+  optional Identity identity = 2;
+}
+
+message CompleteProfileRequest {
+  string username = 1;
+}
+
+message CompleteProfileResponse {
+  Identity identity = 1;
+}
+
+message GetCurrentIdentityRequest {}
+
+message GetCurrentIdentityResponse {
+  AuthenticationState state = 1;
+  optional Identity identity = 2;
+}
+
+message LogoutRequest {}
+
+message LogoutResponse {}
+
+service AuthService {
+  rpc RequestEmailCode(RequestEmailCodeRequest) returns (RequestEmailCodeResponse);
+  rpc VerifyEmailCode(VerifyEmailCodeRequest) returns (VerifyEmailCodeResponse);
+  rpc CompleteProfile(CompleteProfileRequest) returns (CompleteProfileResponse);
+  rpc GetCurrentIdentity(GetCurrentIdentityRequest) returns (GetCurrentIdentityResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+}

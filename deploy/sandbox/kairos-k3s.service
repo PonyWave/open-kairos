@@ -1,0 +1,25 @@
+[Unit]
+Description=Kairos isolated single-node K3s
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Delegate=yes
+PrivateMounts=yes
+KillMode=control-group
+TimeoutStopSec=30s
+Restart=no
+TasksMax=8192
+MemoryMax=16G
+CPUQuota=800%
+LimitNOFILE=1048576
+CapabilityBoundingSet=~CAP_SYS_MODULE
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=no
+ReadWritePaths=/proc/sys/net
+NoNewPrivileges=yes
+EnvironmentFile=/etc/kairos-sandbox/scope.env
+ExecStart=/opt/kairos-sandbox/bin/isolated-k3s.sh

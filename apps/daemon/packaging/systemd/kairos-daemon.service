@@ -1,0 +1,25 @@
+[Unit]
+Description=Kairos Daemon
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=kairos
+Group=kairos
+WorkingDirectory=/var/lib/kairos-daemon
+EnvironmentFile=-/etc/kairos-daemon/config.env
+ExecStart=/opt/kairos-daemon/current/bin/kairos-daemon
+Restart=on-failure
+RestartSec=10s
+RestartPreventExitStatus=78
+TimeoutStopSec=30s
+KillMode=control-group
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
