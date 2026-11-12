@@ -376,3 +376,29 @@ describe('web tool configuration', () => {
     expect(() => readWebConfig(environment)).toThrow();
   });
 });
+
+describe('memory configuration', () => {
+  it('defaults the memory directory under the data directory and enables the dream job', () => {
+    const config = readServerConfig({ KAIROS_DATA_DIR: '/data/kairos' });
+    expect(config.memory).toEqual({
+      directory: '/data/kairos/memory',
+      indexMaxBytes: 10 * 1024,
+    });
+    expect(config.memoryDreamEnabled).toBe(true);
+  });
+
+  it('accepts explicit memory directory, index limit and dream switch', () => {
+    const config = readServerConfig({
+      KAIROS_MEMORY_DIR: '/srv/memory',
+      KAIROS_MEMORY_INDEX_MAX_BYTES: '2048',
+      KAIROS_MEMORY_DREAM_ENABLED: 'false',
+    });
+    expect(config.memory).toEqual({ directory: '/srv/memory', indexMaxBytes: 2048 });
+    expect(config.memoryDreamEnabled).toBe(false);
+  });
+
+  it('rejects a relative memory directory and an invalid dream switch', () => {
+    expect(() => readServerConfig({ KAIROS_MEMORY_DIR: 'memory' })).toThrowError(/absolute path/);
+    expect(() => readServerConfig({ KAIROS_MEMORY_DREAM_ENABLED: 'yes' })).toThrowError();
+  });
+});

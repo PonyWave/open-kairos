@@ -26,6 +26,7 @@ import {
 import type { ContextMessage, DelegationKey } from '../context/types.js';
 import type { EnvironmentStore } from '../devices/environment-store.js';
 import type { EnvironmentUseGateway } from '../devices/environment-use.js';
+import type { MemoryWiki } from '../memory/index.js';
 import {
   type RecallVisibility,
   SqlRecallEngine,
@@ -81,7 +82,7 @@ import type {
   RunRecord,
   StreamDeltaRecord,
   ThreadNotificationRecord,
-  ThreadType,
+  ThreadRecord,
 } from './records.js';
 import { RequestSlots } from './request-slots.js';
 import type { AcceptedThreadCall, AcceptedThreadNotification, SessionStore } from './store.js';
@@ -129,6 +130,7 @@ export interface RunCoordinatorOptions {
   maxStepsPerRun?: number;
   maxSubagentDepth?: number;
   maxChildrenPerRun?: number;
+  memory?: MemoryWiki;
   bashDefaultTimeoutSeconds?: number;
   bashPreviewBytes?: number;
   periodicRecap?: PeriodicRecapConfiguration;
@@ -212,6 +214,7 @@ export class RunCoordinator {
   readonly #environmentRuntime: AgentEnvironmentRuntime;
   readonly #webSearchQuota: WebSearchQuota;
   readonly #browserRuntime: BrowserRuntime | undefined;
+  readonly #memory: MemoryWiki | undefined;
   readonly #modelRuntimes = new Map<string, ModelRuntime>();
   readonly #activeByThread = new Map<string, ActiveExecution>();
   readonly #activeByRun = new Map<string, ActiveExecution>();
@@ -235,6 +238,7 @@ export class RunCoordinator {
     }
     this.store = options.store;
     this.#options = options;
+    this.#memory = options.memory;
     this.#webSearchQuota = new WebSearchQuota(
       options.web?.searchLimits?.maxRequestsPerMinute ??
         DEFAULT_WEB_SEARCH_LIMITS.maxRequestsPerMinute,
@@ -1621,6 +1625,14 @@ export class RunCoordinator {
       agentInstructions(thread.threadType, agentId),
       ...this.#environmentRuntime.instructions(ownerId, threadId, agentId, run),
     ];
+    if (agentId === 'thread' && this.#memory?.exists()) {
+      instructions.push(this.#memory.usageInstructions());
+      const memoryIndex = this.#memory.indexInstructions();
+      if (memoryIndex !== undefined) instructions.push(memoryIndex);
+      if (thread.threadType === 'main') {
+        instructions.push(this.#memory.writePolicyInstructions());
+      }
+    }
     if (run && this.#previousRootRunCancelled(ownerId, threadId, run)) {
       instructions.push(CANCELLATION_REMINDER);
     }
@@ -1758,14 +1770,14 @@ export class RunCoordinator {
     };
   }
 
-  #recallEngine(run: RunRecord, threadType: ThreadType): SqlRecallEngine {
+  #recallEngine(run: RunRecord, thread: ThreadRecord): SqlRecallEngine {
     return new SqlRecallEngine(
       this.store.database,
       {
         scope: { threadId: run.threadId, agentId: run.agentId },
         currentRunId: run.runId,
         includeDescendants: run.agentId === 'thread',
-        visibility: recallVisibility(run, threadType),
+        visibility: recallVisibility(run, thread),
       },
       {
         ...(this.#options.sqlRecall ? { limits: this.#options.sqlRecall } : {}),
@@ -1778,10 +1790,10 @@ export class RunCoordinator {
     const scope = { threadId: run.threadId, agentId: run.agentId };
     const thread = this.store.getThread(run.ownerId, run.threadId);
     const threadType = thread.threadType;
-    const visibility = recallVisibility(run, threadType);
+    const visibility = recallVisibility(run, thread);
     const recall = {
       execute: (sql: string, options: { signal?: AbortSignal }) =>
-        this.#recallEngine(run, threadType).execute(sql, options),
+        this.#recallEngine(run, thread).execute(sql, options),
     };
     const tools: AgentTool[] = [createRecallTool({ engine: recall, scope, visibility })];
     tools.push(...createEnvironmentTools(this.#environmentRuntime, run));
@@ -2015,10 +2027,14 @@ export class RunCoordinator {
   }
 }
 
-function recallVisibility(run: RunRecord, threadType: ThreadType): RecallVisibility {
+function recallVisibility(
+  run: RunRecord,
+  thread: Pick<ThreadRecord, 'threadType' | 'automationOnly'>,
+): RecallVisibility {
   if (run.agentId !== 'thread') return 'self';
-  if (threadType === 'main') return 'owner';
-  if (threadType === 'workspace_main') return 'workspace';
+  if (thread.threadType === 'main') return 'owner';
+  if (thread.threadType === 'workspace_main') return 'workspace';
+  if (thread.automationOnly) return 'owner';
   return 'self';
 }
 

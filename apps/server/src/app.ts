@@ -27,6 +27,11 @@ import {
   MainEnvironmentUseGateway,
 } from './devices/main-environment.js';
 import { registerDeviceWebSocket } from './devices/websocket.js';
+import {
+  ensureMemoryDreamAutomation,
+  type MemoryConfiguration,
+  MemoryWiki,
+} from './memory/index.js';
 import type { SqlRecallLimits } from './recall/index.js';
 import type { PeriodicRecapConfiguration } from './recap/periodic.js';
 import type { EnvironmentOperationGateway } from './sessions/environment-runtime.js';
@@ -44,6 +49,9 @@ export interface IdentityServerOptions {
 export interface ServerOptions {
   deviceReleaseDirectory?: string;
   identity?: IdentityServerOptions;
+  tenantId?: string;
+  memory?: MemoryConfiguration | false;
+  memoryDreamEnabled?: boolean;
   environment?: EnvironmentStoreOptions;
   environmentOperations?: EnvironmentOperationGateway;
   environmentUse?: EnvironmentUseGateway;
@@ -125,6 +133,8 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
     ...options.modelSettings,
     allowedOrigins: options.modelSettings?.allowedOrigins ?? serverConfig.modelAllowedOrigins,
   });
+  const memory =
+    options.memory === false ? undefined : new MemoryWiki(options.memory ?? serverConfig.memory);
   let coordinator: RunCoordinator;
   const automations = new AutomationService(store, {
     ...(options.now ? { clock: options.now } : {}),
@@ -144,6 +154,7 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
       ? { maxConcurrentModelRequests: options.maxConcurrentModelRequests }
       : {}),
     ...(options.maxStepsPerRun ? { maxStepsPerRun: options.maxStepsPerRun } : {}),
+    ...(memory ? { memory } : {}),
     periodicRecap: options.periodicRecap ?? readPeriodicRecapConfig(),
     sqlRecall: options.sqlRecall ?? serverConfig.sqlRecall,
     web: options.web ?? serverConfig.web,
@@ -234,6 +245,14 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
     coordinator.recoverManualCompactions();
     coordinator.resumePeriodicRecaps();
     coordinator.resumeDeliveries();
+    if (options.tenantId && memory) {
+      ensureMemoryDreamAutomation(store, automations, {
+        ownerId: options.tenantId,
+        enabled: options.memoryDreamEnabled ?? serverConfig.memoryDreamEnabled,
+        directory: memory.directory,
+        indexMaxBytes: memory.indexMaxBytes,
+      });
+    }
     automations.start();
   });
   server.addHook('onReady', () => startup);

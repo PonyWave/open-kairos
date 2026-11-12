@@ -55,6 +55,8 @@
 
 `automations` 表包含 `workspace_id TEXT NULL` 列。fire 创建新 Thread 时写入对应工作空间，为空时落入临时对话列表。cron 计算、游标、fire 去重与恢复规则沿用现有设计。
 
+内置 `记忆整理 (dream)` Automation 在启动时按固定 client action 幂等播种，目标为 `new_automation_only`，每日 cron 触发；用户禁用或删除后不重建，重新启用走 GUI 的 Automation 开关。`KAIROS_MEMORY_DREAM_ENABLED=false` 时不播种。
+
 ## 6. recall 查询表
 
 只开放 `thread`、`context`、`recap` 三张查询表。`thread` 表包含 `workspace_id` 列，临时对话该列为 `NULL`。
@@ -64,9 +66,18 @@
 | 调用方 Run                        | 可见范围                                                              |
 | --------------------------------- | --------------------------------------------------------------------- |
 | 全局 main 根 Run                  | 本用户全部 Thread（含 automation_only）及其全部 Agent 作用域          |
+| automation_only Thread 根 Run     | 本用户全部 Thread（含 automation_only）及其全部 Agent 作用域          |
 | 工作空间 main 根 Run              | 本工作空间全部 Thread 与当前 Thread，及其全部 Agent 作用域            |
 | 任务 Thread、临时对话与子 Agent   | 当前 Thread 内的当前 Agent 作用域；根 Run 扩展为同 Thread 后代 Agent  |
 
 ## 7. 设备与 Operation
 
 主环境在首次启动写入环境记录并完成设备绑定，不可删除、不可撤销。远程设备配对、`environment_operations` 意图与恢复、输出与日志规则沿用现有设计。
+
+## 8. Memory Wiki 与 dream
+
+Memory Wiki 是主环境上的用户级长期记忆目录（默认 `<KAIROS_DATA_DIR>/memory`，`KAIROS_MEMORY_DIR` 覆盖）。`MEMORY.md` 为索引页（上限 `KAIROS_MEMORY_INDEX_MAX_BYTES`，默认 10 KiB，超限截断降级），主题页 `<slug>.md` 按需读取，`STATE.json` 为 dream 水位文件，目录可建 git 基线。
+
+- 读路径：记忆目录存在时，根 Agent（`agent_id = 'thread'`）的系统指令注入 memory 使用说明与索引块；目录不存在时不注入任何 memory 指令（首次 dream 运行创建目录或用户手工创建后生效）。索引缺失、空白或非法 UTF-8 时不注入索引块，不阻断对话。
+- 写路径一：全局 main 的根 Agent 额外获得写策略指令，用文件工具主动更新主题页与索引页；工作空间 Thread 经 `thread_notify` 向全局 main 提议。
+- 写路径二：dream Automation 的每次 fire 新建 automation_only Thread，按 `STATE.json` 水位增量整理 Wiki，其根 Run 的 recall 可见范围为本用户全部 Thread。

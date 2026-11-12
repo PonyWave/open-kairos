@@ -62,6 +62,8 @@ Server 首次启动时自动注册主环境：写入环境记录、完成设备�
 - recall 只开放 `thread`、`context`、`recap` 三张查询表。`thread` 表包含 `workspace_id` 列，临时对话该列为 `NULL`。可见范围按调用方 Run 分级：全局 main 根 Run 覆盖本用户全部 Thread，工作空间 main 根 Run 覆盖本工作空间，其余限当前 Thread，矩阵见[数据定义与运行状态](domain-and-state.md#6-recall-查询表)。
 - `workspace_list` 工具供 Agent 查询合法工作空间。
 - Automation 定义包含可选 `workspace_id`。fire 创建新 Thread 时写入对应工作空间，为空时落入临时对话列表。
+- automation_only Thread 根 Run 的 recall 可见范围为本用户全部 Thread，dream 依赖该能力读取历史。
+- 记忆目录存在时，根 Agent 的系统指令注入 Memory Wiki 索引（`MEMORY.md`，缺失或超限降级处理），全局 main 额外获得写策略；内置 `记忆整理 (dream)` Automation 按固定 client action 幂等播种，`new_automation_only` 目标每日触发，约定见[数据定义与运行状态](domain-and-state.md#8-memory-wiki-与-dream)。
 
 ## 6. GUI 结构
 

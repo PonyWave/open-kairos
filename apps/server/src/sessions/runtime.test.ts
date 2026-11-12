@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -11,11 +11,14 @@ import type {
 } from '@kairos/agent-core';
 import { ScriptedProvider } from '@kairos/agent-core/testing';
 import { expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import { AutomationService } from '../automation/service.js';
 import {
   controlledEnvironmentDependencies,
   seedTestEnvironment,
   testEnvironmentPolicyInput,
 } from '../integration/environment-fixture.js';
+import { MemoryWiki } from '../memory/index.js';
 import { openDatabase } from '../storage/database.js';
 import { BrowserRuntime } from '../tools/browser.js';
 import type { RunStatus } from './records.js';
@@ -109,6 +112,7 @@ async function fixture(
     periodicRecap?: RunCoordinatorOptions['periodicRecap'];
     sqlRecall?: RunCoordinatorOptions['sqlRecall'];
     browser?: BrowserRuntime | false;
+    memory?: MemoryWiki;
   } = {},
 ) {
   const directory = await mkdtemp(join(tmpdir(), 'kairos-runtime-'));
@@ -1360,6 +1364,149 @@ it('keeps delegated Runs in the global main Thread at self visibility', async ()
     expect(toolRows('thread', 'parent-cross')).toEqual([['narrowing secret']]);
   } finally {
     for (const gate of provider.gates) gate.resolve();
+    await cleanup(coordinator, database, directory);
+  }
+});
+
+it('injects the memory index into root Agents and the write policy only into the global main', async () => {
+  const memoryDirectory = await mkdtemp(join(tmpdir(), 'kairos-runtime-memory-'));
+  await writeFile(join(memoryDirectory, 'MEMORY.md'), '# 记忆\n- 偏好中文回复\n');
+  const provider = new ScriptedProvider([response('main done'), response('task done')]);
+  const { database, store, coordinator, thread, directory } = await fixture(provider, undefined, {
+    memory: new MemoryWiki({ directory: memoryDirectory }),
+  });
+  try {
+    const main = store.getOrCreateMainThread(ownerId);
+    const mainSent = send(store, main.threadId, 'query memory', 'send-memory-main');
+    await coordinator.deliver(mainSent.input, mainSent.runId);
+    await waitStatus(store, mainSent.runId, 'completed');
+    const taskSent = send(store, thread.threadId, 'query memory task', 'send-memory-task');
+    await coordinator.deliver(taskSent.input, taskSent.runId);
+    await waitStatus(store, taskSent.runId, 'completed');
+
+    const systemText = (index: number) =>
+      (provider.requests[index]?.messages ?? [])
+        .filter((message) => message.role === 'system')
+        .map((message) => message.content)
+        .join('\n');
+    expect(systemText(0)).toContain('<memory-index');
+    expect(systemText(0)).toContain('偏好中文回复');
+    expect(systemText(0)).toContain('Memory updates:');
+    expect(systemText(1)).toContain('<memory-index');
+    expect(systemText(1)).not.toContain('Memory updates:');
+  } finally {
+    await rm(memoryDirectory, { recursive: true, force: true });
+    await cleanup(coordinator, database, directory);
+  }
+});
+
+it('omits memory instructions when the configured memory directory is missing', async () => {
+  const provider = new ScriptedProvider([response('done')]);
+  const missingDirectory = join(tmpdir(), 'kairos-memory-missing-dir');
+  const { database, store, coordinator, thread, directory } = await fixture(provider, undefined, {
+    memory: new MemoryWiki({ directory: missingDirectory }),
+  });
+  try {
+    const sent = send(store, thread.threadId, 'memory directory missing');
+    await coordinator.deliver(sent.input, sent.runId);
+    await waitStatus(store, sent.runId, 'completed');
+    const systemText = (provider.requests[0]?.messages ?? [])
+      .filter((message) => message.role === 'system')
+      .map((message) => message.content)
+      .join('\n');
+    expect(systemText).not.toContain('<memory-index');
+    expect(systemText).not.toContain('Memory updates:');
+    expect(systemText).not.toContain('Long-term memory:');
+  } finally {
+    await cleanup(coordinator, database, directory);
+  }
+});
+
+it('omits memory instructions when no memory wiki is configured', async () => {
+  const provider = new ScriptedProvider([response('done')]);
+  const { database, store, coordinator, thread, directory } = await fixture(provider);
+  try {
+    const sent = send(store, thread.threadId, 'no memory');
+    await coordinator.deliver(sent.input, sent.runId);
+    await waitStatus(store, sent.runId, 'completed');
+    const systemText = (provider.requests[0]?.messages ?? [])
+      .filter((message) => message.role === 'system')
+      .map((message) => message.content)
+      .join('\n');
+    expect(systemText).not.toContain('<memory-index');
+    expect(systemText).not.toContain('Memory updates:');
+  } finally {
+    await cleanup(coordinator, database, directory);
+  }
+});
+
+it('elevates recall visibility to the owner for automation-only Thread root Runs', async () => {
+  const provider = new ScriptedProvider([
+    response('', [
+      {
+        id: 'dream-recall',
+        name: 'recall',
+        arguments: { sql: "SELECT content FROM context WHERE content = 'watched thread note'" },
+      },
+    ]),
+    response('dream done'),
+  ]);
+  const { database, store, coordinator, directory } = await fixture(provider);
+  const service = new AutomationService(store, {
+    deliver: (input, runId) => coordinator.deliver(input, runId),
+  });
+  try {
+    const other = store.createThread(
+      action('CreateThread', 'create-dream-other', { title: '其他会话' }),
+    );
+    const otherRun = send(store, other.threadId, 'watched thread note', 'send-dream-other');
+    store.appendModelMessage({
+      runId: otherRun.runId,
+      inputId: otherRun.input.inputId,
+      message: { role: 'user', content: otherRun.input.text },
+    });
+    store.updateRunStatus(otherRun.runId, 'completed');
+    const automation = service.create({
+      ownerId,
+      clientActionId: 'create-dream-automation',
+      name: '记忆整理 (dream)',
+      prompt: '整理记忆',
+      schedule: { kind: 'cron', expression: '23 3 * * *', timeZone: 'Asia/Shanghai' },
+      target: { kind: 'new_automation_only' },
+    });
+    const fire = await service.runNow({
+      ownerId,
+      clientActionId: 'run-dream-automation',
+      scheduleId: automation.scheduleId,
+    });
+    await vi.waitFor(
+      () => {
+        const message = database
+          .prepare(
+            `SELECT content FROM context_messages
+             WHERE role = 'tool' AND tool_call_id = 'dream-recall' ORDER BY seq DESC LIMIT 1`,
+          )
+          .get();
+        expect(message).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+    const message = database
+      .prepare(
+        `SELECT content FROM context_messages
+         WHERE role = 'tool' AND tool_call_id = 'dream-recall' ORDER BY seq DESC LIMIT 1`,
+      )
+      .get();
+    const result = JSON.parse(z.object({ content: z.string() }).parse(message).content);
+    expect(result.rows).toEqual([['watched thread note']]);
+    const currentFire = service.store
+      .listFires(ownerId, automation.scheduleId, 0n, 10)
+      .find((candidate) => candidate.fireId === fire.fireId);
+    expect(currentFire?.targetThreadId).toBeTruthy();
+    const dreamThread = store.getThread(ownerId, currentFire?.targetThreadId ?? '');
+    expect(dreamThread.automationOnly).toBe(true);
+  } finally {
+    await service.close();
     await cleanup(coordinator, database, directory);
   }
 });

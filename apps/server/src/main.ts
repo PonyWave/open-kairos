@@ -26,7 +26,15 @@ function loadOrCreateAuthSecret(dataDirectory: string): string {
 const config = readServerConfig();
 const database = openDatabase(join(config.dataDirectory, 'kairos.sqlite'));
 const authSecret = config.auth.secret ?? loadOrCreateAuthSecret(config.dataDirectory);
+const sessionStore = new SessionStore(database, { mainEnvironment: config.mainEnvironment });
+const authService = new AuthService(new AuthStore(database), {
+  secret: authSecret,
+  createMainThread: (tenantId) => sessionStore.getOrCreateMainThread(tenantId),
+});
+const localIdentity = authService.ensureLocalIdentity();
+const localSession = authService.createLocalSession();
 const server = createServer(database, true, {
+  tenantId: localIdentity.tenantId,
   identity: {
     secret: authSecret,
     allowedOrigin: config.auth.allowedOrigin,
@@ -53,14 +61,6 @@ const server = createServer(database, true, {
   maxConcurrentModelRequests: config.maxConcurrentModelRequests,
   maxStepsPerRun: config.maxStepsPerRun,
 });
-
-const sessionStore = new SessionStore(database, { mainEnvironment: config.mainEnvironment });
-const authService = new AuthService(new AuthStore(database), {
-  secret: authSecret,
-  createMainThread: (tenantId) => sessionStore.getOrCreateMainThread(tenantId),
-});
-const localIdentity = authService.ensureLocalIdentity();
-const localSession = authService.createLocalSession();
 
 let closing = false;
 const shutdownHandlers: Array<() => Promise<void>> = [];

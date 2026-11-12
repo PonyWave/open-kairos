@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
-import { isAbsolute } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ModelRequest } from '@kairos/agent-core';
 import { ModelApiType } from '@kairos/contracts';
 import { z } from 'zod';
+import { DEFAULT_MEMORY_INDEX_MAX_BYTES, type MemoryConfiguration } from './memory/index.js';
 import type { EstimatingModelProvider } from './providers/base.js';
 import { createModelProvider, providerIdForApiType } from './providers/factory.js';
 import { DEFAULT_SQL_RECALL_LIMITS, type SqlRecallLimits } from './recall/types.js';
@@ -74,6 +75,17 @@ const environmentSchema = z.object({
   KAIROS_MAX_ACTIVE_THREADS: z.coerce.number().int().positive().max(100).default(2),
   KAIROS_MAX_CONCURRENT_MODEL_REQUESTS: z.coerce.number().int().positive().max(100).default(4),
   KAIROS_MAX_STEPS_PER_RUN: z.coerce.number().int().positive().max(1000).default(30),
+  KAIROS_MEMORY_DIR: z
+    .string()
+    .refine(isAbsolute, 'KAIROS_MEMORY_DIR must be an absolute path.')
+    .optional(),
+  KAIROS_MEMORY_INDEX_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1024)
+    .max(1024 * 1024)
+    .default(DEFAULT_MEMORY_INDEX_MAX_BYTES),
+  KAIROS_MEMORY_DREAM_ENABLED: z.enum(['true', 'false']).default('true'),
   KAIROS_RECAP_PERIODIC_MESSAGE_THRESHOLD: z.coerce
     .number()
     .int()
@@ -534,6 +546,11 @@ export function readServerConfig(environment: NodeJS.ProcessEnv = process.env) {
     maxActiveThreads: config.KAIROS_MAX_ACTIVE_THREADS,
     maxConcurrentModelRequests: config.KAIROS_MAX_CONCURRENT_MODEL_REQUESTS,
     maxStepsPerRun: config.KAIROS_MAX_STEPS_PER_RUN,
+    memory: {
+      directory: config.KAIROS_MEMORY_DIR ?? join(config.KAIROS_DATA_DIR, 'memory'),
+      indexMaxBytes: config.KAIROS_MEMORY_INDEX_MAX_BYTES,
+    } satisfies MemoryConfiguration,
+    memoryDreamEnabled: config.KAIROS_MEMORY_DREAM_ENABLED === 'true',
     periodicRecap: readPeriodicRecapConfig(environment),
     sqlRecall: readSqlRecallConfig(environment),
     web: readWebConfig(environment),

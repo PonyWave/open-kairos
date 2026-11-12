@@ -27,6 +27,9 @@
 - `KAIROS_MAIN_WORKSPACE`：主环境工作目录，默认为启动命令所在目录。
 - `KAIROS_PORT`：固定服务端口（GUI 与 RPC 同端口）；未设置时自动选择空闲端口。
 - `KAIROS_AUTH_SECRET`：认证密钥；未设置时自动生成并保存到 `<KAIROS_DATA_DIR>/auth-secret`（0600）。
+- `KAIROS_MEMORY_DIR`：Memory Wiki 目录，默认 `<KAIROS_DATA_DIR>/memory`。
+- `KAIROS_MEMORY_INDEX_MAX_BYTES`：`MEMORY.md` 注入字节上限，默认 10240。
+- `KAIROS_MEMORY_DREAM_ENABLED`：是否播种每日 dream Automation，`true`（默认）或 `false`。
 - 模型配置：`KAIROS_MODEL_BASE_URL`、`KAIROS_MODEL_ID` 等，未配置时不能执行 Agent 任务。
 
 受限 browser 工具使用 Playwright 驱动的 Chromium，首次使用前安装浏览器二进制：
