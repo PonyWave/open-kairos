@@ -11,7 +11,7 @@ const envTargetParameters = {
     minLength: 1,
     maxLength: 200,
     description:
-      'Optional authorized target for this call; omission uses the tenant sandbox workspace, whose explicit env_id is sandbox.',
+      'Optional authorized target for this call; omission uses the main environment workspace, whose explicit env_id is main.',
   },
 };
 const pathSchema = z.string().min(1).max(4096);
@@ -96,7 +96,7 @@ export function createEnvironmentTools(
     {
       name: 'env_list',
       description:
-        'List authorized environments and their connection and lifecycle states, including the tenant sandbox; listing does not start an environment.',
+        'List authorized environments and their connection and lifecycle states, including the main environment; listing does not start an environment.',
       parameters: { type: 'object', additionalProperties: false, properties: {} },
       concurrent: true,
       validate: (value) => envListSchema.parse(value),
@@ -306,7 +306,7 @@ export function createEnvironmentTools(
     {
       name: 'env_sync',
       description:
-        'Copy a regular file or directory between two different authorized environments using normalized absolute POSIX paths. The sandbox env_id is sandbox. on_conflict defaults to fail; skip and overwrite apply only to files with different content, while identical files are always skipped. overwrite never deletes extra target entries.',
+        'Copy a regular file or directory between two different authorized environments using normalized absolute POSIX paths. The main environment env_id is main. on_conflict defaults to fail; skip and overwrite apply only to files with different content, while identical files are always skipped. overwrite never deletes extra target entries.',
       parameters: {
         type: 'object',
         additionalProperties: false,

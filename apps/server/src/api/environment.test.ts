@@ -9,7 +9,7 @@ import {
   EnvironmentMaintenanceMode,
   EnvironmentService,
 } from '@kairos/contracts';
-import { DeviceCapability, DeviceErrorCode } from '@kairos/contracts/device';
+import { DeviceCapability } from '@kairos/contracts/device';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EnvironmentStore } from '../devices/environment-store.js';
 import {
@@ -51,19 +51,21 @@ function seedTenant(database: DatabaseSync, tenantId: string): void {
 }
 
 function fixture(
-  options: Pick<EnvironmentApiOptions, 'installer' | 'directories' | 'standaloneDeviceEnvId'> = {},
+  options: Pick<EnvironmentApiOptions, 'installer' | 'directories'> & {
+    mainEnvironmentEnvId?: string;
+  } = {},
 ) {
   const database = openDatabase(':memory:');
   databases.push(database);
   new SessionStore(database);
   seedTenant(database, 'tenant-1');
   seedTenant(database, 'tenant-2');
-  const standaloneDevice = options.standaloneDeviceEnvId
-    ? { envId: options.standaloneDeviceEnvId, workspace: '/workspace' as const }
-    : undefined;
+  const mainEnvironment = options.mainEnvironmentEnvId
+    ? { envId: options.mainEnvironmentEnvId, workspace: '/workspace' }
+    : { envId: 'main', workspace: '/workspace' };
   const environments = new EnvironmentStore(database, {
     now: () => new Date(now),
-    ...(standaloneDevice ? { standaloneDevice } : {}),
+    mainEnvironment,
   });
   const clientFor = (tenantId: string) => {
     const authentication: Interceptor = (next) => async (request) => {
@@ -75,9 +77,16 @@ function fixture(
     const transport = createRouterTransport(
       (router) =>
         registerEnvironmentRoutes(router, {
-          ...options,
+          ...(options.installer ? { installer: options.installer } : {}),
+          ...(options.directories ? { directories: options.directories } : {}),
           environments,
-          authentication: createTestAuthentication(database, tenantId, `session-${tenantId}`),
+          mainEnvironment,
+          authentication: createTestAuthentication(
+            database,
+            tenantId,
+            `session-${tenantId}`,
+            mainEnvironment,
+          ),
         }),
       { transport: { interceptors: [authentication] } },
     );
@@ -229,65 +238,49 @@ describe('connected device management API', () => {
       first.beginDeviceConnection({ clientActionId: 'begin-unconfigured' }),
     ).rejects.toMatchObject({ code: Code.FailedPrecondition });
     expect(
-      database
-        .prepare("SELECT COUNT(*) AS count FROM environments WHERE kind <> 'platform_sandbox'")
-        .get(),
+      database.prepare("SELECT COUNT(*) AS count FROM environments WHERE name <> '主环境'").get(),
     ).toMatchObject({
       count: 0,
     });
   });
 
-  it('reopens standalone pairing through the GUI client after cancel and active revoke', async () => {
-    const { database, environments, first, second } = fixture({
+  it('pairs a new device through the GUI client while the main environment cannot be revoked', async () => {
+    const { database, environments, first } = fixture({
       installer,
-      standaloneDeviceEnvId: 'cvm-device',
+      mainEnvironmentEnvId: 'cvm-device',
     });
-    const initial = await first.beginDeviceConnection({ clientActionId: 'gui-standalone-initial' });
-    expect(initial.environment).toMatchObject({
-      envId: 'cvm-device',
-      bindingStatus: EnvironmentBindingStatus.PAIRING,
-      recommendedPwd: '/workspace',
-    });
+    const initial = await first.beginDeviceConnection({ clientActionId: 'gui-begin-initial' });
+    const envId = initial.environment?.envId ?? '';
+    expect(envId).not.toBe('cvm-device');
+    expect(initial.environment?.bindingStatus).toBe(EnvironmentBindingStatus.PAIRING);
+    await expect(
+      first.cancelDeviceConnection({ clientActionId: 'gui-cancel-main', envId: 'cvm-device' }),
+    ).rejects.toMatchObject({ code: Code.PermissionDenied });
+    await expect(
+      first.revokeEnvironment({ clientActionId: 'gui-revoke-main', envId: 'cvm-device' }),
+    ).rejects.toMatchObject({ code: Code.PermissionDenied });
     const cancelled = await first.cancelDeviceConnection({
-      clientActionId: 'gui-standalone-cancel',
-      envId: 'cvm-device',
+      clientActionId: 'gui-cancel-device',
+      envId,
     });
     expect(cancelled.environment?.bindingStatus).toBe(EnvironmentBindingStatus.REVOKED);
-    const restored = await first.beginDeviceConnection({ clientActionId: 'gui-standalone-retry' });
-    expect(restored.environment?.bindingStatus).toBe(EnvironmentBindingStatus.PAIRING);
-    expect(restored.pairingCredential).not.toBe(initial.pairingCredential);
-    expect(() => exchange(environments, 'cvm-device', initial.pairingCredential)).toThrowError(
-      expect.objectContaining({ code: DeviceErrorCode.UNAUTHENTICATED }),
-    );
-    const firstBinding = exchange(environments, 'cvm-device', restored.pairingCredential);
-    const revoked = await first.revokeEnvironment({
-      clientActionId: 'gui-standalone-revoke',
-      envId: 'cvm-device',
+    const next = await first.beginDeviceConnection({ clientActionId: 'gui-begin-next' });
+    expect(next.environment?.envId).not.toBe(envId);
+    expect(next.pairingCredential).not.toBe(initial.pairingCredential);
+    const binding = environments.exchangePairing({
+      envId: next.environment?.envId ?? '',
+      pairingCredential: next.pairingCredential,
+      reportedCapabilities: [DeviceCapability.DIRECTORY_CHECK],
+      deviceName: 'gui-device',
+      homeDirectory: '/home/gui-device',
+      os: 'linux',
     });
-    expect(revoked.environment?.bindingStatus).toBe(EnvironmentBindingStatus.REVOKED);
-    const activeRestored = await first.beginDeviceConnection({
-      clientActionId: 'gui-standalone-active-retry',
-    });
-    expect(activeRestored.environment).toMatchObject({
-      envId: 'cvm-device',
-      bindingStatus: EnvironmentBindingStatus.PAIRING,
-      connectionStatus: EnvironmentConnectionStatus.OFFLINE,
-      capabilityStatus: EnvironmentCapabilityStatus.PENDING,
-      directoryStatus: EnvironmentDirectoryStatus.PENDING,
-      recommendedPwd: '/workspace',
-    });
-    expect(activeRestored.pairingCredential).not.toBe(restored.pairingCredential);
-    await expect(
-      second.beginDeviceConnection({ clientActionId: 'gui-standalone-other-tenant' }),
-    ).rejects.toMatchObject({ code: Code.PermissionDenied });
-    expect(environments.get('tenant-1', 'cvm-device').ready).toBe(false);
+    expect(binding.deviceBindingId).toBeTruthy();
     expect(
       database
         .prepare('SELECT status FROM environment_device_bindings WHERE device_binding_id = ?')
-        .get(firstBinding.deviceBindingId),
-    ).toEqual({ status: 'revoked' });
-    const secondBinding = exchange(environments, 'cvm-device', activeRestored.pairingCredential);
-    expect(secondBinding.deviceBindingId).not.toBe(firstBinding.deviceBindingId);
+        .get(binding.deviceBindingId),
+    ).toEqual({ status: 'active' });
   });
 });
 
@@ -340,7 +333,7 @@ describe('Environment Connect API', () => {
     expect(firstList.mainEnvId).toBeTruthy();
     expect(
       firstList.environments.find((environment) => environment.envId === firstList.mainEnvId)?.kind,
-    ).toBe(EnvironmentKind.PLATFORM_SANDBOX);
+    ).toBe(EnvironmentKind.SELF_HOSTED_LINUX);
     expect((await second.listEnvironments({})).environments).toHaveLength(1);
     await expect(second.getEnvironment({ envId })).rejects.toMatchObject({
       code: Code.PermissionDenied,
@@ -356,12 +349,8 @@ describe('Environment Connect API', () => {
     expect(reissued.environment?.envId).toBe(envId);
     expect(reissued.pairingCredential).not.toBe(registered.pairingCredential);
     expect((await first.listEnvironments({})).environments).toHaveLength(2);
-    expect(
-      database
-        .prepare("SELECT COUNT(*) AS count FROM environments WHERE kind <> 'platform_sandbox'")
-        .get(),
-    ).toEqual({
-      count: 1,
+    expect(database.prepare('SELECT COUNT(*) AS count FROM environments').get()).toEqual({
+      count: 3,
     });
     expect(
       database
@@ -380,9 +369,7 @@ describe('Environment Connect API', () => {
       }),
     ).rejects.toMatchObject({ code: Code.InvalidArgument });
     expect(
-      database
-        .prepare("SELECT COUNT(*) AS count FROM environments WHERE kind <> 'platform_sandbox'")
-        .get(),
+      database.prepare("SELECT COUNT(*) AS count FROM environments WHERE name <> '主环境'").get(),
     ).toEqual({
       count: 0,
     });

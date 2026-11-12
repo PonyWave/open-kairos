@@ -999,7 +999,7 @@ it('executes Agent tools through the real Server channel and isolates two enviro
       );
     expect(binding).toEqual({
       current_env: created.thread?.currentBinding?.envId,
-      current_pwd: '/workspace',
+      current_pwd: fixture.mainEnvironment.workspace,
       current_binding_version: 1,
     });
     const operationActions = z
@@ -1131,7 +1131,7 @@ it('reruns in the shared sandbox workspace and explicitly targets another enviro
       'thread',
     );
     expect(restored.current.envId).toBe(created.thread?.currentBinding?.envId);
-    expect(restored.current.pwd).toBe('/workspace');
+    expect(restored.current.pwd).toBe(fixture.mainEnvironment.workspace);
     expect(restored.current.bindingVersion).toBe(2);
     expect(restored.current.resourceVersion).toBe(initialResource);
     expect(readFileSync(join(fixture.workspace, 'rerun.txt'), 'utf8')).toBe(

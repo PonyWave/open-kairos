@@ -1,17 +1,25 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { OperationStatus } from '@kairos/contracts/device';
-import type { EnvironmentStore } from './devices/environment-store.js';
-import type { PlatformUseGateway } from './platform/contracts.js';
-import type { PlatformWorkspaceGateway } from './platform/manager.js';
-import type { EnvironmentOperationGateway } from './sessions/environment-runtime.js';
-import { SessionError } from './sessions/errors.js';
+import type { EnvironmentOperationGateway } from '../sessions/environment-runtime.js';
+import { SessionError } from '../sessions/errors.js';
+import type { EnvironmentStore } from './environment-store.js';
+import type { EnvironmentUseGateway } from './environment-use.js';
 
-export function platformWorkspaceGateway(
+export interface WorkspaceReadinessGateway {
+  ensureWorkspaceReady(input: {
+    tenantId: string;
+    envId: string;
+    pwd: string;
+    signal: AbortSignal;
+  }): Promise<void>;
+}
+
+export function workspaceReadinessGateway(
   environments: EnvironmentStore,
   operations: EnvironmentOperationGateway,
-  platform: PlatformUseGateway,
-): PlatformWorkspaceGateway {
+  environmentUse: EnvironmentUseGateway,
+): WorkspaceReadinessGateway {
   return {
     async ensureWorkspaceReady(input) {
       const expiresAt = new Date(Date.now() + 30_000);
@@ -27,7 +35,7 @@ export function platformWorkspaceGateway(
             kind: 'operation' as const,
             usageId: `operation:${operationId}`,
           };
-          platform.reserveUse(use);
+          environmentUse.reserveUse(use);
           let started = false;
           try {
             await operations.startEnvironmentOperation({
@@ -43,17 +51,21 @@ export function platformWorkspaceGateway(
               const operation = operations.getEnvironmentOperation(input.tenantId, operationId);
               if (operation.resultStatus !== undefined) {
                 if (operation.resultStatus !== OperationStatus.COMPLETED) {
-                  throw new SessionError('sandbox_unavailable', '平台工作区目录检查失败。', {
-                    retryable: true,
-                  });
+                  throw new SessionError(
+                    'failed_precondition',
+                    'The workspace directory check failed.',
+                    {
+                      retryable: true,
+                    },
+                  );
                 }
                 environments.requireReady(input.tenantId, input.envId);
-                platform.releaseUse(use);
+                environmentUse.releaseUse(use);
                 return;
               }
               await delay(50, undefined, { signal: input.signal });
             }
-            throw new SessionError('sandbox_unavailable', '平台工作区目录检查超时。', {
+            throw new SessionError('device_offline', 'The workspace directory check timed out.', {
               retryable: true,
             });
           } catch (error) {
@@ -62,7 +74,7 @@ export function platformWorkspaceGateway(
                 await operations.cancelEnvironmentOperation({
                   tenantId: input.tenantId,
                   operationId,
-                  reason: 'Platform workspace preparation stopped.',
+                  reason: 'Workspace preparation stopped.',
                 });
               } catch {
                 /* The durable Operation reference remains until its outcome is reconciled. */
@@ -74,7 +86,7 @@ export function platformWorkspaceGateway(
         }
         await delay(100, undefined, { signal: input.signal });
       }
-      throw new SessionError('sandbox_unavailable', '平台 Daemon 未在期限内连接。', {
+      throw new SessionError('device_offline', 'The environment Daemon did not connect in time.', {
         retryable: true,
       });
     },

@@ -26,6 +26,7 @@ import { AutomationService as AutomationManager } from '../automation/service.js
 import type { ModelConfigurationStatus } from '../config.js';
 import type { DeviceChannel } from '../devices/channel.js';
 import type { EnvironmentStore } from '../devices/environment-store.js';
+import type { MainEnvironmentConfiguration } from '../devices/main-environment.js';
 import type { DeviceBashStore } from '../devices/operation-store.js';
 import { requirePositiveInteger, requireText, SessionError } from '../sessions/errors.js';
 import { EventCursorError, watchThreadEvents } from '../sessions/events.js';
@@ -114,9 +115,8 @@ export interface GuiApiOptions {
   maxEventBytes?: number;
   maxSnapshotBytes?: number;
   maxSnapshotRecords?: number;
-  platformConfigured?: boolean;
-  isPlatformReady?: () => boolean;
-  standaloneDeviceEnvId?: string;
+  mainEnvironment?: MainEnvironmentConfiguration;
+  isMainEnvironmentReady?: (tenantId: string) => boolean;
 }
 
 export function registerGuiRoutes(router: ConnectRouter, options: GuiApiOptions): void {
@@ -144,15 +144,13 @@ export function registerGuiRoutes(router: ConnectRouter, options: GuiApiOptions)
           },
         }),
   });
-  if (options.environments) {
+  if (options.environments && options.mainEnvironment) {
     registerEnvironmentRoutes(router, {
       environments: options.environments,
       authentication: options.authentication,
       ...(options.environmentDirectories ? { directories: options.environmentDirectories } : {}),
       ...(options.deviceInstaller ? { installer: options.deviceInstaller } : {}),
-      ...(options.standaloneDeviceEnvId
-        ? { standaloneDeviceEnvId: options.standaloneDeviceEnvId }
-        : {}),
+      mainEnvironment: options.mainEnvironment,
     });
   }
   const action = <T extends Record<string, unknown>>(
@@ -301,8 +299,8 @@ export function registerGuiRoutes(router: ConnectRouter, options: GuiApiOptions)
             ? undefined
             : Math.max(1, Math.floor((options.maxEventBytes * 3) / 4)));
         return getThreadSnapshot(options.store, ownerId, request, {
-          platformConfigured: options.platformConfigured ?? false,
-          platformReady: options.isPlatformReady?.() ?? true,
+          ...(options.mainEnvironment ? { mainEnvironment: options.mainEnvironment } : {}),
+          mainEnvironmentReady: options.isMainEnvironmentReady?.(ownerId) ?? true,
           ...(maxBytes === undefined ? {} : { maxBytes }),
           ...(options.maxSnapshotRecords === undefined
             ? {}

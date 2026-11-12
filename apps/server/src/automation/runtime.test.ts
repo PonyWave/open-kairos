@@ -13,7 +13,9 @@ const ownerId = 'automation-runtime-owner';
 
 async function fixture() {
   const database = openDatabase(':memory:');
-  const store = new SessionStore(database);
+  const store = new SessionStore(database, {
+    mainEnvironment: { envId: 'env-main-1', workspace: '/workspace' },
+  });
   const provider = new ControlledProvider();
   let coordinator: RunCoordinator;
   const service = new AutomationService(store, {
@@ -186,7 +188,7 @@ it('resolves and projects the sandbox alias throughout Automation management and
             name: 'sandbox task',
             prompt: 'run in sandbox',
             schedule: { kind: 'cron', expression: '0 9 * * *', time_zone: 'Asia/Shanghai' },
-            target: { kind: 'new_task', allowed_env: ['sandbox'] },
+            target: { kind: 'new_task', allowed_env: ['main'] },
             enabled: false,
           },
         },
@@ -219,7 +221,7 @@ it('resolves and projects the sandbox alias throughout Automation management and
     const scheduleId = automation.scheduleId;
     const sandboxId = automation.target.environmentPolicy?.allowedEnv[0];
     expect(sandboxId).toBeDefined();
-    expect(sandboxId).not.toBe('sandbox');
+    expect(sandboxId).not.toBe('main');
 
     current.provider.register(
       'user:manage sandbox automation',
@@ -237,7 +239,7 @@ it('resolves and projects the sandbox alias throughout Automation management and
             schedule_id: scheduleId,
             expected_version: 1,
             name: 'updated sandbox task',
-            target: { kind: 'new_task', allowed_env: ['sandbox', 'env-1'] },
+            target: { kind: 'new_task', allowed_env: ['main', 'env-1'] },
           },
         },
       ]),
@@ -287,10 +289,10 @@ it('resolves and projects the sandbox alias throughout Automation management and
       return message.message.content;
     });
     for (const content of contents) expect(content).not.toContain(sandboxId ?? '');
-    expect(contents[0]).toContain('"allowedEnv":["sandbox"]');
-    expect(contents[1]).toContain('"allowedEnv":["sandbox"]');
-    expect(contents[2]).toContain('"allowedEnv":["sandbox"]');
-    expect(contents[3]).toContain('"allowedEnv":["sandbox","env-1"]');
+    expect(contents[0]).toContain('"allowedEnv":["main"]');
+    expect(contents[1]).toContain('"allowedEnv":["main"]');
+    expect(contents[2]).toContain('"allowedEnv":["main"]');
+    expect(contents[3]).toContain('"allowedEnv":["main","env-1"]');
     expect(contents[4]).toMatch(/"status":"(queued|running|completed)"/);
 
     const updated = current.service.store.getAutomation(ownerId, scheduleId);

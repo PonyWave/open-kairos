@@ -134,12 +134,8 @@ it('runs environment RPCs with real sessions and independently verifies SQLite s
     expect(reissued.json().environment.envId).toBe(envId);
     const pairingCredential = reissued.json().pairingCredential;
     expect(pairingCredential).not.toBe(firstCredential);
-    expect(
-      database
-        .prepare("SELECT COUNT(*) AS count FROM environments WHERE kind <> 'platform_sandbox'")
-        .get(),
-    ).toEqual({
-      count: 1,
+    expect(database.prepare('SELECT COUNT(*) AS count FROM environments').get()).toEqual({
+      count: 3,
     });
 
     const forbidden = await second.call('EnvironmentService', 'GetEnvironment', { envId });
@@ -149,7 +145,7 @@ it('runs environment RPCs with real sessions and independently verifies SQLite s
     expect(secondList.json().environments).toHaveLength(1);
     expect(secondList.json().environments[0]).toMatchObject({
       envId: secondList.json().mainEnvId,
-      kind: 'ENVIRONMENT_KIND_PLATFORM_SANDBOX',
+      kind: 'ENVIRONMENT_KIND_SELF_HOSTED_LINUX',
     });
     expect(secondList.json().mainEnvId).not.toBe(
       (await first.call('EnvironmentService', 'ListEnvironments', {})).json().mainEnvId,

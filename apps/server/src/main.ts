@@ -1,7 +1,6 @@
 import { join } from 'node:path';
 import { createServer } from './app.js';
 import { readServerConfig } from './config.js';
-import { readPlatformConfiguration } from './config-platform.js';
 import { openDatabase } from './storage/database.js';
 
 const config = readServerConfig();
@@ -32,10 +31,7 @@ const server = createServer(database, true, {
       }
     : {}),
   modelStatus: config.modelStatus,
-  ...(config.sandboxConfigFile
-    ? { platform: readPlatformConfiguration(config.sandboxConfigFile) }
-    : {}),
-  ...(config.standaloneDevice ? { standaloneDevice: config.standaloneDevice } : {}),
+  mainEnvironment: config.mainEnvironment,
   maxRpcBytes: config.maxRpcBytes,
   maxEventQueue: config.maxEventQueue,
   maxActiveThreads: config.maxActiveThreads,

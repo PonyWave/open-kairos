@@ -24,7 +24,7 @@ import {
 import type { DeviceRecord } from '../devices/device-store.js';
 import { DeviceStore } from '../devices/device-store.js';
 import type { EnvironmentRecord } from '../devices/environment-store.js';
-import type { StandaloneDeviceConfiguration } from '../devices/standalone-device.js';
+import type { MainEnvironmentConfiguration } from '../devices/main-environment.js';
 import { RecapStore } from '../recap/recap-store.js';
 import type { Recap } from '../recap/types.js';
 import { migrateDatabase } from '../storage/migrations.js';
@@ -481,7 +481,7 @@ export interface SessionStoreOptions {
   maxMessageBytes?: number;
   maxQueuedInputs?: number;
   maxRpcBytes?: number;
-  standaloneDevice?: StandaloneDeviceConfiguration;
+  mainEnvironment?: MainEnvironmentConfiguration;
 }
 
 export class SessionStore {
@@ -531,7 +531,7 @@ export class SessionStore {
     this.agentEnvironments = new AgentEnvironmentStore(database, {
       createId: this.#createId,
       now: () => this.#clock(),
-      ...(options.standaloneDevice ? { standaloneDevice: options.standaloneDevice } : {}),
+      ...(options.mainEnvironment ? { mainEnvironment: options.mainEnvironment } : {}),
     });
   }
 
@@ -588,10 +588,13 @@ export class SessionStore {
   }
 
   publishMainEnvironment(tenantId: string, environment: EnvironmentRecord): void {
-    if (environment.tenantId !== tenantId || environment.kind !== 'platform_sandbox') {
+    if (
+      environment.tenantId !== tenantId ||
+      this.agentEnvironments.mainEnvironmentIdFor(tenantId) !== environment.envId
+    ) {
       throw new SessionError(
         'permission_denied',
-        'The main environment does not belong to this tenant.',
+        'The environment is not the main environment of this tenant.',
       );
     }
     this.transaction(() => {

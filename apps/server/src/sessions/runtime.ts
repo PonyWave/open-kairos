@@ -25,7 +25,7 @@ import {
 } from '../context/model-input-service.js';
 import type { ContextMessage, DelegationKey } from '../context/types.js';
 import type { EnvironmentStore } from '../devices/environment-store.js';
-import type { PlatformUseGateway } from '../platform/contracts.js';
+import type { EnvironmentUseGateway } from '../devices/environment-use.js';
 import { SqlRecallEngine, type SqlRecallLimits, SqlRecallProcessPool } from '../recall/index.js';
 import { RecapModelGenerator } from '../recap/generation.js';
 import { type PeriodicRecapConfiguration, PeriodicRecapService } from '../recap/periodic.js';
@@ -115,7 +115,7 @@ export interface RunCoordinatorOptions {
   settings?: SettingsStore;
   environments: EnvironmentStore;
   environmentOperations: EnvironmentOperationGateway;
-  platformUse: PlatformUseGateway;
+  environmentUse: EnvironmentUseGateway;
   maxActiveThreads?: number;
   maxConcurrentModelRequests?: number;
   maxStepsPerRun?: number;
@@ -219,10 +219,10 @@ export class RunCoordinator {
   #closing = false;
 
   constructor(options: RunCoordinatorOptions) {
-    if (!options.environments || !options.environmentOperations || !options.platformUse) {
+    if (!options.environments || !options.environmentOperations || !options.environmentUse) {
       throw new SessionError(
         'internal',
-        'EnvironmentStore, the remote Operation gateway and the platform usage gateway are required.',
+        'EnvironmentStore, the remote Operation gateway and the environment usage gateway are required.',
       );
     }
     this.store = options.store;
@@ -248,7 +248,7 @@ export class RunCoordinator {
       store: options.store,
       environments: options.environments,
       operations: options.environmentOperations,
-      platformUse: options.platformUse,
+      environmentUse: options.environmentUse,
       ...(options.createId ? { createId: options.createId } : {}),
       ...(options.now ? { now: options.now } : {}),
       ...(options.bashDefaultTimeoutSeconds

@@ -4,7 +4,7 @@ import { DeviceCapability, OperationStatus } from '@kairos/contracts/device';
 import { expect, it, vi } from 'vitest';
 import { ModelInputService } from '../context/model-input-service.js';
 import { EnvironmentStore } from '../devices/environment-store.js';
-import { StandaloneDeviceUseGateway } from '../devices/standalone-device.js';
+import { ensureMainEnvironment, MainEnvironmentUseGateway } from '../devices/main-environment.js';
 import {
   controlledEnvironmentDependencies,
   seedTestEnvironment,
@@ -57,22 +57,22 @@ function fixture(script: ModelEvent[][] = [response('done')]) {
   };
   return { database, store, provider, coordinator, ...dependencies, close };
 }
-const standaloneDevice = { envId: 'cvm-device', workspace: '/workspace' } as const;
+const mainEnvironment = { envId: 'cvm-device', workspace: '/workspace' } as const;
 function standaloneFixture(script: ModelEvent[][] = [response('done')]) {
   const database = openDatabase(':memory:');
-  const store = new SessionStore(database, { standaloneDevice });
+  const store = new SessionStore(database, { mainEnvironment });
   const dependencies = controlledEnvironmentDependencies(database, ownerId);
   const provider = new ScriptedProvider(script);
-  const platformUse = new StandaloneDeviceUseGateway(
+  const environmentUse = new MainEnvironmentUseGateway(
     dependencies.environments,
     dependencies.environmentOperations,
-    standaloneDevice,
+    mainEnvironment,
   );
   const coordinator = new RunCoordinator({
     store,
     environments: dependencies.environments,
     environmentOperations: dependencies.environmentOperations,
-    platformUse,
+    environmentUse,
     model: {
       provider,
       providerId: 'test',
@@ -86,7 +86,7 @@ function standaloneFixture(script: ModelEvent[][] = [response('done')]) {
     await coordinator.close();
     database.close();
   };
-  return { database, store, provider, coordinator, ...dependencies, platformUse, close };
+  return { database, store, provider, coordinator, ...dependencies, environmentUse, close };
 }
 function send(store: SessionStore, threadId: string, id = 'send') {
   return store.sendMessage(
@@ -122,7 +122,7 @@ it('fixes main and task workspaces to the sandbox without reserving capacity and
       pwd: '/workspace',
     });
     expect(device.environmentPolicy?.allowedEnv).toEqual([main.currentBinding?.envId, 'device']);
-    expect(f.platformUse.reserved).toHaveLength(0);
+    expect(f.environmentUse.reserved).toHaveLength(0);
     expect(f.environmentOperations.started).toHaveLength(0);
   } finally {
     await f.close();
@@ -176,7 +176,7 @@ it('routes concurrent env_id calls independently and keeps subsequent paths and 
       case: 'read',
       value: { path: '/workspace/default.txt' },
     });
-    expect(f.platformUse.reserved.some((use) => use.envId === task.currentBinding?.envId)).toBe(
+    expect(f.environmentUse.reserved.some((use) => use.envId === task.currentBinding?.envId)).toBe(
       true,
     );
     for (const request of f.provider.requests) {
@@ -203,7 +203,7 @@ it('routes concurrent env_id calls independently and keeps subsequent paths and 
       store: f.store,
       environments: f.environments,
       operations: f.environmentOperations,
-      platformUse: f.platformUse,
+      environmentUse: f.environmentUse,
     });
     const count = f.environmentOperations.started.length;
     expect((await runtime.savedResult(input.runId, 'other'))?.content).toContain('/two/other.txt');
@@ -217,7 +217,7 @@ it('persists capacity failure on the accepted Run and only retries a new Continu
   const f = fixture();
   try {
     const main = f.store.getOrCreateMainThread(ownerId);
-    f.platformUse.capacity = 0;
+    f.environmentUse.capacity = 0;
     const accepted = send(f.store, main.threadId);
     await f.coordinator.deliver(accepted.input, accepted.runId);
     expect(f.store.getRunById(accepted.runId)).toMatchObject({
@@ -229,7 +229,7 @@ it('persists capacity failure on the accepted Run and only retries a new Continu
       f.store.listContext(ownerId, main.threadId, 'thread').map((message) => message.message.role),
     ).toEqual(['user']);
     expect(f.provider.requests).toHaveLength(0);
-    f.platformUse.capacity = 1;
+    f.environmentUse.capacity = 1;
     const replay = send(f.store, main.threadId);
     await f.coordinator.deliver(replay.input, replay.runId);
     expect(replay.runId).toBe(accepted.runId);
@@ -246,7 +246,7 @@ it('persists capacity failure on the accepted Run and only retries a new Continu
     expect(f.store.agentEnvironments.getExecution(continued.runId, 2)?.resourceVersion).toMatch(
       /^[a-f0-9]{64}$/,
     );
-    await vi.waitFor(() => expect(f.platformUse.uses.size).toBe(0));
+    await vi.waitFor(() => expect(f.environmentUse.uses.size).toBe(0));
   } finally {
     await f.close();
   }
@@ -256,13 +256,13 @@ it('does not call Provider while an accepted default workspace is preparing and 
   const f = fixture();
   try {
     const main = f.store.getOrCreateMainThread(ownerId);
-    f.platformUse.prepare = ({ signal }) =>
+    f.environmentUse.prepare = ({ signal }) =>
       new Promise((_resolve, reject) =>
         signal.addEventListener('abort', () => reject(signal.reason), { once: true }),
       );
     const input = send(f.store, main.threadId);
     await f.coordinator.deliver(input.input, input.runId);
-    expect(f.platformUse.uses.size).toBe(1);
+    expect(f.environmentUse.uses.size).toBe(1);
     expect(f.provider.requests).toHaveLength(0);
     const cancelled = f.store.requestCancelRun(
       action('CancelRun', 'cancel', {
@@ -273,7 +273,7 @@ it('does not call Provider while an accepted default workspace is preparing and 
     );
     await f.coordinator.cancel(cancelled, 'cancel preparation');
     await vi.waitFor(() => expect(f.store.getRunById(input.runId).status).toBe('cancelled'));
-    await vi.waitFor(() => expect(f.platformUse.uses.size).toBe(0));
+    await vi.waitFor(() => expect(f.environmentUse.uses.size).toBe(0));
     expect(f.provider.requests).toHaveLength(0);
     expect(f.environmentOperations.started).toHaveLength(0);
   } finally {
@@ -296,7 +296,7 @@ it('reloads the fixed main workspace before the first Run and preserves resource
       main.threadId,
       'thread',
     ).currentHistoryId;
-    f.platformUse.capacity = 0;
+    f.environmentUse.capacity = 0;
     await expect(
       f.coordinator.reloadResources({
         ownerId,
@@ -307,7 +307,7 @@ it('reloads the fixed main workspace before the first Run and preserves resource
     expect(f.store.agentEnvironments.requirePolicy(main.threadId, 'thread').currentHistoryId).toBe(
       previous,
     );
-    f.platformUse.capacity = 1;
+    f.environmentUse.capacity = 1;
     await expect(
       f.coordinator.reloadResources({
         ownerId,
@@ -337,7 +337,7 @@ it('inherits a caller execution scope and rejects environments registered after 
       store: f.store,
       environments: f.environments,
       operations: f.environmentOperations,
-      platformUse: f.platformUse,
+      environmentUse: f.environmentUse,
     });
     await expect(
       runtime.execute(
@@ -363,15 +363,15 @@ it('keeps env_list and main-environment events free of lifecycle side effects', 
       store: f.store,
       environments: f.environments,
       operations: f.environmentOperations,
-      platformUse: f.platformUse,
+      environmentUse: f.environmentUse,
     });
     const catalog = JSON.parse(runtime.list(f.store.getRunById(input.runId)));
     expect(catalog.environments).toContainEqual(
       expect.objectContaining({
-        env_id: 'sandbox',
-        name: 'sandbox',
+        env_id: 'main',
+        name: 'main',
         is_main: true,
-        lifecycle_state: 'uninitialized',
+        lifecycle_state: null,
       }),
     );
     const environment = f.environments.get(ownerId, main.currentBinding?.envId ?? '');
@@ -380,7 +380,7 @@ it('keeps env_list and main-environment events free of lifecycle side effects', 
       case: 'mainEnvironmentChanged',
       value: environment,
     });
-    expect(f.platformUse.reserved).toHaveLength(0);
+    expect(f.environmentUse.reserved).toHaveLength(0);
     expect(f.environmentOperations.started).toHaveLength(0);
   } finally {
     await f.close();
@@ -404,7 +404,7 @@ it('requires sandbox capacity even when a task is authorized to use only a devic
       }),
     );
     expect(task.currentBinding?.envId).toBe(main.currentBinding?.envId);
-    f.platformUse.capacity = 0;
+    f.environmentUse.capacity = 0;
     const input = send(f.store, task.threadId);
     await f.coordinator.deliver(input.input, input.runId);
     expect(f.store.getRunById(input.runId)).toMatchObject({
@@ -413,7 +413,7 @@ it('requires sandbox capacity even when a task is authorized to use only a devic
     });
     expect(f.provider.requests).toHaveLength(0);
     expect(f.environmentOperations.started).toHaveLength(0);
-    f.platformUse.capacity = 1;
+    f.environmentUse.capacity = 1;
     const continued = f.store.continueRun(
       action('ContinueRun', 'continue-device-task', {
         threadId: task.threadId,
@@ -481,7 +481,7 @@ it('reserves global capacity before the ordinary background Run queue and cancel
     store: f.store,
     environments: f.environments,
     environmentOperations: f.environmentOperations,
-    platformUse: f.platformUse,
+    environmentUse: f.environmentUse,
     maxActiveThreads: 1,
     browser: false,
     model: {
@@ -493,7 +493,7 @@ it('reserves global capacity before the ordinary background Run queue and cancel
     },
   });
   try {
-    f.platformUse.prepare = ({ signal }) =>
+    f.environmentUse.prepare = ({ signal }) =>
       new Promise((_resolve, reject) =>
         signal.addEventListener('abort', () => reject(signal.reason), { once: true }),
       );
@@ -512,7 +512,7 @@ it('reserves global capacity before the ordinary background Run queue and cancel
       accepted.push(task);
       await coordinator.deliver(task.input, task.runId);
     }
-    expect(f.platformUse.uses.size).toBe(5);
+    expect(f.environmentUse.uses.size).toBe(5);
     expect(f.store.getRunById(accepted[5]?.runId ?? '')).toMatchObject({
       status: 'failed',
       error: { code: 'sandbox_capacity_exhausted' },
@@ -529,7 +529,7 @@ it('reserves global capacity before the ordinary background Run queue and cancel
       ownerId: queued.input.ownerId,
     });
     await coordinator.cancel(cancelled, 'cancel queued');
-    expect(f.platformUse.uses.size).toBe(4);
+    expect(f.environmentUse.uses.size).toBe(4);
   } finally {
     await coordinator.close();
     await f.close();
@@ -582,14 +582,14 @@ it('keeps an undelivered result on its failed capacity Run until explicit Contin
     });
     f.store.updateRunStatus(accepted.runId, 'completed');
     f.store.updateRunStatus(source.runId, 'completed');
-    f.platformUse.capacity = 0;
+    f.environmentUse.capacity = 0;
     f.coordinator.resumeDeliveries();
     await vi.waitFor(() => expect(f.store.listRuns(ownerId, main.threadId)).toHaveLength(2));
     const delivery = f.store.getInteractionDelivery(ownerId, accepted.interaction);
     expect(delivery.status).toBe('queued');
     const failed = f.store.getRunById(delivery.runId ?? '');
     expect(failed.error?.code).toBe('sandbox_capacity_exhausted');
-    f.platformUse.capacity = 1;
+    f.environmentUse.capacity = 1;
     f.coordinator.resumeDeliveries();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(f.store.getInteractionDelivery(ownerId, accepted.interaction).runId).toBe(failed.runId);
@@ -607,7 +607,7 @@ it('keeps an undelivered result on its failed capacity Run until explicit Contin
   }
 });
 
-it('retains an initial directory Operation reference after its result becomes unknown', async () => {
+it('fails the Run without retaining an environment use when the initial directory Operation result becomes unknown', async () => {
   const f = fixture();
   try {
     const start = f.environmentOperations.startEnvironmentOperation.bind(f.environmentOperations);
@@ -632,9 +632,7 @@ it('retains an initial directory Operation reference after its result becomes un
         error: { code: 'operation_unknown' },
       }),
     );
-    await vi.waitFor(() =>
-      expect([...f.platformUse.uses.values()].map((use) => use.kind)).toEqual(['operation']),
-    );
+    expect([...f.environmentUse.uses.values()]).toEqual([]);
     expect(f.store.listQueuedInputs(main.threadId)).toHaveLength(0);
     expect(f.provider.requests).toHaveLength(0);
   } finally {
@@ -968,7 +966,7 @@ it('allows standalone main creation before pairing but rejects execution without
   try {
     const main = f.store.getOrCreateMainThread(ownerId);
     expect(main.currentBinding).toMatchObject({
-      envId: standaloneDevice.envId,
+      envId: mainEnvironment.envId,
       pwd: '/workspace',
       resourceVersion: null,
     });
@@ -997,7 +995,7 @@ it('executes standalone main, Rerun, tasks and inherited agents through the read
     response('task done'),
   ]);
   try {
-    seedTestEnvironment(f.database, ownerId, standaloneDevice.envId, '/workspace');
+    seedTestEnvironment(f.database, ownerId, mainEnvironment.envId, '/workspace');
     const main = f.store.getOrCreateMainThread(ownerId);
     const accepted = send(f.store, main.threadId);
     await f.coordinator.deliver(accepted.input, accepted.runId);
@@ -1005,20 +1003,20 @@ it('executes standalone main, Rerun, tasks and inherited agents through the read
     expect(
       f.store.agentEnvironments.requireExecution(f.store.getRunById(accepted.runId)),
     ).toMatchObject({
-      defaultEnv: standaloneDevice.envId,
+      defaultEnv: mainEnvironment.envId,
       defaultPwd: '/workspace',
     });
     const runtime = new AgentEnvironmentRuntime({
       store: f.store,
       environments: f.environments,
       operations: f.environmentOperations,
-      platformUse: f.platformUse,
+      environmentUse: f.environmentUse,
     });
     expect(JSON.parse(runtime.list(f.store.getRunById(accepted.runId)))).toMatchObject({
-      main_env: 'sandbox',
+      main_env: 'main',
       environments: [
         {
-          env_id: 'sandbox',
+          env_id: 'main',
           kind: 'self_hosted_linux',
           is_main: true,
           ready: true,
@@ -1049,7 +1047,7 @@ it('executes standalone main, Rerun, tasks and inherited agents through the read
       action('CreateThread', 'standalone-task', { title: 'standalone task' }),
     );
     expect(task.currentBinding).toMatchObject({
-      envId: standaloneDevice.envId,
+      envId: mainEnvironment.envId,
       pwd: '/workspace',
     });
     const taskInput = send(f.store, task.threadId, 'standalone-task-send');
@@ -1057,7 +1055,7 @@ it('executes standalone main, Rerun, tasks and inherited agents through the read
     await completed(f.store, taskInput.runId);
     const child = f.store.createChildRun(ownerId, accepted.runId, 'standalone-child');
     expect(f.store.agentEnvironments.requireExecution(child)).toMatchObject({
-      defaultEnv: standaloneDevice.envId,
+      defaultEnv: mainEnvironment.envId,
       defaultPwd: '/workspace',
     });
     expect(f.provider.requests).toHaveLength(3);
@@ -1084,11 +1082,11 @@ it.each([
 ])('rejects standalone execution after $name', async ({ sql, code }) => {
   const f = standaloneFixture();
   try {
-    seedTestEnvironment(f.database, ownerId, standaloneDevice.envId, '/workspace');
+    seedTestEnvironment(f.database, ownerId, mainEnvironment.envId, '/workspace');
     const main = f.store.getOrCreateMainThread(ownerId);
     f.database
       .prepare(`UPDATE environments SET ${sql} WHERE tenant_id=? AND env_id=?`)
-      .run(ownerId, standaloneDevice.envId);
+      .run(ownerId, mainEnvironment.envId);
     const accepted = send(f.store, main.threadId);
     await f.coordinator.deliver(accepted.input, accepted.runId);
     expect(f.store.getRunById(accepted.runId)).toMatchObject({
@@ -1101,22 +1099,24 @@ it.each([
   }
 });
 
-it('requires a new binding and fresh readiness after standalone recovery', async () => {
+it('requires a new binding and fresh readiness after the main environment is re-paired', async () => {
   const f = standaloneFixture();
   try {
-    const environments = new EnvironmentStore(f.database, { standaloneDevice });
-    const gateway = new StandaloneDeviceUseGateway(
+    const environments = new EnvironmentStore(f.database, { mainEnvironment });
+    const gateway = new MainEnvironmentUseGateway(
       environments,
       f.environmentOperations,
-      standaloneDevice,
+      mainEnvironment,
     );
     const capabilities = [DeviceCapability.BASH, DeviceCapability.DIRECTORY_CHECK];
-    const initial = environments.beginConnection({
+    ensureMainEnvironment(f.database, ownerId, mainEnvironment);
+    const initial = environments.reissue({
       tenantId: ownerId,
       clientActionId: 'standalone-gateway-initial',
+      envId: mainEnvironment.envId,
     });
     const first = environments.exchangePairing({
-      envId: standaloneDevice.envId,
+      envId: mainEnvironment.envId,
       pairingCredential: initial.pairingCredential,
       reportedCapabilities: capabilities,
     });
@@ -1134,20 +1134,16 @@ it('requires a new binding and fresh readiness after standalone recovery', async
     });
     await gateway.ensureReady({
       tenantId: ownerId,
-      envId: standaloneDevice.envId,
+      envId: mainEnvironment.envId,
       kind: 'operation',
-      usageId: 'standalone-before-revoke',
+      usageId: 'standalone-before-repair',
       signal: new AbortController().signal,
     });
     expect(f.environmentOperations.started).toHaveLength(0);
-    environments.revoke({
-      tenantId: ownerId,
-      clientActionId: 'standalone-gateway-revoke',
-      envId: standaloneDevice.envId,
-    });
-    const restored = environments.beginConnection({
+    const restored = environments.reissue({
       tenantId: ownerId,
       clientActionId: 'standalone-gateway-retry',
+      envId: mainEnvironment.envId,
     });
     expect(restored.environment).toMatchObject({
       bindingStatus: 'pairing',
@@ -1159,9 +1155,9 @@ it('requires a new binding and fresh readiness after standalone recovery', async
     await expect(
       gateway.ensureReady({
         tenantId: ownerId,
-        envId: standaloneDevice.envId,
+        envId: mainEnvironment.envId,
         kind: 'operation',
-        usageId: 'standalone-after-revoke',
+        usageId: 'standalone-after-repair',
         signal: new AbortController().signal,
       }),
     ).rejects.toMatchObject({ code: 'failed_precondition' });
@@ -1175,7 +1171,7 @@ it('requires a new binding and fresh readiness after standalone recovery', async
     expect(f.environmentOperations.started).toHaveLength(0);
 
     const second = environments.exchangePairing({
-      envId: standaloneDevice.envId,
+      envId: mainEnvironment.envId,
       pairingCredential: restored.pairingCredential,
       reportedCapabilities: capabilities,
     });
@@ -1183,7 +1179,7 @@ it('requires a new binding and fresh readiness after standalone recovery', async
     await expect(
       gateway.ensureReady({
         tenantId: ownerId,
-        envId: standaloneDevice.envId,
+        envId: mainEnvironment.envId,
         kind: 'operation',
         usageId: 'standalone-offline-retry',
         signal: new AbortController().signal,
@@ -1195,7 +1191,7 @@ it('requires a new binding and fresh readiness after standalone recovery', async
     f.environmentOperations.startEnvironmentOperation = async (input) => {
       const result = await startOperation(input);
       if (input.action.case === 'directoryCheck') {
-        const current = environments.get(ownerId, standaloneDevice.envId);
+        const current = environments.get(ownerId, mainEnvironment.envId);
         if (!current.deviceId || !current.deviceBindingId || !current.instanceId)
           throw new Error('The new device instance is missing.');
         environments.recordReadiness({
@@ -1217,12 +1213,12 @@ it('requires a new binding and fresh readiness after standalone recovery', async
     });
     await gateway.ensureReady({
       tenantId: ownerId,
-      envId: standaloneDevice.envId,
+      envId: mainEnvironment.envId,
       kind: 'operation',
       usageId: 'standalone-ready-retry',
       signal: new AbortController().signal,
     });
-    expect(environments.requireReady(ownerId, standaloneDevice.envId)).toMatchObject({
+    expect(environments.requireReady(ownerId, mainEnvironment.envId)).toMatchObject({
       bindingStatus: 'active',
       connectionStatus: 'online',
       capabilityStatus: 'ready',

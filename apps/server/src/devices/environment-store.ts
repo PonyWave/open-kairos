@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { DeviceCapability, isDeviceCapability } from '@kairos/contracts/device';
 import { z } from 'zod';
-import { type PlatformLifecycleState, platformLifecycleStates } from '../platform/schema.js';
 import { requireText, SessionError } from '../sessions/errors.js';
 import { inTransaction } from '../storage/transaction.js';
 import {
@@ -10,10 +9,22 @@ import {
   type EnvironmentPairingExchange,
   type EnvironmentPairingExchangeInput,
 } from './environment-pairing.js';
-import type { StandaloneDeviceConfiguration } from './standalone-device.js';
+import type { MainEnvironmentConfiguration } from './main-environment.js';
 
 const capabilitySchema = z.number().int().refine(isDeviceCapability);
 const capabilitiesSchema = z.array(capabilitySchema);
+const platformLifecycleStates = [
+  'uninitialized',
+  'starting',
+  'running',
+  'pausing',
+  'paused',
+  'resuming',
+  'deleting',
+  'deleted',
+  'error',
+] as const;
+type PlatformLifecycleState = (typeof platformLifecycleStates)[number];
 const environmentRowSchema = z.object({
   env_id: z.string(),
   tenant_id: z.string(),
@@ -167,7 +178,7 @@ export interface EnvironmentStoreOptions {
   createId?: () => string;
   maxEnvironments?: number;
   pairingCredentialTtlMs?: number;
-  standaloneDevice?: StandaloneDeviceConfiguration;
+  mainEnvironment?: MainEnvironmentConfiguration;
 }
 
 interface EnvironmentAction {
@@ -222,7 +233,7 @@ export class EnvironmentStore {
   readonly #now: () => Date;
   readonly #createId: () => string;
   readonly #maxEnvironments: number;
-  readonly #standaloneDevice: StandaloneDeviceConfiguration | undefined;
+  readonly #mainEnvironment: MainEnvironmentConfiguration | undefined;
 
   constructor(
     readonly database: DatabaseSync,
@@ -231,7 +242,7 @@ export class EnvironmentStore {
     this.#now = options.now ?? (() => new Date());
     this.#createId = options.createId ?? randomUUID;
     this.#maxEnvironments = options.maxEnvironments ?? 32;
-    this.#standaloneDevice = options.standaloneDevice;
+    this.#mainEnvironment = options.mainEnvironment;
     if (!Number.isSafeInteger(this.#maxEnvironments) || this.#maxEnvironments <= 0) {
       throw new Error('Environment limit must be a positive safe integer.');
     }
@@ -254,25 +265,6 @@ export class EnvironmentStore {
   }
 
   beginConnection(input: { tenantId: string; clientActionId: string }): EnvironmentPairingIssue {
-    if (this.#standaloneDevice) {
-      const configured = z
-        .object({ tenant_id: z.string(), binding_status: z.string() })
-        .optional()
-        .parse(
-          this.database
-            .prepare('SELECT tenant_id,binding_status FROM environments WHERE env_id = ?')
-            .get(this.#standaloneDevice.envId),
-        );
-      if (configured && configured.tenant_id !== input.tenantId) {
-        throw new SessionError(
-          'permission_denied',
-          'The standalone execution device belongs to another tenant.',
-        );
-      }
-      if (configured && configured.binding_status !== 'active') {
-        return this.reissue({ ...input, envId: this.#standaloneDevice.envId });
-      }
-    }
     return this.#register({ ...input, name: '新设备', recommendedPwd: '/' }, true);
   }
 
@@ -321,7 +313,7 @@ export class EnvironmentStore {
             'The tenant environment limit was reached.',
           );
         }
-        const configured = this.#standaloneDevice;
+        const configured = this.#mainEnvironment;
         const standaloneRegistration =
           autoDetect &&
           configured !== undefined &&
@@ -606,7 +598,7 @@ export class EnvironmentStore {
       () => {
         const current = this.#ownedRow(tenantId, envId);
         const standalone =
-          this.#standaloneDevice?.envId === current.env_id ? this.#standaloneDevice : undefined;
+          this.#mainEnvironment?.envId === current.env_id ? this.#mainEnvironment : undefined;
         if (current.binding_status === 'revoked' && !standalone) {
           throw new SessionError(
             'failed_precondition',
@@ -1013,11 +1005,8 @@ export class EnvironmentStore {
     reason: string | null = null,
   ): { environment: EnvironmentRecord } {
     const row = this.#ownedRow(tenantId, envId);
-    if (row.kind === 'platform_sandbox')
-      throw new SessionError(
-        'permission_denied',
-        'Platform environments cannot be revoked through device controls.',
-      );
+    if (row.env_id === this.#mainEnvironment?.envId)
+      throw new SessionError('permission_denied', 'The main environment cannot be revoked.');
     const now = this.#now().toISOString();
     if (row.binding_status !== 'revoked') {
       this.pairing.invalidate(envId, now, 'revoked');

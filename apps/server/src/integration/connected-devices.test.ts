@@ -148,7 +148,7 @@ describe('connected devices over real HTTP and Daemon operations', () => {
     mkdirSync(join(server.workspace, 'alpha'));
     mkdirSync(join(server.workspace, 'beta'));
     writeFileSync(join(server.workspace, 'old-location.txt'), 'original task location');
-    const sessions = new SessionStore(server.database);
+    const sessions = new SessionStore(server.database, { mainEnvironment: server.mainEnvironment });
     const task = sessions.createThread({
       ownerId: 'tenant-devices',
       clientActionId: 'before-directory-edit',
@@ -159,7 +159,7 @@ describe('connected devices over real HTTP and Daemon operations', () => {
     });
     const originalBinding = sessions.getThread('tenant-devices', task.threadId).currentBinding;
     expect(originalBinding?.envId).not.toBe(server.envId);
-    expect(originalBinding?.pwd).toBe('/workspace');
+    expect(originalBinding?.pwd).toBe(server.mainEnvironment.workspace);
     const listed = await api.listEnvironmentDirectories({
       envId: server.envId,
       path: server.workspace,

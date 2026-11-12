@@ -1,23 +1,23 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { DeviceCapability } from '@kairos/contracts/device';
 import { z } from 'zod';
-import type { PlatformUse, PlatformUseGateway } from '../platform/contracts.js';
-import { platformWorkspaceGateway } from '../platform-workspace.js';
 import type { EnvironmentOperationGateway } from '../sessions/environment-runtime.js';
 import { SessionError } from '../sessions/errors.js';
 import type { EnvironmentStore } from './environment-store.js';
+import type { EnvironmentUse, EnvironmentUseGateway } from './environment-use.js';
+import { workspaceReadinessGateway } from './workspace-readiness.js';
 
-export interface StandaloneDeviceConfiguration {
+export interface MainEnvironmentConfiguration {
   envId: string;
-  workspace: '/workspace';
+  workspace: string;
 }
 
-export function ensureStandaloneDeviceEnvironment(
+export function ensureMainEnvironment(
   database: DatabaseSync,
   tenantId: string,
-  configuration: StandaloneDeviceConfiguration,
+  configuration: MainEnvironmentConfiguration,
   now = new Date(),
-): void {
+): string {
   const existing = database
     .prepare('SELECT tenant_id,kind,recommended_pwd FROM environments WHERE env_id = ?')
     .get(configuration.envId);
@@ -26,18 +26,21 @@ export function ensureStandaloneDeviceEnvironment(
       .object({ tenant_id: z.string(), kind: z.string(), recommended_pwd: z.string() })
       .parse(existing);
     if (row.tenant_id !== tenantId) {
-      throw new SessionError(
-        'permission_denied',
-        'The standalone execution device belongs to another tenant.',
+      // The configured id belongs to another tenant; fall back to a tenant-scoped id.
+      return ensureMainEnvironment(
+        database,
+        tenantId,
+        { ...configuration, envId: `${configuration.envId}-${tenantId}` },
+        now,
       );
     }
-    if (row.kind === 'platform_sandbox' || row.recommended_pwd !== configuration.workspace) {
+    if (row.recommended_pwd !== configuration.workspace) {
       throw new SessionError(
         'failed_precondition',
-        'The standalone execution device configuration conflicts with the stored environment.',
+        'The main environment configuration conflicts with the stored environment.',
       );
     }
-    return;
+    return configuration.envId;
   }
   const timestamp = now.toISOString();
   const authorized = [
@@ -58,7 +61,7 @@ export function ensureStandaloneDeviceEnvironment(
         device_id, device_binding_id, instance_id,
         daemon_version, os, architecture, status_reason, normalized_pwd, checked_at,
         created_at, updated_at, paired_at, revoked_at, last_seen_at
-      ) VALUES (?, ?, '本机设备', 'self_hosted_linux', ?, 'pairing', 'offline', 'pending', 'pending',
+      ) VALUES (?, ?, '主环境', 'self_hosted_linux', ?, 'pairing', 'offline', 'pending', 'pending',
         'normal', '0', ?, '[]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
         ?, ?, NULL, NULL, NULL)`,
     )
@@ -70,28 +73,55 @@ export function ensureStandaloneDeviceEnvironment(
       timestamp,
       timestamp,
     );
+  return configuration.envId;
 }
 
-export class StandaloneDeviceUseGateway implements PlatformUseGateway {
-  readonly #configuration: StandaloneDeviceConfiguration;
+export function mainEnvironmentIdFor(
+  database: DatabaseSync,
+  configuration: MainEnvironmentConfiguration,
+  tenantId: string,
+): string {
+  const row = database
+    .prepare('SELECT tenant_id FROM environments WHERE env_id = ?')
+    .get(configuration.envId);
+  if (!row) return configuration.envId;
+  const owner = z.object({ tenant_id: z.string() }).parse(row).tenant_id;
+  return owner === tenantId ? configuration.envId : `${configuration.envId}-${tenantId}`;
+}
+
+export function isMainEnvironmentReady(
+  environments: EnvironmentStore,
+  tenantId: string,
+  configuration: MainEnvironmentConfiguration,
+): boolean {
+  try {
+    const environment = environments.get(tenantId, configuration.envId);
+    return environment.bindingStatus === 'active' && environment.connectionStatus === 'online';
+  } catch {
+    return false;
+  }
+}
+
+export class MainEnvironmentUseGateway implements EnvironmentUseGateway {
+  readonly #configuration: MainEnvironmentConfiguration;
   readonly #environments: EnvironmentStore;
-  readonly #workspace: ReturnType<typeof platformWorkspaceGateway>;
+  readonly #workspace: ReturnType<typeof workspaceReadinessGateway>;
 
   constructor(
     environments: EnvironmentStore,
     operations: EnvironmentOperationGateway,
-    configuration: StandaloneDeviceConfiguration,
+    configuration: MainEnvironmentConfiguration,
   ) {
     this.#environments = environments;
     this.#configuration = configuration;
-    this.#workspace = platformWorkspaceGateway(environments, operations, this);
+    this.#workspace = workspaceReadinessGateway(environments, operations, this);
   }
 
-  reserveUse(input: PlatformUse): void {
+  reserveUse(input: EnvironmentUse): void {
     this.#requireDevice(input);
   }
 
-  async ensureReady(input: PlatformUse & { signal: AbortSignal }): Promise<void> {
+  async ensureReady(input: EnvironmentUse & { signal: AbortSignal }): Promise<void> {
     input.signal.throwIfAborted();
     this.#requireDevice(input);
     await this.#workspace.ensureWorkspaceReady({
@@ -104,14 +134,14 @@ export class StandaloneDeviceUseGateway implements PlatformUseGateway {
     this.#environments.requireReady(input.tenantId, input.envId);
   }
 
-  releaseUse(_input: PlatformUse): void {}
+  releaseUse(_input: EnvironmentUse): void {}
 
-  #requireDevice(input: PlatformUse) {
-    if (input.envId !== this.#configuration.envId) {
-      throw new SessionError(
-        'permission_denied',
-        'The standalone execution device is not allowed.',
-      );
+  #requireDevice(input: EnvironmentUse) {
+    if (
+      input.envId !==
+      mainEnvironmentIdFor(this.#environments.database, this.#configuration, input.tenantId)
+    ) {
+      throw new SessionError('permission_denied', 'The main environment is not allowed.');
     }
     let environment: ReturnType<EnvironmentStore['get']>;
     try {
@@ -120,41 +150,39 @@ export class StandaloneDeviceUseGateway implements PlatformUseGateway {
       if (cause instanceof SessionError && cause.code === 'not_found') {
         throw new SessionError(
           'failed_precondition',
-          'The standalone execution device has not been paired through the GUI.',
+          'The main environment has not been initialized.',
           { cause, retryable: true },
         );
       }
       throw cause;
     }
-    if (environment.kind === 'platform_sandbox') {
-      throw new SessionError(
-        'permission_denied',
-        'The standalone execution environment must be an ordinary device.',
-      );
-    }
     if (environment.bindingStatus !== 'active') {
       throw new SessionError(
         'failed_precondition',
-        'The standalone execution device has not completed pairing.',
-        { retryable: true },
+        'The main environment has not completed pairing.',
+        {
+          retryable: true,
+        },
       );
     }
     if (environment.connectionStatus !== 'online') {
-      throw new SessionError('device_offline', 'The standalone execution device is offline.', {
+      throw new SessionError('device_offline', 'The main environment is offline.', {
         retryable: true,
       });
     }
     if (!environment.deviceBindingId || !environment.instanceId) {
       throw new SessionError(
         'failed_precondition',
-        'The standalone execution device instance is unavailable.',
-        { retryable: true },
+        'The main environment instance is unavailable.',
+        {
+          retryable: true,
+        },
       );
     }
     if (environment.capabilityStatus === 'failed' || environment.directoryStatus === 'failed') {
       throw new SessionError(
         'failed_precondition',
-        'The standalone execution device capability or directory check failed.',
+        'The main environment capability or directory check failed.',
         { retryable: true },
       );
     }
@@ -163,7 +191,7 @@ export class StandaloneDeviceUseGateway implements PlatformUseGateway {
     ) {
       throw new SessionError(
         'failed_precondition',
-        'The standalone execution device workspace does not match the configured workspace.',
+        'The main environment workspace does not match the configured workspace.',
       );
     }
     return environment;

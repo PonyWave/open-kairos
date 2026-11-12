@@ -34,7 +34,7 @@ import {
   waitRun,
 } from './delegation-fixture.js';
 import {
-  ControlledPlatformUseGateway,
+  ControlledEnvironmentUseGateway,
   seedTestEnvironment,
   startRealEnvironmentServer,
 } from './environment-fixture.js';
@@ -1459,7 +1459,7 @@ it('REQ-05 isolates target tools, temporary Subagents and hard cuts while reusin
       expect.objectContaining({
         role: 'system',
         content: expect.stringContaining(
-          'All Agents share this tenant sandbox workspace at /workspace',
+          'All Agents load AGENTS.md and Skills from the main environment workspace',
         ),
       }),
       expect.objectContaining({
@@ -2456,7 +2456,7 @@ it('REQ-05 requires explicit recovery for an unknown Bash and never repeats its 
       store: new SessionStore(fixture.database),
       environments: fixture.environments,
       operations: fixture.channel,
-      platformUse: new ControlledPlatformUseGateway(fixture.database),
+      environmentUse: new ControlledEnvironmentUseGateway(fixture.database),
     });
     const recovered = await environmentRuntime.savedResult(runId, 'crash-bash');
     expect(recovered).toMatchObject({ status: 'error' });

@@ -3,10 +3,10 @@ import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import type { DelegationKey } from '../context/types.js';
 import {
-  ensureStandaloneDeviceEnvironment,
-  type StandaloneDeviceConfiguration,
-} from '../devices/standalone-device.js';
-import { ensureTenantPlatformEnvironment } from '../platform/registry.js';
+  ensureMainEnvironment,
+  type MainEnvironmentConfiguration,
+  mainEnvironmentIdFor,
+} from '../devices/main-environment.js';
 import type { WorkspaceResourceSnapshot } from '../workspace/index.js';
 import { requireText, SessionError } from './errors.js';
 import type { RunRecord } from './records.js';
@@ -178,27 +178,36 @@ export interface CommitEnvironmentResourcesInput {
 export class AgentEnvironmentStore {
   readonly #createId: () => string;
   readonly #now: () => Date;
-  readonly #standaloneDevice: StandaloneDeviceConfiguration | undefined;
+  readonly #mainEnvironment: MainEnvironmentConfiguration;
 
   constructor(
     readonly database: DatabaseSync,
     options: {
       createId?: () => string;
       now?: () => Date;
-      standaloneDevice?: StandaloneDeviceConfiguration;
+      mainEnvironment?: MainEnvironmentConfiguration;
     } = {},
   ) {
     this.#createId = options.createId ?? randomUUID;
     this.#now = options.now ?? (() => new Date());
-    this.#standaloneDevice = options.standaloneDevice;
+    this.#mainEnvironment = options.mainEnvironment ?? {
+      envId: 'main',
+      workspace: '/workspace',
+    };
   }
 
-  get standaloneDevice(): StandaloneDeviceConfiguration | undefined {
-    return this.#standaloneDevice;
+  get mainEnvironment(): MainEnvironmentConfiguration {
+    return this.#mainEnvironment;
   }
 
-  isStandaloneDevice(envId: string, pwd: string): boolean {
-    return this.#standaloneDevice?.envId === envId && this.#standaloneDevice.workspace === pwd;
+  mainEnvironmentIdFor(ownerId: string): string {
+    return mainEnvironmentIdFor(this.database, this.#mainEnvironment, ownerId);
+  }
+
+  isMainEnvironment(envId: string, pwd: string, ownerId?: string): boolean {
+    if (this.#mainEnvironment.workspace !== pwd) return false;
+    if (ownerId !== undefined) return envId === this.mainEnvironmentIdFor(ownerId);
+    return envId === this.#mainEnvironment.envId;
   }
 
   createPolicy(input: {
@@ -325,10 +334,7 @@ export class AgentEnvironmentStore {
   requirePolicy(threadId: string, agentId: string): AgentEnvironmentPolicy {
     const policy = this.requirePolicyState(threadId, agentId);
     if (policy.current === null) {
-      throw new SessionError(
-        'failed_precondition',
-        'The Agent sandbox workspace is missing; migrate the stored policy before executing.',
-      );
+      throw new SessionError('failed_precondition', 'The Agent workspace is missing.');
     }
     return policy;
   }
@@ -430,7 +436,7 @@ export class AgentEnvironmentStore {
     if (historical.envId !== current.defaultEnv || historical.pwd !== current.current?.pwd) {
       throw new SessionError(
         'failed_precondition',
-        'The historical workspace does not match the tenant sandbox workspace.',
+        'The historical workspace does not match the default workspace.',
       );
     }
     if (
@@ -696,7 +702,7 @@ export class AgentEnvironmentStore {
     if (policy.current?.envId !== input.envId) {
       throw new SessionError(
         'version_conflict',
-        'The sandbox workspace changed during the directory check.',
+        'The default workspace changed during the directory check.',
       );
     }
     const bindingVersion = policy.bindingVersion;
@@ -736,18 +742,9 @@ export class AgentEnvironmentStore {
     requested: EnvironmentPolicyInput | undefined,
     parent: { allowedEnv: readonly string[] | null } | undefined,
   ): { allowedEnv: readonly string[] | null; defaultEnv: string; defaultPwd: string } {
-    if (this.#standaloneDevice) {
-      ensureStandaloneDeviceEnvironment(
-        this.database,
-        ownerId,
-        this.#standaloneDevice,
-        this.#now(),
-      );
-    }
-    const defaultEnv =
-      this.#standaloneDevice?.envId ??
-      ensureTenantPlatformEnvironment(this.database, ownerId, this.#now());
-    const defaultPwd = this.#standaloneDevice?.workspace ?? '/workspace';
+    ensureMainEnvironment(this.database, ownerId, this.#mainEnvironment, this.#now());
+    const defaultEnv = this.mainEnvironmentIdFor(ownerId);
+    const defaultPwd = this.#mainEnvironment.workspace;
     const requestedScope = requested?.allowedEnv ?? parent?.allowedEnv ?? null;
     if (
       requested !== undefined &&
@@ -775,18 +772,12 @@ export class AgentEnvironmentStore {
         );
       }
     }
-    if (!this.#standaloneDevice && !this.#isActive(ownerId, defaultEnv)) {
-      throw new SessionError(
-        'permission_denied',
-        'The tenant sandbox is not authorized for this Agent.',
-      );
-    }
     const allowedEnv =
       requestedScope === null ? null : [...new Set([defaultEnv, ...requestedScope])];
     if (requested !== undefined && allowedEnv !== null && allowedEnv.length > 32)
       throw new SessionError(
         'invalid_argument',
-        'allowed_env together with the required tenant sandbox may contain at most 32 distinct environments.',
+        'allowed_env together with the required main environment may contain at most 32 distinct environments.',
       );
     return { allowedEnv, defaultEnv, defaultPwd };
   }
@@ -796,20 +787,17 @@ export class AgentEnvironmentStore {
     if (existing) return existing;
     const policy = this.requirePolicy(run.threadId, run.agentId);
     if (!policy.defaultEnv || !policy.defaultPwd) {
-      throw new SessionError('failed_precondition', 'The Agent sandbox workspace is missing.');
+      throw new SessionError('failed_precondition', 'The Agent workspace is missing.');
     }
     const allowedEnv = this.database
       .prepare(
-        "SELECT env_id FROM environments WHERE tenant_id = ? AND (binding_status = 'active' OR (kind = 'platform_sandbox' AND binding_status <> 'revoked')) ORDER BY env_id",
+        "SELECT env_id FROM environments WHERE tenant_id = ? AND binding_status = 'active' ORDER BY env_id",
       )
       .all(run.ownerId)
       .map((row) => z.object({ env_id: z.string() }).parse(row).env_id)
       .filter((id) => policy.allowedEnv === null || policy.allowedEnv.includes(id));
-    if (this.#standaloneDevice && !allowedEnv.includes(policy.defaultEnv)) {
-      allowedEnv.push(policy.defaultEnv);
-    }
     if (!allowedEnv.includes(policy.defaultEnv)) {
-      throw new SessionError('permission_denied', 'The tenant sandbox is no longer authorized.');
+      allowedEnv.push(policy.defaultEnv);
     }
     this.database
       .prepare(`INSERT INTO agent_execution_environments(
@@ -897,7 +885,7 @@ export class AgentEnvironmentStore {
     return (
       this.database
         .prepare(
-          "SELECT 1 AS present FROM environments WHERE tenant_id = ? AND env_id = ? AND (binding_status = 'active' OR (kind = 'platform_sandbox' AND binding_status <> 'revoked'))",
+          "SELECT 1 AS present FROM environments WHERE tenant_id = ? AND env_id = ? AND binding_status = 'active'",
         )
         .get(ownerId, envId) !== undefined
     );

@@ -152,7 +152,7 @@ export function createAutomationTools(
     {
       name: 'automation_create',
       description:
-        'Create a persistent Automation from the main conversation. Use a five-field cron with an explicit IANA time_zone, or once with an offset-bearing run_at. Targets are main, existing_thread, new_task or new_automation_only. New Threads use the tenant sandbox by default; allowed_env narrows environment access. automation_only Threads are persistent but hidden from ordinary Thread lists and readable through Automation history. Scheduled triggers and run_now execute the configured prompt as Automation input, not as a new human instruction.',
+        'Create a persistent Automation from the main conversation. Use a five-field cron with an explicit IANA time_zone, or once with an offset-bearing run_at. Targets are main, existing_thread, new_task or new_automation_only. New Threads use the main environment by default; allowed_env narrows environment access. automation_only Threads are persistent but hidden from ordinary Thread lists and readable through Automation history. Scheduled triggers and run_now execute the configured prompt as Automation input, not as a new human instruction.',
       parameters: {
         type: 'object',
         additionalProperties: false,

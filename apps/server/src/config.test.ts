@@ -119,31 +119,30 @@ describe('model API type configuration', () => {
   });
 });
 
-describe('standalone device configuration', () => {
-  it('is disabled by default and reads an explicit device and workspace', () => {
-    expect(readServerConfig({}).standaloneDevice).toBeUndefined();
-    expect(
-      readServerConfig({ KAIROS_STANDALONE_DEVICE_ENV_ID: 'cvm-device' }).standaloneDevice,
-    ).toEqual({ envId: 'cvm-device', workspace: '/workspace' });
+describe('main environment configuration', () => {
+  it('defaults to the main alias and the current directory and reads explicit values', () => {
+    expect(readServerConfig({}).mainEnvironment).toEqual({
+      envId: 'main',
+      workspace: process.cwd(),
+    });
+    expect(readServerConfig({ KAIROS_MAIN_ENV_ID: 'cvm-device' }).mainEnvironment).toEqual({
+      envId: 'cvm-device',
+      workspace: process.cwd(),
+    });
     expect(
       readServerConfig({
-        KAIROS_STANDALONE_DEVICE_ENV_ID: 'cvm-device',
-        KAIROS_STANDALONE_DEVICE_WORKSPACE: '/workspace',
-      }).standaloneDevice,
-    ).toEqual({ envId: 'cvm-device', workspace: '/workspace' });
+        KAIROS_MAIN_ENV_ID: 'cvm-device',
+        KAIROS_MAIN_WORKSPACE: '/srv/kairos',
+      }).mainEnvironment,
+    ).toEqual({ envId: 'cvm-device', workspace: '/srv/kairos' });
   });
 
   it.each([
-    { KAIROS_STANDALONE_DEVICE_WORKSPACE: '/workspace' },
-    { KAIROS_STANDALONE_DEVICE_ENV_ID: '' },
-    { KAIROS_STANDALONE_DEVICE_ENV_ID: 'contains space' },
-    { KAIROS_STANDALONE_DEVICE_ENV_ID: 'device', KAIROS_STANDALONE_DEVICE_WORKSPACE: '/srv' },
-    {
-      KAIROS_STANDALONE_DEVICE_ENV_ID: 'device',
-      KAIROS_SANDBOX_CONFIG_FILE: '/etc/kairos/sandbox.json',
-    },
-  ])('rejects invalid or conflicting standalone configuration: %o', (environment) => {
-    expect(() => readServerConfig(environment)).toThrow(/KAIROS_STANDALONE_DEVICE/);
+    { KAIROS_MAIN_ENV_ID: '' },
+    { KAIROS_MAIN_ENV_ID: 'contains space' },
+    { KAIROS_MAIN_WORKSPACE: 'relative/path' },
+  ])('rejects invalid main environment configuration: %o', (environment) => {
+    expect(() => readServerConfig(environment)).toThrow(/KAIROS_MAIN/);
   });
 });
 

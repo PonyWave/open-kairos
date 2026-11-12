@@ -16,8 +16,6 @@ import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { encodeDaemonMessage, isDeviceCapability, OperationStatus } from '@kairos/contracts/device';
 import { z } from 'zod';
-import { ensureTenantPlatformEnvironment } from '../platform/registry.js';
-import { AgentEnvironmentStore } from '../sessions/environment-policies.js';
 import { migrationTableNames } from './migrations.js';
 import {
   inspectServerDatabase,
@@ -1014,108 +1012,6 @@ function normalizeIncompleteToolCallIds(target: DatabaseSync): void {
   }
 }
 
-function normalizePlatformWorkspaces(target: DatabaseSync): void {
-  const tenantRows = z
-    .array(z.object({ tenant_id: z.string() }))
-    .parse(target.prepare('SELECT tenant_id FROM tenants ORDER BY tenant_id').all());
-  const now = new Date();
-  const environmentPolicies = new AgentEnvironmentStore(target, { now: () => now });
-  for (const tenant of tenantRows) {
-    const envId = ensureTenantPlatformEnvironment(target, tenant.tenant_id, now);
-    const policies = z
-      .array(
-        z.object({
-          thread_id: z.string(),
-          agent_id: z.string(),
-          allowed_env_json: z.string().nullable(),
-          default_env: z.string().nullable(),
-          default_pwd: z.string().nullable(),
-          current_history_id: z.string(),
-          current_env: z.string().nullable(),
-          current_pwd: z.string().nullable(),
-          current_binding_version: z.number().int().nonnegative(),
-        }),
-      )
-      .parse(
-        target
-          .prepare(`
-      SELECT policy.*, thread.thread_type FROM agent_environment_policies AS policy
-      JOIN threads AS thread ON thread.thread_id = policy.thread_id WHERE thread.owner_id = ?
-    `)
-          .all(tenant.tenant_id),
-      );
-    for (const policy of policies) {
-      const defaultEnv = envId;
-      const defaultPwd = '/workspace';
-      const allowed =
-        policy.allowed_env_json === null
-          ? null
-          : z.array(z.string()).parse(JSON.parse(policy.allowed_env_json));
-      const allowedJson =
-        allowed === null ? null : JSON.stringify([...new Set([envId, ...allowed])]);
-      if (
-        defaultEnv === policy.default_env &&
-        defaultPwd === policy.default_pwd &&
-        policy.current_env === defaultEnv &&
-        policy.current_pwd === defaultPwd &&
-        policy.allowed_env_json === allowedJson
-      )
-        continue;
-      const version = policy.current_binding_version + 1;
-      if (!Number.isSafeInteger(version))
-        throw new Error('Agent environment version is exhausted.');
-      const historyId = randomUUID();
-      target
-        .prepare(`INSERT INTO agent_environment_binding_history(
-        history_id, thread_id, agent_id, binding_version, env_id, pwd,
-        resource_version, resources_json, reason, restored_from_history_id, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 'initial', ?, ?)`)
-        .run(
-          historyId,
-          policy.thread_id,
-          policy.agent_id,
-          version,
-          defaultEnv,
-          defaultPwd,
-          policy.current_history_id,
-          now.toISOString(),
-        );
-      target
-        .prepare(`UPDATE agent_environment_policies SET default_env = ?, default_pwd = ?,
-        current_history_id = ?, current_env = ?, current_pwd = ?, current_binding_version = ?,
-        current_resource_version = NULL, policy_version = policy_version + 1,
-        allowed_env_json = ?, updated_at = ?
-        WHERE thread_id = ? AND agent_id = ?`)
-        .run(
-          defaultEnv,
-          defaultPwd,
-          historyId,
-          defaultEnv,
-          defaultPwd,
-          version,
-          allowedJson,
-          now.toISOString(),
-          policy.thread_id,
-          policy.agent_id,
-        );
-    }
-    const threads = z
-      .array(z.object({ thread_id: z.string() }))
-      .parse(
-        target.prepare('SELECT thread_id FROM threads WHERE owner_id = ?').all(tenant.tenant_id),
-      );
-    for (const thread of threads) {
-      if (!environmentPolicies.getPolicy(thread.thread_id, 'thread')) {
-        environmentPolicies.createPolicy({
-          ownerId: tenant.tenant_id,
-          threadId: thread.thread_id,
-          agentId: 'thread',
-        });
-      }
-    }
-  }
-}
-
 function copySourceIntoCurrent(target: DatabaseSync, inspection: SourceInspection): void {
   target.prepare('ATTACH DATABASE ? AS legacy').run(inspection.path);
   try {
@@ -1146,9 +1042,6 @@ function copySourceIntoCurrent(target: DatabaseSync, inspection: SourceInspectio
         `);
         }
         normalizeIncompleteToolCallIds(target);
-        if (namespaceVersion(inspection, 'context_recap').currentVersion < 20) {
-          normalizePlatformWorkspaces(target);
-        }
         assertForeignKeys(target, 'main');
         assertIntegrity(target, 'main');
       },

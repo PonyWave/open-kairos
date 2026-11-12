@@ -9,7 +9,7 @@ import { DeviceCapability, OperationStatus } from '@kairos/contracts/device';
 import { afterEach, expect, it, vi } from 'vitest';
 import { pngBytes } from '../attachments/fixtures.js';
 import { EnvironmentStore } from '../devices/environment-store.js';
-import { ensureTenantPlatformEnvironment } from '../platform/registry.js';
+import { ensureMainEnvironment } from '../devices/main-environment.js';
 import {
   AgentEnvironmentRuntime,
   type EnvironmentOperationAction,
@@ -21,8 +21,8 @@ import { RunCoordinator } from '../sessions/runtime.js';
 import { SessionStore } from '../sessions/store.js';
 import { openDatabase } from '../storage/database.js';
 import {
-  ControlledPlatformUseGateway,
-  seedReadyPlatformEnvironment,
+  ControlledEnvironmentUseGateway,
+  seedReadyMainEnvironment,
 } from './environment-fixture.js';
 
 const ownerId = 'tenant-1';
@@ -311,8 +311,11 @@ class FakeOperations implements EnvironmentOperationGateway {
 async function fixture(provider: ScriptedProvider, options: { seedEnvironments?: boolean } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'kairos-environment-agent-'));
   const database = openDatabase(':memory:');
-  const store = new SessionStore(database);
+  const store = new SessionStore(database, {
+    mainEnvironment: { envId: 'env-main-1', workspace: '/workspace' },
+  });
   seedTenant(database);
+  seedReadyMainEnvironment(database, ownerId, 'env-main-1', '/workspace');
   const environments = new EnvironmentStore(database);
   if (options.seedEnvironments !== false) {
     seedEnvironment(environments, 'env-1', '/srv/one');
@@ -330,7 +333,7 @@ async function fixture(provider: ScriptedProvider, options: { seedEnvironments?:
     },
     environments,
     environmentOperations: operations,
-    platformUse: new ControlledPlatformUseGateway(store.database),
+    environmentUse: new ControlledEnvironmentUseGateway(store.database),
   });
   const close = async () => {
     await coordinator.close();
@@ -345,8 +348,9 @@ function policy(environment = 'env-1', allowedEnv = [environment]) {
   return { allowedEnv };
 }
 
-function sandboxEnvId(store: SessionStore): string {
-  return ensureTenantPlatformEnvironment(store.database, ownerId);
+function mainEnvId(store: SessionStore): string {
+  ensureMainEnvironment(store.database, ownerId, store.agentEnvironments.mainEnvironment);
+  return store.agentEnvironments.mainEnvironmentIdFor(ownerId);
 }
 
 async function waitStatus(store: SessionStore, runId: string, status: RunStatus) {
@@ -378,7 +382,7 @@ async function seedInitialAttempt(
     }),
   );
   const current = store.agentEnvironments.requirePolicy(task.threadId, 'thread');
-  seedReadyPlatformEnvironment(store.database, ownerId, sandboxEnvId(store));
+  seedReadyMainEnvironment(store.database, ownerId, mainEnvId(store));
   store.transaction(() => {
     store.agentEnvironments.recordOperationIntent({
       operationId,
@@ -391,7 +395,7 @@ async function seedInitialAttempt(
   await operations.startEnvironmentOperation({
     operationId,
     tenantId: ownerId,
-    envId: sandboxEnvId(store),
+    envId: mainEnvId(store),
     action: {
       case: 'directoryCheck',
       value: { path: '/workspace', loadWorkspace: true },
@@ -435,11 +439,11 @@ it('persists creation policies and restricts continuation and child inheritance'
     'thread',
   );
   expect(saved).toMatchObject({
-    allowedEnv: [sandboxEnvId(store), 'env-1'],
-    defaultEnv: sandboxEnvId(store),
+    allowedEnv: [mainEnvId(store), 'env-1'],
+    defaultEnv: mainEnvId(store),
     defaultPwd: '/workspace',
     current: {
-      envId: sandboxEnvId(store),
+      envId: mainEnvId(store),
       pwd: '/workspace',
       bindingVersion: 1,
       resourceVersion: null,
@@ -470,7 +474,7 @@ it('persists creation policies and restricts continuation and child inheritance'
   });
   expect(
     store.agentEnvironments.requirePolicy(child.targetThreadId, child.targetAgentId).current,
-  ).toMatchObject({ envId: sandboxEnvId(store), pwd: '/workspace', bindingVersion: 1 });
+  ).toMatchObject({ envId: mainEnvId(store), pwd: '/workspace', bindingVersion: 1 });
   expect(() =>
     store.createSubagentInteraction({
       ownerId,
@@ -515,7 +519,7 @@ it('filters revoked environments from Router and Agent catalogs until active aga
     store,
     environments,
     operations,
-    platformUse: new ControlledPlatformUseGateway(store.database),
+    environmentUse: new ControlledEnvironmentUseGateway(store.database),
   });
   const readCatalogs = () => {
     const routerCatalog = environments
@@ -530,18 +534,18 @@ it('filters revoked environments from Router and Agent catalogs until active aga
     };
   };
   expect(readCatalogs()).toEqual({
-    router: ['env-1', 'env-2', 'env-3'],
-    agent: ['env-1', 'env-2', 'sandbox'],
+    router: ['env-1', 'env-2', 'env-3', 'env-main-1'],
+    agent: ['env-1', 'env-2', 'main'],
   });
 
   environments.revoke({ tenantId: ownerId, clientActionId: 'revoke-catalog-env', envId: 'env-2' });
   expect(environments.get(ownerId, 'env-2').bindingStatus).toBe('revoked');
   expect(readCatalogs()).toEqual({
-    router: ['env-1', 'env-3'],
-    agent: ['env-1', 'sandbox'],
+    router: ['env-1', 'env-3', 'env-main-1'],
+    agent: ['env-1', 'main'],
   });
   expect(store.agentEnvironments.requirePolicy(task.thread.threadId, 'thread').allowedEnv).toEqual([
-    sandboxEnvId(store),
+    mainEnvId(store),
     'env-1',
     'env-2',
   ]);
@@ -563,17 +567,17 @@ it('filters revoked environments from Router and Agent catalogs until active aga
     .run(now, now);
   expect(environments.get(ownerId, 'env-2').bindingStatus).toBe('active');
   expect(readCatalogs()).toEqual({
-    router: ['env-1', 'env-2', 'env-3'],
-    agent: ['env-1', 'env-2', 'sandbox'],
+    router: ['env-1', 'env-2', 'env-3', 'env-main-1'],
+    agent: ['env-1', 'env-2', 'main'],
   });
   expect(store.agentEnvironments.requirePolicy(task.thread.threadId, 'thread').allowedEnv).toEqual([
-    sandboxEnvId(store),
+    mainEnvId(store),
     'env-1',
     'env-2',
   ]);
 });
 
-it('uses the sandbox alias only at the model boundary and keeps real audit routing', async () => {
+it('uses the main alias only at the model boundary and keeps real audit routing', async () => {
   const { store, environments, operations } = await fixture(new ScriptedProvider([]));
   const task = store.createThread(
     action('CreateThread', 'sandbox-alias-task', {
@@ -588,39 +592,36 @@ it('uses the sandbox alias only at the model boundary and keeps real audit routi
     store,
     environments,
     operations,
-    platformUse: new ControlledPlatformUseGateway(store.database),
+    environmentUse: new ControlledEnvironmentUseGateway(store.database),
   });
   const catalog = JSON.parse(runtime.list(run)) as {
     main_env: string;
     environments: Array<{ env_id: string; name: string; is_main: boolean }>;
   };
-  const sandboxId = sandboxEnvId(store);
-  expect(catalog.main_env).toBe('sandbox');
+  const sandboxId = mainEnvId(store);
+  expect(catalog.main_env).toBe('main');
   expect(catalog.environments).toMatchObject([
     { env_id: 'env-1', name: 'env-1', is_main: false },
     { env_id: 'env-2', name: 'env-2', is_main: false },
-    { env_id: 'sandbox', name: 'sandbox', is_main: true },
+    { env_id: 'main', name: 'main', is_main: true },
   ]);
   expect(JSON.stringify(catalog)).not.toContain(sandboxId);
-  expect(runtime.resolveEnvironmentIds(ownerId, ['sandbox', 'env-1'])).toEqual([
-    sandboxId,
-    'env-1',
-  ]);
+  expect(runtime.resolveEnvironmentIds(ownerId, ['main', 'env-1'])).toEqual([sandboxId, 'env-1']);
 
   const result = await runtime.execute(
     run,
     { case: 'read', value: { path: 'AGENTS.md', cwd: '' } },
     'sandbox-alias-read',
     new AbortController().signal,
-    { envId: 'sandbox' },
+    { envId: 'main' },
   );
-  expect(result.content).toContain('"env_id":"sandbox"');
+  expect(result.content).toContain('"env_id":"main"');
   expect(operations.started.at(-1)).toMatchObject({ envId: sandboxId });
   const association = store.agentEnvironments.findOperation(run.runId, 'sandbox-alias-read');
   expect(association).toMatchObject({ envId: sandboxId, action: 'read' });
 });
 
-it('projects the sandbox alias in thread_list without changing stored identifiers', async () => {
+it('projects the main alias in thread_list without changing stored identifiers', async () => {
   const provider = new ScriptedProvider([
     response('', [{ id: 'list-environments', name: 'thread_list', arguments: {} }]),
     response('done'),
@@ -660,10 +661,10 @@ it('projects the sandbox alias in thread_list without changing stored identifier
   };
   const listed = result.threads.find((candidate) => candidate.thread_id === task.thread.threadId);
   expect(listed).toMatchObject({
-    environment_policy: { allowed_env: ['sandbox', 'env-1'] },
-    current_binding: { env_id: 'sandbox' },
+    environment_policy: { allowed_env: ['main', 'env-1'] },
+    current_binding: { env_id: 'main' },
   });
-  const sandboxId = sandboxEnvId(store);
+  const sandboxId = mainEnvId(store);
   expect(message.message.content).not.toContain(sandboxId);
   expect(store.agentEnvironments.requirePolicy(task.thread.threadId, 'thread')).toMatchObject({
     allowedEnv: [sandboxId, 'env-1'],
@@ -752,7 +753,7 @@ it('gives all Agents execution tools and loads main and task resources from the 
   );
   expect(JSON.stringify(routerRequest.messages)).not.toContain('instructions for env-1');
   expect(JSON.stringify(taskRequest.messages)).toContain(
-    `instructions for ${sandboxEnvId(store)} at /workspace`,
+    `instructions for ${mainEnvId(store)} at /workspace`,
   );
   expect(JSON.stringify(taskRequest.messages)).toContain(
     'You are the root Agent of a persistent task Thread',
@@ -762,7 +763,7 @@ it('gives all Agents execution tools and loads main and task resources from the 
     '"workspace":"/workspace"',
   );
   expect(operations.started).toHaveLength(2);
-  expect(operations.started.at(-1)).toMatchObject({ envId: sandboxEnvId(store) });
+  expect(operations.started.at(-1)).toMatchObject({ envId: mainEnvId(store) });
   expect(operations.started[0]?.bindingVersion).toBeUndefined();
   expect(
     store.agentEnvironments.requirePolicy(task.thread.threadId, 'thread').current.resourceVersion,
@@ -811,7 +812,7 @@ it('routes remote operations by binding and preserves cwd and output authorizati
     store,
     environments,
     operations,
-    platformUse: new ControlledPlatformUseGateway(store.database),
+    environmentUse: new ControlledEnvironmentUseGateway(store.database),
   });
   const output = runtime.readOutput(run, { operationId: operationId, offset: 0n, limit: 5 });
   expect(output).toContain('remote output'.slice(0, 5));
@@ -921,7 +922,7 @@ it('reloads resources without changing the binding version and deduplicates the 
   await coordinator.deliver(next.input, next.runId);
   await waitStatus(store, next.runId, 'completed');
   expect(JSON.stringify(provider.requests[1]?.messages)).toContain(
-    `instructions for ${sandboxEnvId(store)} at /workspace updated`,
+    `instructions for ${mainEnvId(store)} at /workspace updated`,
   );
 });
 
@@ -1055,7 +1056,7 @@ it('recovers a completed attachment Operation without writing again after restar
     },
     environments,
     environmentOperations: operations,
-    platformUse: new ControlledPlatformUseGateway(store.database),
+    environmentUse: new ControlledEnvironmentUseGateway(store.database),
   });
   cleanup.push(async () => resumed.close());
   resumed.schedule(task.thread.threadId, continued.runId);
@@ -1206,7 +1207,7 @@ it('cancels an in-flight remote operation without changing the binding', async (
   expect(
     store.agentEnvironments.requirePolicy(task.thread.threadId, 'thread').current,
   ).toMatchObject({
-    envId: sandboxEnvId(store),
+    envId: mainEnvId(store),
     bindingVersion: 1,
   });
 });
@@ -1236,7 +1237,7 @@ it('rejects new business operations while draining but allows directory reload',
     store,
     environments,
     operations,
-    platformUse: new ControlledPlatformUseGateway(store.database),
+    environmentUse: new ControlledEnvironmentUseGateway(store.database),
   });
   await expect(
     runtime.execute(
@@ -1258,7 +1259,7 @@ it('rejects new business operations while draining but allows directory reload',
   expect(
     store.agentEnvironments.requirePolicy(task.thread.threadId, 'thread').current,
   ).toMatchObject({
-    envId: sandboxEnvId(store),
+    envId: mainEnvId(store),
     pwd: '/workspace',
     bindingVersion: 1,
   });
@@ -1308,7 +1309,7 @@ it('recovers a persisted operation result for the owning tenant after restart', 
     store,
     environments,
     operations,
-    platformUse: new ControlledPlatformUseGateway(store.database),
+    environmentUse: new ControlledEnvironmentUseGateway(store.database),
   });
   const recovered = await runtime.savedResult(sent.runId, 'recover-tenant-call');
   expect(recovered).toMatchObject({ status: 'success' });
@@ -1380,7 +1381,7 @@ it('discards an unstarted association when aborted after the intent record', asy
     store,
     environments,
     operations,
-    platformUse: new ControlledPlatformUseGateway(store.database),
+    environmentUse: new ControlledEnvironmentUseGateway(store.database),
   });
   runtime.reserveRun(run);
   const controller = new AbortController();
@@ -1442,7 +1443,7 @@ it('continues once after closing before the initial remote start', async () => {
     },
     environments,
     environmentOperations: operations,
-    platformUse: new ControlledPlatformUseGateway(store.database),
+    environmentUse: new ControlledEnvironmentUseGateway(store.database),
   });
   cleanup.push(async () => resumed.close());
   resumed.schedule(task.thread.threadId, continued.runId);
@@ -1555,7 +1556,7 @@ it('uses the second initial attempt when equal timestamps and UUIDs sort in reve
   await operations.startEnvironmentOperation({
     operationId: secondOperationId,
     tenantId: ownerId,
-    envId: sandboxEnvId(store),
+    envId: mainEnvId(store),
     action: {
       case: 'directoryCheck',
       value: { path: '/workspace', loadWorkspace: true },
@@ -1876,7 +1877,7 @@ it('returns read_image validation errors and rejects offline self-hosted environ
     store,
     environments,
     operations,
-    platformUse: new ControlledPlatformUseGateway(store.database),
+    environmentUse: new ControlledEnvironmentUseGateway(store.database),
   });
   const execute = (callId: string) =>
     runtime.execute(
@@ -1937,7 +1938,7 @@ it('cancels read_image and recovers its saved attachment result without repeatin
     store,
     environments,
     operations,
-    platformUse: new ControlledPlatformUseGateway(store.database),
+    environmentUse: new ControlledEnvironmentUseGateway(store.database),
   });
   operations.deferImage = true;
   const controller = new AbortController();

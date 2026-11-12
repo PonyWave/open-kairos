@@ -30,7 +30,7 @@ import {
   waitSlashRequests,
   waitSlashRun,
 } from './compact-fixture.js';
-import { ControlledPlatformUseGateway } from './environment-fixture.js';
+import { ControlledEnvironmentUseGateway } from './environment-fixture.js';
 
 async function makeWorkspace(
   prefix: string,
@@ -80,7 +80,7 @@ async function seedInterruptedRequest(
     store,
     environments: new EnvironmentStore(fixture.database),
     operations: fixture.environmentOperations,
-    platformUse: new ControlledPlatformUseGateway(fixture.database),
+    environmentUse: new ControlledEnvironmentUseGateway(fixture.database),
   });
   const run = store.getRunById(sent.runId);
   environmentRuntime.reserveRun(run);

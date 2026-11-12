@@ -15,24 +15,19 @@ import {
   readPeriodicRecapConfig,
   readServerConfig,
 } from './config.js';
-import type { PlatformConfiguration } from './config-platform.js';
 import { DeviceChannel } from './devices/channel.js';
 import { DeviceInstaller } from './devices/device-installer.js';
 import { EnvironmentDirectories } from './devices/environment-directories.js';
 import { EnvironmentOperationStore } from './devices/environment-operation-store.js';
 import { EnvironmentStore, type EnvironmentStoreOptions } from './devices/environment-store.js';
-import { DeviceBashStore } from './devices/operation-store.js';
+import type { EnvironmentUseGateway } from './devices/environment-use.js';
 import {
-  type StandaloneDeviceConfiguration,
-  StandaloneDeviceUseGateway,
-} from './devices/standalone-device.js';
+  isMainEnvironmentReady,
+  type MainEnvironmentConfiguration,
+  MainEnvironmentUseGateway,
+} from './devices/main-environment.js';
+import { DeviceBashStore } from './devices/operation-store.js';
 import { registerDeviceWebSocket } from './devices/websocket.js';
-import { OpenSandboxBackend } from './platform/backend.js';
-import type { PlatformUseGateway } from './platform/contracts.js';
-import { PlatformManager } from './platform/manager.js';
-import { CgroupPhysicalObserver } from './platform/physical-observer.js';
-import { UnavailablePlatformUseGateway } from './platform-unavailable.js';
-import { platformWorkspaceGateway } from './platform-workspace.js';
 import type { SqlRecallLimits } from './recall/index.js';
 import type { PeriodicRecapConfiguration } from './recap/periodic.js';
 import type { EnvironmentOperationGateway } from './sessions/environment-runtime.js';
@@ -70,9 +65,8 @@ export interface ServerOptions {
   identity?: IdentityServerOptions;
   environment?: EnvironmentStoreOptions;
   environmentOperations?: EnvironmentOperationGateway;
-  platform?: PlatformConfiguration;
-  platformUse?: PlatformUseGateway;
-  standaloneDevice?: StandaloneDeviceConfiguration;
+  environmentUse?: EnvironmentUseGateway;
+  mainEnvironment?: MainEnvironmentConfiguration;
   deviceChannel?: DeviceChannel;
   model?: RuntimeModelConfiguration;
   modelSettings?: { allowedOrigins?: readonly string[]; fetch?: typeof globalThis.fetch };
@@ -105,9 +99,10 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
   const identity = options.identity;
   if (!identity) throw new Error('Server identity authentication must be configured.');
   const maxRpcBytes = options.maxRpcBytes ?? 1024 * 1024;
-  if (options.platform && options.standaloneDevice) {
-    throw new Error('Platform sandbox and standalone device execution are mutually exclusive.');
-  }
+  const mainEnvironment = options.mainEnvironment ?? {
+    envId: 'main',
+    workspace: '/workspace',
+  };
   const serverConfig = readServerConfig();
   const server = Fastify({
     logger,
@@ -120,65 +115,30 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
     maxMessageBytes: Math.max(1, Math.floor(maxRpcBytes / 2)),
     ...(options.maxQueuedInputs ? { maxQueuedInputs: options.maxQueuedInputs } : {}),
     ...(options.eventRetentionMs ? { eventRetentionMs: options.eventRetentionMs } : {}),
-    ...(options.standaloneDevice ? { standaloneDevice: options.standaloneDevice } : {}),
+    mainEnvironment,
   });
   const operations = new DeviceBashStore(database);
   const environments = new EnvironmentStore(database, {
     ...(options.environment ?? {}),
     ...(options.now ? { now: options.now } : {}),
-    ...(options.standaloneDevice ? { standaloneDevice: options.standaloneDevice } : {}),
+    mainEnvironment,
   });
   const environmentOperations = new EnvironmentOperationStore(database, options.now);
-  let platformManager: PlatformManager | undefined;
-  let platformReady = options.platformUse !== undefined;
-  let platform: PlatformUseGateway =
-    options.platformUse ?? new UnavailablePlatformUseGateway(environments);
-  if (options.platform && !options.platformUse) {
-    try {
-      const configuration = options.platform;
-      platformManager = new PlatformManager(database, {
-        path: configuration.controlDatabasePath,
-        deploymentId: configuration.deploymentId,
-        cluster: configuration.cluster,
-        capacity: configuration.capacity,
-        sharedReleaseClaim: configuration.sharedReleaseClaim,
-        backend: new OpenSandboxBackend(configuration),
-        physicalObserver: new CgroupPhysicalObserver(configuration.cgroupProofFile),
-        operations: {
-          ensureWorkspaceReady: (input) =>
-            platformWorkspaceGateway(
-              environments,
-              options.environmentOperations ?? deviceChannel,
-              platform,
-            ).ensureWorkspaceReady(input),
-        },
-        preparationTimeoutMs: configuration.preparationTimeoutMs,
-        idleTimeoutMs: configuration.idleTimeoutMs,
-        onEnvironmentChange: (environment) =>
-          store.publishMainEnvironment(environment.tenantId, environment),
-        onError: (error) => server.log.error(error),
-      });
-      platform = platformManager;
-    } catch (error) {
-      server.log.error(error, 'Platform configuration is unavailable.');
-    }
-  }
   const deviceChannel =
     options.deviceChannel ??
     new DeviceChannel({
       environments,
       environmentOperations,
-      ...(platformManager ? { platform: platformManager } : {}),
       ...(options.now ? { now: options.now } : {}),
       onDeviceError: (error) => server.log.error(error),
     });
-  if (!options.platformUse && options.standaloneDevice) {
-    platform = new StandaloneDeviceUseGateway(
+  const environmentUse =
+    options.environmentUse ??
+    new MainEnvironmentUseGateway(
       environments,
       options.environmentOperations ?? deviceChannel,
-      options.standaloneDevice,
+      mainEnvironment,
     );
-  }
   const settings = new SettingsStore(database, {
     secret: identity.secret,
     ...(options.model ? { platformModel: options.model } : {}),
@@ -198,7 +158,7 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
     ...(options.model ? { model: options.model } : {}),
     environments,
     environmentOperations: options.environmentOperations ?? deviceChannel,
-    platformUse: platform,
+    environmentUse: environmentUse,
     ...(options.maxActiveThreads ? { maxActiveThreads: options.maxActiveThreads } : {}),
     ...(options.maxConcurrentModelRequests
       ? { maxConcurrentModelRequests: options.maxConcurrentModelRequests }
@@ -274,11 +234,9 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
         deviceInstaller,
         ...(options.maxEventQueue ? { maxEventQueue: options.maxEventQueue } : {}),
         maxEventBytes: maxRpcBytes,
-        platformConfigured: platformManager !== undefined || options.platformUse !== undefined,
-        isPlatformReady: () => platformReady,
-        ...(options.standaloneDevice
-          ? { standaloneDeviceEnvId: options.standaloneDevice.envId }
-          : {}),
+        mainEnvironment,
+        isMainEnvironmentReady: (tenantId) =>
+          isMainEnvironmentReady(environments, tenantId, mainEnvironment),
       }),
     shutdownTimeoutMs: 5000,
     readMaxBytes: maxRpcBytes,
@@ -290,23 +248,10 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
     store.recoverInterrupted();
     coordinator.recoverManualCompactions();
     coordinator.resumePeriodicRecaps();
-    if (!platformManager) {
-      coordinator.resumeDeliveries();
-      automations.start();
-    }
-  });
-  server.addHook('onReady', () => startup);
-  server.addHook('onListen', async () => {
-    if (!platformManager) return;
-    try {
-      await platformManager.start();
-      platformReady = true;
-    } catch (error) {
-      server.log.error(error, 'Platform recovery failed; new platform work remains unavailable.');
-    }
     coordinator.resumeDeliveries();
     automations.start();
   });
+  server.addHook('onReady', () => startup);
   let closing = false;
   server.addHook('onResponse', (_request, _reply, done) => {
     if (closing) server.server.closeIdleConnections();
@@ -316,7 +261,6 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
     closing = true;
     await automations.close();
     await coordinator.close();
-    await platformManager?.close();
     server.server.closeIdleConnections();
   });
   server.addHook('onClose', async () => {

@@ -34,7 +34,7 @@ it('requires the environment store and Operation gateway before constructing a c
   try {
     const store = new SessionStore(database);
     expect(() => Reflect.construct(RunCoordinator, [{ store }])).toThrow(
-      'EnvironmentStore, the remote Operation gateway and the platform usage gateway are required.',
+      'EnvironmentStore, the remote Operation gateway and the environment usage gateway are required.',
     );
   } finally {
     database.close();

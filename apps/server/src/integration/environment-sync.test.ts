@@ -15,7 +15,10 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { AgentEnvironmentRuntime } from '../sessions/environment-runtime.js';
 import { SessionStore } from '../sessions/store.js';
-import { ControlledPlatformUseGateway, startRealEnvironmentServer } from './environment-fixture.js';
+import {
+  ControlledEnvironmentUseGateway,
+  startRealEnvironmentServer,
+} from './environment-fixture.js';
 
 const cleanup: Array<() => Promise<void>> = [];
 
@@ -34,12 +37,12 @@ it('syncs files and nested directories in both directions through real Daemons w
     await rm(directory, { recursive: true, force: true });
   });
   const second = await fixture.addEnvironment('second');
-  const store = new SessionStore(fixture.database);
+  const store = new SessionStore(fixture.database, { mainEnvironment: fixture.mainEnvironment });
   const runtime = new AgentEnvironmentRuntime({
     store,
     environments: fixture.environments,
     operations: fixture.channel,
-    platformUse: new ControlledPlatformUseGateway(fixture.database),
+    environmentUse: new ControlledEnvironmentUseGateway(fixture.database),
   });
   const task = store.createThread({
     ownerId: 'tenant-sync',
@@ -247,12 +250,12 @@ it('ignores unrelated large and numerous target entries during bounded conflict 
     await rm(directory, { recursive: true, force: true });
   });
   const second = await fixture.addEnvironment('second');
-  const store = new SessionStore(fixture.database);
+  const store = new SessionStore(fixture.database, { mainEnvironment: fixture.mainEnvironment });
   const runtime = new AgentEnvironmentRuntime({
     store,
     environments: fixture.environments,
     operations: fixture.channel,
-    platformUse: new ControlledPlatformUseGateway(fixture.database),
+    environmentUse: new ControlledEnvironmentUseGateway(fixture.database),
   });
   const task = store.createThread({
     ownerId: 'tenant-sync-target',
@@ -320,12 +323,12 @@ it('overwrites large existing files by existence rather than target hash', async
     await rm(directory, { recursive: true, force: true });
   });
   const second = await fixture.addEnvironment('second');
-  const store = new SessionStore(fixture.database);
+  const store = new SessionStore(fixture.database, { mainEnvironment: fixture.mainEnvironment });
   const runtime = new AgentEnvironmentRuntime({
     store,
     environments: fixture.environments,
     operations: fixture.channel,
-    platformUse: new ControlledPlatformUseGateway(fixture.database),
+    environmentUse: new ControlledEnvironmentUseGateway(fixture.database),
   });
   const task = store.createThread({
     ownerId: 'tenant-sync-overwrite',
@@ -421,12 +424,12 @@ it('skips non-directory and symlink ancestors while copying unrelated files', as
     await rm(directory, { recursive: true, force: true });
   });
   const second = await fixture.addEnvironment('second');
-  const store = new SessionStore(fixture.database);
+  const store = new SessionStore(fixture.database, { mainEnvironment: fixture.mainEnvironment });
   const runtime = new AgentEnvironmentRuntime({
     store,
     environments: fixture.environments,
     operations: fixture.channel,
-    platformUse: new ControlledPlatformUseGateway(fixture.database),
+    environmentUse: new ControlledEnvironmentUseGateway(fixture.database),
   });
   const task = store.createThread({
     ownerId: 'tenant-sync-ancestors',

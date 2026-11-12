@@ -24,6 +24,7 @@ import type {
 } from '../sessions/environment-runtime.js';
 import {
   ControlledEnvironmentOperations,
+  seedReadyMainEnvironment,
   startRealEnvironmentServer,
 } from './environment-fixture.js';
 
@@ -39,6 +40,7 @@ class LocalSandboxOperations extends ControlledEnvironmentOperations {
   constructor(
     environments: EnvironmentStore,
     private readonly root: string,
+    private readonly workspacePrefix: string,
   ) {
     super(environments);
     this.#operationStore = new EnvironmentOperationStore(environments.database);
@@ -152,8 +154,9 @@ class LocalSandboxOperations extends ControlledEnvironmentOperations {
       throw new Error('The local sandbox fixture only handles file operations.');
     }
     const logicalPath = action.value.path;
-    if (!logicalPath.startsWith('/workspace/')) throw new Error('Invalid sandbox path.');
-    const path = join(this.root, logicalPath.slice('/workspace/'.length));
+    if (!logicalPath.startsWith(`${this.workspacePrefix}/`))
+      throw new Error('Invalid sandbox path.');
+    const path = join(this.root, logicalPath.slice(this.workspacePrefix.length + 1));
     if (action.case === 'write') {
       const bytes = action.value.binaryContent ?? new TextEncoder().encode(action.value.content);
       if (action.value.createParents) await mkdir(dirname(path), { recursive: true });
@@ -255,9 +258,11 @@ it('writes clipboard images into the unified sandbox without exposing env_id', a
   const fixture = await startRealEnvironmentServer(directory, {
     ownerId,
     accessToken,
-    platformOperations: (database) =>
+    mainEnvironment: { envId: 'main', workspace: join(directory, 'workspace-1-primary') },
+    mainEnvironmentOperations: (database) =>
       new LocalSandboxOperations(
         new EnvironmentStore(database),
+        join(directory, 'workspace-1-primary'),
         join(directory, 'workspace-1-primary'),
       ),
     model: {
@@ -269,6 +274,7 @@ it('writes clipboard images into the unified sandbox without exposing env_id', a
     },
   });
   try {
+    seedReadyMainEnvironment(fixture.database, ownerId, 'main', fixture.mainEnvironment.workspace);
     const uploaded = await fixture.clients.attachments.uploadAttachment({
       clientActionId: 'paste-real-image',
       fileName: 'pixel.png',
@@ -280,7 +286,7 @@ it('writes clipboard images into the unified sandbox without exposing env_id', a
     if (!attachment) throw new Error('The pasted image was not accepted.');
     expect(attachment.source).toBe(AttachmentSource.CLIPBOARD);
     expect(attachment).not.toHaveProperty('envId');
-    target.path = `/workspace/.kairos/attachments/${attachment.attachmentId}.png`;
+    target.path = `${fixture.mainEnvironment.workspace}/.kairos/attachments/${attachment.attachmentId}.png`;
     target.localPath = join(
       fixture.workspace,
       '.kairos',

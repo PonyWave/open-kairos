@@ -61,7 +61,7 @@ describe('recall tool', () => {
       'workspace_status',
       'json_each',
       'read_image',
-      'sandbox path',
+      'workspace path',
     ]) {
       expect(tool.description).toContain(field);
     }

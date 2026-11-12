@@ -12,7 +12,6 @@ import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { seedTestSession } from '../integration/test-authentication.js';
-import { ensureTenantPlatformEnvironment } from '../platform/registry.js';
 import { SessionStore } from '../sessions/store.js';
 import { openDatabase } from '../storage/database.js';
 import {
@@ -22,7 +21,6 @@ import {
 } from './channel.js';
 import { EnvironmentOperationStore } from './environment-operation-store.js';
 import { EnvironmentStore } from './environment-store.js';
-import { DeviceFailure } from './errors.js';
 import { registerDeviceWebSocket } from './websocket.js';
 
 const cleanup: Array<() => Promise<void> | void> = [];
@@ -68,7 +66,7 @@ class TestDevice {
 
 async function fixture(
   options: Partial<
-    Pick<DeviceChannelOptions, 'now' | 'offlineAfterMilliseconds' | 'platform' | 'onDeviceError'>
+    Pick<DeviceChannelOptions, 'now' | 'offlineAfterMilliseconds' | 'onDeviceError'>
   > = {},
 ) {
   const database = openDatabase(':memory:');
@@ -198,71 +196,41 @@ afterEach(async () => {
 });
 
 describe('environment-only device channel', () => {
-  it('validates platform Pod authorization before consuming a credential and suppresses eager directory work', async () => {
-    let allowed = false;
-    const authorizeHello = vi.fn(async () => {
-      if (!allowed)
-        throw new DeviceFailure(DeviceErrorCode.PERMISSION_DENIED, 'Old Pod cannot take over.');
-      return { runtimeVersion: 1, previousInstanceGone: false };
-    });
+  it('rejects a device hello that claims a platform Pod before consuming its credential', async () => {
     const onDeviceError = vi.fn();
-    const current = await fixture({ platform: { authorizeHello }, onDeviceError });
-    const envId = ensureTenantPlatformEnvironment(current.database, 'tenant-1');
-    const credential = current.environments.pairing.issue('tenant-1', envId);
-    const send = async (controlOnly = false) => {
-      const peer = await TestDevice.connect(current.url);
-      peer.send({
-        payload: {
-          case: 'deviceHello',
-          value: {
-            envId,
-            instanceId: 'platform-instance',
-            protocolMajor: DEVICE_PROTOCOL_MAJOR,
-            daemonVersion: 'test',
-            os: 'linux',
-            architecture: 'x86_64',
-            deviceName: 'platform',
-            capabilities,
-            platformPodName: 'pod-platform',
-            platformPodUid: '11111111-1111-1111-1111-111111111111',
-            controlOnly,
-            authentication: { case: 'pairingCredential', value: credential.pairingCredential },
-          },
+    const current = await fixture({ onDeviceError });
+    const issued = current.environments.register({
+      tenantId: 'tenant-1',
+      clientActionId: 'register-pod-claim',
+      name: 'Pod claim',
+      recommendedPwd: '/tmp',
+    });
+    const peer = await TestDevice.connect(current.url);
+    peer.send({
+      payload: {
+        case: 'deviceHello',
+        value: {
+          envId: issued.environment.envId,
+          instanceId: 'platform-instance',
+          protocolMajor: DEVICE_PROTOCOL_MAJOR,
+          daemonVersion: 'test',
+          os: 'linux',
+          architecture: 'x86_64',
+          deviceName: 'platform',
+          capabilities,
+          platformPodName: 'pod-platform',
+          platformPodUid: '11111111-1111-1111-1111-111111111111',
+          authentication: { case: 'pairingCredential', value: issued.pairingCredential },
         },
-      });
-      return peer;
-    };
-    const denied = await send();
-    expect(await denied.wait('error')).toMatchObject({ code: DeviceErrorCode.PERMISSION_DENIED });
-    expect(onDeviceError).toHaveBeenCalledWith({
-      name: 'DeviceFailure',
-      code: DeviceErrorCode.PERMISSION_DENIED,
-      message: 'Old Pod cannot take over.',
-      deviceId: '',
-      instanceId: '',
+      },
     });
-    expect(JSON.stringify(onDeviceError.mock.calls)).not.toContain(credential.pairingCredential);
+    expect(await peer.wait('error')).toMatchObject({ code: DeviceErrorCode.PERMISSION_DENIED });
+    expect(JSON.stringify(onDeviceError.mock.calls)).not.toContain(issued.pairingCredential);
     expect(
       current.database
-        .prepare('SELECT consumed_at FROM environment_pairing_credentials WHERE credential_id=?')
-        .get(credential.credentialId),
+        .prepare('SELECT consumed_at FROM environment_pairing_credentials WHERE env_id=?')
+        .get(issued.environment.envId),
     ).toMatchObject({ consumed_at: null });
-    allowed = true;
-    const accepted = await send();
-    const hello = await accepted.wait('serverHello');
-    expect(hello).toMatchObject({
-      platformPodName: 'pod-platform',
-      platformPodUid: '11111111-1111-1111-1111-111111111111',
-    });
-    expect(accepted.values('operationStart')).toEqual([]);
-    expect(current.environments.get('tenant-1', envId).directoryStatus).toBe('pending');
-    expect(
-      current.database
-        .prepare('SELECT default_env_id FROM tenants WHERE tenant_id=?')
-        .get('tenant-1'),
-    ).toMatchObject({ default_env_id: null });
-    expect(authorizeHello).toHaveBeenCalledTimes(2);
-    expect(onDeviceError).toHaveBeenCalledTimes(1);
   });
   it('rejects a hello without an environment rather than accepting legacy credentials', async () => {
     const current = await fixture();

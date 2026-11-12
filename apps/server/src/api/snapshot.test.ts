@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import { createClient, type Interceptor, type Transport } from '@connectrpc/connect';
 import {
   create,
-  EnvironmentKind,
   GetThreadRequestSchema,
   type GetThreadResponse,
   GetThreadResponseSchema,
@@ -56,26 +55,27 @@ function send(store: SessionStore, threadId: string, actionId: string, text = 'è
   });
 }
 
-it('projects a configured backend that has not passed recovery as unavailable', () => {
+it('projects a configured main environment that is not ready as unavailable', () => {
   const { database, store } = fixture();
   new EnvironmentOperationStore(database);
   try {
     const thread = store.getOrCreateMainThread(ownerId);
     const request = create(GetThreadRequestSchema, { threadId: thread.threadId });
+    const mainEnvironment = { envId: 'main', workspace: '/workspace' };
     const unavailable = getThreadSnapshot(store, ownerId, request, {
-      platformConfigured: true,
-      platformReady: false,
+      mainEnvironment,
+      mainEnvironmentReady: false,
     }).snapshot?.mainEnvironment;
     expect(unavailable).toMatchObject({
-      kind: EnvironmentKind.PLATFORM_SANDBOX,
+      envId: 'main',
       lifecycleState: PlatformLifecycleState.ERROR,
     });
     const ready = getThreadSnapshot(store, ownerId, request, {
-      platformConfigured: true,
-      platformReady: true,
+      mainEnvironment,
+      mainEnvironmentReady: true,
     }).snapshot?.mainEnvironment;
     expect(ready?.envId).toBe(unavailable?.envId);
-    expect(ready?.lifecycleState).toBe(PlatformLifecycleState.UNINITIALIZED);
+    expect(ready?.lifecycleState).toBeUndefined();
     expect(database.prepare('SELECT COUNT(*) AS count FROM environment_operations').get()).toEqual({
       count: 0,
     });

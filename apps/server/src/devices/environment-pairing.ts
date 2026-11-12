@@ -154,27 +154,6 @@ export class EnvironmentPairing {
       );
     return issue;
   }
-  reissueUnusedInitialization(tenantId: string, envId: string): EnvironmentPairingIssue {
-    return inTransaction(this.database, () => {
-      const environment = this.database
-        .prepare(
-          'SELECT kind,binding_status,device_binding_id FROM environments WHERE tenant_id=? AND env_id=?',
-        )
-        .get(tenantId, envId);
-      if (
-        environment?.kind !== 'platform_sandbox' ||
-        environment.binding_status !== 'pairing' ||
-        environment.device_binding_id !== null
-      )
-        throw authenticationError();
-      this.database
-        .prepare(
-          'UPDATE environment_pairing_credentials SET invalidated_at=? WHERE tenant_id=? AND env_id=? AND consumed_at IS NULL AND invalidated_at IS NULL',
-        )
-        .run(this.#now().toISOString(), tenantId, envId);
-      return this.issue(tenantId, envId);
-    });
-  }
 
   invalidate(envId: string, now: string, bindingStatus: 'superseded' | 'revoked'): void {
     this.database

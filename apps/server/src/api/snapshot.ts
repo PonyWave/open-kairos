@@ -20,8 +20,11 @@ import {
   ThreadSnapshotSchema,
   toBinary,
 } from '@kairos/contracts';
-import { EnvironmentStore } from '../devices/environment-store.js';
-import { ensureTenantPlatformEnvironment } from '../platform/registry.js';
+import { type EnvironmentRecord, EnvironmentStore } from '../devices/environment-store.js';
+import {
+  ensureMainEnvironment,
+  type MainEnvironmentConfiguration,
+} from '../devices/main-environment.js';
 import { requirePositiveInteger, SessionError } from '../sessions/errors.js';
 import type {
   SessionStore,
@@ -56,8 +59,8 @@ type PageItem =
 export interface ThreadSnapshotPageOptions {
   maxBytes?: number;
   maxRecords?: number;
-  platformConfigured?: boolean;
-  platformReady?: boolean;
+  mainEnvironment?: MainEnvironmentConfiguration;
+  mainEnvironmentReady?: boolean;
   allowAutomationOnly?: boolean;
 }
 
@@ -86,22 +89,24 @@ export function getThreadSnapshot(
     ? fromCursor(request, latest)
     : store.getThreadSnapshotBounds(ownerId, thread.threadId);
   const firstPage = request.cursor === undefined;
+  let mainEnvironment: EnvironmentRecord | undefined;
+  if (thread.threadType === 'main' && options.mainEnvironment) {
+    const envId = ensureMainEnvironment(store.database, ownerId, options.mainEnvironment);
+    mainEnvironment = new EnvironmentStore(store.database).get(ownerId, envId);
+  }
   const snapshot = create(ThreadSnapshotSchema, {
     ...(firstPage
       ? {
           thread: toThread(thread),
           queueVersion: BigInt(store.queueVersion(thread.threadId)),
-          ...(thread.threadType === 'main' && options.platformConfigured
+          ...(mainEnvironment
             ? {
                 mainEnvironment: toEnvironment({
-                  ...new EnvironmentStore(store.database).get(
-                    ownerId,
-                    ensureTenantPlatformEnvironment(store.database, ownerId),
-                  ),
-                  ...(options.platformReady === false
+                  ...mainEnvironment,
+                  ...(options.mainEnvironmentReady === false
                     ? {
                         lifecycleState: 'error' as const,
-                        statusReason: '平台运行后端尚未完成核对或当前不可用。',
+                        statusReason: '主环境当前不可用。',
                       }
                     : {}),
                 }),

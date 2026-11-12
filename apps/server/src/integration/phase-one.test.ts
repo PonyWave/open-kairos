@@ -514,7 +514,7 @@ it('AT-07/AT-09/AT-10 preserves hard-cut evidence and recalls it after Server re
       expect.objectContaining({
         role: 'system',
         content: expect.stringContaining(
-          'All Agents share this tenant sandbox workspace at /workspace',
+          'All Agents load AGENTS.md and Skills from the main environment workspace',
         ),
       }),
       expect.objectContaining({

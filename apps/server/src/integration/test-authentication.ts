@@ -5,10 +5,11 @@ import type { GuiAuthentication } from '../api/auth.js';
 import { createServer, type IdentityServerOptions, type ServerOptions } from '../app.js';
 import { AuthService } from '../auth/service.js';
 import { AuthStore } from '../auth/store.js';
+import type { MainEnvironmentConfiguration } from '../devices/main-environment.js';
 import { SessionStore } from '../sessions/store.js';
 import { inTransaction } from '../storage/transaction.js';
 import type { WorkspaceResourceSource } from './environment-fixture.js';
-import { ControlledPlatformUseGateway } from './environment-fixture.js';
+import { ControlledEnvironmentUseGateway } from './environment-fixture.js';
 
 export const testSessionToken = 'test-session-token';
 const testSecret = 'test-session-authentication-secret-at-least-32-characters';
@@ -42,8 +43,13 @@ export function testSessionInterceptor(token = testSessionToken): Interceptor {
   };
 }
 
-export function seedTestSession(database: DatabaseSync, tenantId: string, token: string): void {
-  const store = new SessionStore(database);
+export function seedTestSession(
+  database: DatabaseSync,
+  tenantId: string,
+  token: string,
+  mainEnvironment?: MainEnvironmentConfiguration,
+): void {
+  const store = new SessionStore(database, mainEnvironment ? { mainEnvironment } : {});
   const now = new Date().toISOString();
   inTransaction(database, () => {
     const tenant = database
@@ -90,13 +96,18 @@ export function createTestAuthentication(
   database: DatabaseSync,
   tenantId: string,
   token = testSessionToken,
+  mainEnvironment?: MainEnvironmentConfiguration,
 ): GuiAuthentication {
-  seedTestSession(database, tenantId, token);
+  seedTestSession(database, tenantId, token, mainEnvironment);
   const options = testIdentityOptions();
   return {
     authService: new AuthService(new AuthStore(database), {
       ...options,
-      createMainThread: (ownerId) => new SessionStore(database).getOrCreateMainThread(ownerId),
+      createMainThread: (ownerId) =>
+        new SessionStore(
+          database,
+          mainEnvironment ? { mainEnvironment } : {},
+        ).getOrCreateMainThread(ownerId),
     }),
     allowedOrigin: options.allowedOrigin,
     secureCookies: options.secureCookies,
@@ -125,8 +136,9 @@ export function createTestServer(
   const server = createServer(database, logger, {
     ...serverOptions,
     identity: serverOptions.identity ?? testIdentityOptions(),
-    platformUse: serverOptions.platformUse ?? new ControlledPlatformUseGateway(database),
+    environmentUse: serverOptions.environmentUse ?? new ControlledEnvironmentUseGateway(database),
   });
-  if (serverOptions.identity === undefined) seedTestSession(database, tenantId, sessionToken);
+  if (serverOptions.identity === undefined)
+    seedTestSession(database, tenantId, sessionToken, serverOptions.mainEnvironment);
   return server;
 }

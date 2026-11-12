@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SessionStore } from '../sessions/store.js';
 import { openDatabase } from '../storage/database.js';
 import { EnvironmentStore } from './environment-store.js';
+import { ensureMainEnvironment } from './main-environment.js';
 
 const databases: DatabaseSync[] = [];
 const allCapabilities = [
@@ -669,49 +670,52 @@ describe('connected device configuration', () => {
   });
 });
 
-describe('standalone device registration', () => {
-  it('uses the configured ordinary device and reissues its pending pairing', () => {
-    const { database } = fixture();
-    const store = new EnvironmentStore(database, {
-      standaloneDevice: { envId: 'cvm-device', workspace: '/workspace' },
-    });
-    const issued = store.beginConnection({
-      tenantId: 'tenant-1',
-      clientActionId: 'standalone-begin',
-    });
-    expect(issued.environment).toMatchObject({
-      envId: 'cvm-device',
-      kind: 'self_hosted_linux',
-      recommendedPwd: '/workspace',
-      autoDetect: false,
-      bindingStatus: 'pairing',
-    });
-    expect(database.prepare('SELECT COUNT(*) AS count FROM platform_environments').get()).toEqual({
-      count: 0,
-    });
-    const reissued = store.beginConnection({
-      tenantId: 'tenant-1',
-      clientActionId: 'standalone-reissue',
-    });
-    expect(reissued.environment.envId).toBe('cvm-device');
-    expect(reissued.pairingCredential).not.toBe(issued.pairingCredential);
-    expect(() =>
-      store.beginConnection({ tenantId: 'tenant-2', clientActionId: 'standalone-other-tenant' }),
-    ).toThrowError(expect.objectContaining({ code: 'permission_denied' }));
-  });
-
-  it('reopens only the configured standalone device after cancel and active revocation', () => {
+describe('main environment registration', () => {
+  it('registers new devices through beginConnection while the main environment stays protected', () => {
     const { database } = fixture();
     const store = new EnvironmentStore(database, {
       now: () => new Date(initialTime),
-      standaloneDevice: { envId: 'cvm-device', workspace: '/workspace' },
+      mainEnvironment: { envId: 'cvm-device', workspace: '/workspace' },
     });
-    const ordinary = register(store, 'tenant-1', 'ordinary-revoked');
-    store.revoke({
+    ensureMainEnvironment(database, 'tenant-1', { envId: 'cvm-device', workspace: '/workspace' });
+    const issued = store.beginConnection({ tenantId: 'tenant-1', clientActionId: 'begin-1' });
+    expect(issued.environment).toMatchObject({
+      name: '新设备',
+      recommendedPwd: '/',
+      bindingStatus: 'pairing',
+    });
+    expect(issued.environment.envId).not.toBe('cvm-device');
+    expect(() =>
+      store.revoke({ tenantId: 'tenant-1', clientActionId: 'revoke-main', envId: 'cvm-device' }),
+    ).toThrowError(expect.objectContaining({ code: 'permission_denied' }));
+    const reissued = store.reissue({
       tenantId: 'tenant-1',
-      clientActionId: 'ordinary-revoke',
+      clientActionId: 'reissue-main',
+      envId: 'cvm-device',
+    });
+    expect(reissued.environment).toMatchObject({
+      envId: 'cvm-device',
+      bindingStatus: 'pairing',
+      recommendedPwd: '/workspace',
+    });
+    const other = store.beginConnection({ tenantId: 'tenant-2', clientActionId: 'begin-other' });
+    expect(other.environment.tenantId).toBe('tenant-2');
+  });
+
+  it('cancels and revokes ordinary devices whose revoked binding cannot be paired again', () => {
+    const { database } = fixture();
+    const store = new EnvironmentStore(database, {
+      now: () => new Date(initialTime),
+      mainEnvironment: { envId: 'cvm-device', workspace: '/workspace' },
+    });
+    ensureMainEnvironment(database, 'tenant-1', { envId: 'cvm-device', workspace: '/workspace' });
+    const ordinary = register(store, 'tenant-1', 'ordinary-1');
+    const cancelled = store.cancelConnection({
+      tenantId: 'tenant-1',
+      clientActionId: 'ordinary-cancel',
       envId: ordinary.environment.envId,
     });
+    expect(cancelled).toMatchObject({ bindingStatus: 'revoked', revokedAt: initialTime });
     expect(() =>
       store.reissue({
         tenantId: 'tenant-1',
@@ -719,255 +723,8 @@ describe('standalone device registration', () => {
         envId: ordinary.environment.envId,
       }),
     ).toThrowError(expect.objectContaining({ code: 'failed_precondition' }));
-
-    const initial = store.beginConnection({
-      tenantId: 'tenant-1',
-      clientActionId: 'standalone-initial',
-    });
-    const cancelled = store.cancelConnection({
-      tenantId: 'tenant-1',
-      clientActionId: 'standalone-cancel',
-      envId: initial.environment.envId,
-    });
-    expect(cancelled).toMatchObject({ bindingStatus: 'revoked', revokedAt: initialTime });
-    const restored = store.beginConnection({
-      tenantId: 'tenant-1',
-      clientActionId: 'standalone-cancel-retry',
-    });
-    expect(restored.environment).toMatchObject({
-      envId: 'cvm-device',
-      bindingStatus: 'pairing',
-      recommendedPwd: '/workspace',
-      revokedAt: initialTime,
-      ready: false,
-    });
-    expect(restored.pairingCredential).not.toBe(initial.pairingCredential);
-    expect(() => exchange(store, 'cvm-device', initial.pairingCredential)).toThrowError(
-      expect.objectContaining({ code: DeviceErrorCode.UNAUTHENTICATED }),
-    );
     expect(() =>
-      store.beginConnection({ tenantId: 'tenant-2', clientActionId: 'standalone-cross-tenant' }),
+      store.revoke({ tenantId: 'tenant-1', clientActionId: 'revoke-main-2', envId: 'cvm-device' }),
     ).toThrowError(expect.objectContaining({ code: 'permission_denied' }));
-
-    expect(() => exchange(store, 'cvm-device', 'invalid-retry-credential')).toThrowError(
-      expect.objectContaining({ code: DeviceErrorCode.UNAUTHENTICATED }),
-    );
-    const first = exchange(store, 'cvm-device', restored.pairingCredential);
-    store.markConnected({
-      ...first,
-      instanceId: 'old-instance',
-      reportedCapabilities: allCapabilities,
-    });
-    store.recordReadiness({
-      ...first,
-      instanceId: 'old-instance',
-      reportedCapabilities: allCapabilities,
-      directoryStatus: 'ready',
-      normalizedPwd: '/workspace',
-    });
-    const ready = store.get('tenant-1', 'cvm-device');
-    store.updateSettings({
-      tenantId: 'tenant-1',
-      clientActionId: 'standalone-directory-change',
-      envId: 'cvm-device',
-      expectedSettingsVersion: BigInt(ready.settingsVersion),
-      recommendedPwd: '/other',
-      checkedDirectory: {
-        normalizedPath: '/other',
-        deviceBindingId: first.deviceBindingId,
-        instanceId: 'old-instance',
-      },
-    });
-    store.revoke({
-      tenantId: 'tenant-1',
-      clientActionId: 'standalone-active-revoke',
-      envId: 'cvm-device',
-    });
-    const activeRestored = store.beginConnection({
-      tenantId: 'tenant-1',
-      clientActionId: 'standalone-active-retry',
-    });
-    expect(activeRestored.environment).toMatchObject({
-      bindingStatus: 'pairing',
-      connectionStatus: 'offline',
-      capabilityStatus: 'pending',
-      directoryStatus: 'pending',
-      recommendedPwd: '/workspace',
-      revokedAt: initialTime,
-      ready: false,
-    });
-    expect(activeRestored.environment).not.toHaveProperty('deviceBindingId');
-    expect(activeRestored.environment).not.toHaveProperty('instanceId');
-    expect(activeRestored.environment).not.toHaveProperty('normalizedPwd');
-    expect(activeRestored.pairingCredential).not.toBe(restored.pairingCredential);
-    expect(() =>
-      store.pairing.authenticate({
-        envId: first.envId,
-        deviceId: first.deviceId,
-        deviceBindingId: first.deviceBindingId,
-        deviceCredential: first.deviceCredential,
-      }),
-    ).toThrowError(expect.objectContaining({ code: DeviceErrorCode.ENVIRONMENT_REVOKED }));
-    expect(() =>
-      store.markConnected({
-        ...first,
-        instanceId: 'old-instance',
-        reportedCapabilities: allCapabilities,
-      }),
-    ).toThrowError(expect.objectContaining({ code: 'permission_denied' }));
-    const second = exchange(store, 'cvm-device', activeRestored.pairingCredential);
-    expect(second.deviceId).not.toBe(first.deviceId);
-    expect(second.deviceBindingId).not.toBe(first.deviceBindingId);
-    expect(store.get('tenant-1', 'cvm-device')).toMatchObject({
-      bindingStatus: 'active',
-      connectionStatus: 'offline',
-      capabilityStatus: 'pending',
-      directoryStatus: 'pending',
-      ready: false,
-    });
-
-    const actions = database
-      .prepare('SELECT method,response_json FROM client_actions WHERE owner_id = ? ORDER BY rowid')
-      .all('tenant-1');
-    expect(actions.map((row) => row.method)).toEqual(
-      expect.arrayContaining([
-        'CancelDeviceConnection',
-        'RevokeEnvironment',
-        'ReissueEnvironmentPairing',
-      ]),
-    );
-    expect(actions.map((row) => row.response_json).join('\n')).toContain(
-      '"bindingStatus":"revoked"',
-    );
-    expect(
-      database
-        .prepare(
-          'SELECT status,revoked_at FROM environment_device_bindings WHERE device_binding_id = ?',
-        )
-        .get(first.deviceBindingId),
-    ).toEqual({ status: 'revoked', revoked_at: initialTime });
-    expect(
-      database
-        .prepare(
-          'SELECT invalidated_at FROM environment_pairing_credentials WHERE env_id = ? ORDER BY rowid LIMIT 1',
-        )
-        .get('cvm-device'),
-    ).toEqual({ invalidated_at: initialTime });
-  });
-
-  it('serializes concurrent standalone recovery begins across processes', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'kairos-standalone-retry-'));
-    const path = join(directory, 'test.sqlite');
-    const database = openDatabase(path);
-    const workers: Worker[] = [];
-    try {
-      new SessionStore(database);
-      seedTenant(database, 'tenant-1');
-      const store = new EnvironmentStore(database, {
-        standaloneDevice: { envId: 'cvm-device', workspace: '/workspace' },
-      });
-      const initial = store.beginConnection({
-        tenantId: 'tenant-1',
-        clientActionId: 'standalone-worker-initial',
-      });
-      store.cancelConnection({
-        tenantId: 'tenant-1',
-        clientActionId: 'standalone-worker-cancel',
-        envId: 'cvm-device',
-      });
-      const source = `
-        const { parentPort, workerData } = require('node:worker_threads');
-        (async () => {
-          const { register } = await import('tsx/esm/api');
-          register();
-          const { openDatabase } = await import(workerData.databaseModule);
-          const { EnvironmentStore } = await import(workerData.storeModule);
-          const database = openDatabase(workerData.path);
-          try {
-            const store = new EnvironmentStore(database, {
-              standaloneDevice: { envId: 'cvm-device', workspace: '/workspace' }
-            });
-            const issued = store.beginConnection({
-              tenantId: 'tenant-1', clientActionId: workerData.clientActionId
-            });
-            parentPort.postMessage({ ok: true, credential: issued.pairingCredential });
-          } finally {
-            database.close();
-          }
-        })().catch((error) => {
-          parentPort.postMessage({ ok: false, message: String(error) });
-        });
-      `;
-      const begins = ['standalone-worker-a', 'standalone-worker-b'].map((clientActionId) => {
-        const worker = new Worker(source, {
-          eval: true,
-          execArgv: ['--import', 'tsx'],
-          workerData: {
-            databaseModule: new URL('../storage/database.ts', import.meta.url).href,
-            storeModule: new URL('./environment-store.ts', import.meta.url).href,
-            path,
-            clientActionId,
-          },
-        });
-        workers.push(worker);
-        return new Promise<string>((resolve, reject) => {
-          worker.once('error', reject);
-          worker.once('message', (message: unknown) => {
-            if (
-              typeof message === 'object' &&
-              message !== null &&
-              'credential' in message &&
-              typeof message.credential === 'string'
-            ) {
-              resolve(message.credential);
-            } else {
-              reject(new Error(`Standalone begin worker failed: ${JSON.stringify(message)}`));
-            }
-          });
-        });
-      });
-      const credentials = await Promise.all(begins);
-      expect(new Set(credentials).size).toBe(2);
-      expect(
-        database
-          .prepare(
-            'SELECT COUNT(*) AS count FROM environment_pairing_credentials WHERE consumed_at IS NULL AND invalidated_at IS NULL',
-          )
-          .get(),
-      ).toEqual({ count: 1 });
-      expect(() => exchange(store, 'cvm-device', initial.pairingCredential)).toThrowError(
-        expect.objectContaining({ code: DeviceErrorCode.UNAUTHENTICATED }),
-      );
-      const outcomes = credentials.map((credential) => {
-        try {
-          exchange(store, 'cvm-device', credential);
-          return 'paired';
-        } catch (error) {
-          expect(error).toMatchObject({ code: DeviceErrorCode.UNAUTHENTICATED });
-          return 'rejected';
-        }
-      });
-      expect(outcomes.filter((outcome) => outcome === 'paired')).toHaveLength(1);
-      expect(outcomes.filter((outcome) => outcome === 'rejected')).toHaveLength(1);
-      expect(store.get('tenant-1', 'cvm-device')).toMatchObject({
-        bindingStatus: 'active',
-        connectionStatus: 'offline',
-        ready: false,
-      });
-      expect(database.prepare('SELECT COUNT(*) AS count FROM environments').get()).toEqual({
-        count: 1,
-      });
-      expect(
-        database
-          .prepare(
-            "SELECT COUNT(*) AS count FROM client_actions WHERE method = 'ReissueEnvironmentPairing'",
-          )
-          .get(),
-      ).toEqual({ count: 2 });
-    } finally {
-      await Promise.all(workers.map((worker) => worker.terminate()));
-      database.close();
-      rmSync(directory, { recursive: true, force: true });
-    }
   });
 });

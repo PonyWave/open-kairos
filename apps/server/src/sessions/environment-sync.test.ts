@@ -4,7 +4,8 @@ import { expect, it, vi } from 'vitest';
 import { EnvironmentOperationStore } from '../devices/environment-operation-store.js';
 import { EnvironmentStore } from '../devices/environment-store.js';
 import {
-  ControlledPlatformUseGateway,
+  ControlledEnvironmentUseGateway,
+  seedReadyMainEnvironment,
   seedTestEnvironment,
 } from '../integration/environment-fixture.js';
 import { openDatabase } from '../storage/database.js';
@@ -272,7 +273,7 @@ function fixture() {
     store,
     environments,
     operations,
-    platformUse: new ControlledPlatformUseGateway(database),
+    environmentUse: new ControlledEnvironmentUseGateway(database),
   });
   return { database, store, environments, operations, runtime, run: store.getRunById(task.runId) };
 }
@@ -340,7 +341,7 @@ it('marks an interrupted sync unknown and recovers its result without replaying 
       store: runtime.store,
       environments: runtime.environments,
       operations,
-      platformUse: new ControlledPlatformUseGateway(database),
+      environmentUse: new ControlledEnvironmentUseGateway(database),
     });
     recoveredRuntime.recoverReloads();
     expect(operations.started).toHaveLength(beforeRecovery);
@@ -364,12 +365,13 @@ it('marks an interrupted sync unknown and recovers its result without replaying 
   }
 });
 
-it('routes env_sync through the sandbox alias while auditing the real platform UUID', async () => {
+it('routes env_sync through the main alias while auditing the real environment ID', async () => {
   const { database, store, operations, runtime, run } = fixture();
   try {
+    seedReadyMainEnvironment(database, 'tenant-1', 'main', '/workspace');
     const result = await runtime.sync(
       run,
-      { ...input, sourceEnvId: 'sandbox' },
+      { ...input, sourceEnvId: 'main' },
       'sandbox-sync',
       new AbortController().signal,
     );

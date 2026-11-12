@@ -18,7 +18,10 @@ import {
 import type { DaemonCommandGuide } from '../devices/device-installer.js';
 import type { EnvironmentDirectories } from '../devices/environment-directories.js';
 import type { EnvironmentPairingIssue, EnvironmentStore } from '../devices/environment-store.js';
-import { ensureTenantPlatformEnvironment } from '../platform/registry.js';
+import {
+  ensureMainEnvironment,
+  type MainEnvironmentConfiguration,
+} from '../devices/main-environment.js';
 import { SessionError } from '../sessions/errors.js';
 import type { GuiAuthentication } from './auth.js';
 import { requireOwner } from './auth.js';
@@ -34,7 +37,7 @@ export interface EnvironmentApiOptions {
     command(issued: EnvironmentPairingIssue): string;
     daemonCommands(envId: string): DaemonCommandGuide;
   };
-  standaloneDeviceEnvId?: string;
+  mainEnvironment: MainEnvironmentConfiguration;
 }
 
 function pairingFields(issued: EnvironmentPairingIssue) {
@@ -204,9 +207,11 @@ export function registerEnvironmentRoutes(
     listEnvironments: (_request, context) =>
       handle(undefined, () => {
         const tenantId = owner(context);
-        const mainEnvId =
-          options.standaloneDeviceEnvId ??
-          ensureTenantPlatformEnvironment(options.environments.database, tenantId);
+        const mainEnvId = ensureMainEnvironment(
+          options.environments.database,
+          tenantId,
+          options.mainEnvironment,
+        );
         const listed = options.environments.list(tenantId);
         return {
           mainEnvId,

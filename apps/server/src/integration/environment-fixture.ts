@@ -21,11 +21,12 @@ import {
   ThreadService,
 } from '@kairos/contracts';
 import { DeviceCapability, OperationStatus } from '@kairos/contracts/device';
+import { z } from 'zod';
 import { DeviceChannel } from '../devices/channel.js';
 import { EnvironmentOperationStore } from '../devices/environment-operation-store.js';
 import { EnvironmentStore } from '../devices/environment-store.js';
-import type { PlatformUse, PlatformUseGateway } from '../platform/contracts.js';
-import { ensureTenantPlatformEnvironment } from '../platform/registry.js';
+import type { EnvironmentUse, EnvironmentUseGateway } from '../devices/environment-use.js';
+import { ensureMainEnvironment } from '../devices/main-environment.js';
 import type {
   EnvironmentOperationAction,
   EnvironmentOperationGateway,
@@ -399,7 +400,7 @@ export function seedLoadedTestWorkspace(
     .get(threadId);
   if (!owner || typeof owner.owner_id !== 'string')
     throw new Error('Fixture thread owner is missing.');
-  seedReadyPlatformEnvironment(store.database, owner.owner_id, policy.defaultEnv);
+  seedReadyMainEnvironment(store.database, owner.owner_id, policy.defaultEnv);
   const environment = new EnvironmentStore(store.database).get(owner.owner_id, policy.defaultEnv);
   store.transaction(() =>
     store.agentEnvironments.commitResources({
@@ -421,16 +422,16 @@ export function seedLoadedTestWorkspace(
   );
 }
 
-export class ControlledPlatformUseGateway implements PlatformUseGateway {
-  readonly uses = new Map<string, PlatformUse>();
-  readonly reserved: PlatformUse[] = [];
-  readonly released: PlatformUse[] = [];
+export class ControlledEnvironmentUseGateway implements EnvironmentUseGateway {
+  readonly uses = new Map<string, EnvironmentUse>();
+  readonly reserved: EnvironmentUse[] = [];
+  readonly released: EnvironmentUse[] = [];
   capacity = 5;
-  prepare: ((input: PlatformUse & { signal: AbortSignal }) => Promise<void>) | undefined;
+  prepare: ((input: EnvironmentUse & { signal: AbortSignal }) => Promise<void>) | undefined;
 
   constructor(readonly database: DatabaseSync) {}
 
-  reserveUse(input: PlatformUse): void {
+  reserveUse(input: EnvironmentUse): void {
     if (this.uses.has(input.usageId)) return;
     const environments = new Set([...this.uses.values()].map((use) => use.envId));
     if (!environments.has(input.envId) && environments.size >= this.capacity) {
@@ -443,25 +444,35 @@ export class ControlledPlatformUseGateway implements PlatformUseGateway {
     this.reserved.push({ ...input });
   }
 
-  async ensureReady(input: PlatformUse & { signal: AbortSignal }): Promise<void> {
+  async ensureReady(input: EnvironmentUse & { signal: AbortSignal }): Promise<void> {
     input.signal.throwIfAborted();
-    if (!this.uses.has(input.usageId)) throw new Error('A platform use must be reserved first.');
+    if (!this.uses.has(input.usageId))
+      throw new Error('An environment use must be reserved first.');
     if (this.prepare) await this.prepare(input);
     input.signal.throwIfAborted();
-    seedReadyPlatformEnvironment(this.database, input.tenantId, input.envId);
+    const row = this.database
+      .prepare('SELECT recommended_pwd FROM environments WHERE env_id = ? AND tenant_id = ?')
+      .get(input.envId, input.tenantId);
+    const pwd =
+      row === undefined
+        ? '/workspace'
+        : z.object({ recommended_pwd: z.string() }).parse(row).recommended_pwd;
+    seedReadyMainEnvironment(this.database, input.tenantId, input.envId, pwd);
   }
 
-  releaseUse(input: PlatformUse): void {
+  releaseUse(input: EnvironmentUse): void {
     if (this.uses.delete(input.usageId)) this.released.push({ ...input });
   }
 }
 
-export function seedReadyPlatformEnvironment(
+export function seedReadyMainEnvironment(
   database: DatabaseSync,
   tenantId: string,
-  envId = ensureTenantPlatformEnvironment(database, tenantId),
+  envId = 'main',
+  pwd = '/workspace',
 ): string {
-  seedTestEnvironment(database, tenantId, envId, '/workspace');
+  seedTestTenant(database, tenantId);
+  ensureMainEnvironment(database, tenantId, { envId, workspace: pwd });
   const capabilities = JSON.stringify([
     DeviceCapability.BASH,
     DeviceCapability.FILE_READ,
@@ -471,15 +482,35 @@ export function seedReadyPlatformEnvironment(
   ]);
   database
     .prepare(`UPDATE environments SET binding_status='active', connection_status='online', capability_status='ready', directory_status='ready',
-    granted_capabilities_json=?, device_id=?,device_binding_id=?,instance_id=?,normalized_pwd='/workspace',checked_at=?,platform_lifecycle_state='running' WHERE env_id=? AND tenant_id=?`)
+    granted_capabilities_json=?, device_id=?,device_binding_id=?,instance_id=?,normalized_pwd=?,checked_at=? WHERE env_id=? AND tenant_id=?`)
     .run(
       capabilities,
       `device-${envId}`,
       `binding-${envId}`,
       `instance-${envId}`,
+      pwd,
       '2026-01-01T00:00:00.000Z',
       envId,
       tenantId,
+    );
+  database
+    .prepare(
+      `INSERT INTO environment_device_bindings(
+        device_binding_id, tenant_id, env_id, device_id, status, granted_capabilities_json,
+        created_at, updated_at, paired_at, last_seen_at
+      ) VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
+      ON CONFLICT(device_binding_id) DO NOTHING`,
+    )
+    .run(
+      `binding-${envId}`,
+      tenantId,
+      envId,
+      `device-${envId}`,
+      capabilities,
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z',
     );
   return envId;
 }
@@ -490,7 +521,7 @@ export function controlledEnvironmentDependencies(database: DatabaseSync, tenant
   return {
     environments: operations.environments,
     environmentOperations: operations,
-    platformUse: new ControlledPlatformUseGateway(database),
+    environmentUse: new ControlledEnvironmentUseGateway(database),
   };
 }
 
@@ -504,9 +535,10 @@ export const createEnvironmentTestServer: typeof createServer = (
     options.environmentOperations ??
     controlledEnvironmentOperations(database, loader ? () => loader.load() : undefined);
   return createServer(database, logger, {
+    mainEnvironment: { envId: 'main', workspace: '/workspace' },
     ...options,
     environmentOperations,
-    platformUse: options.platformUse ?? new ControlledPlatformUseGateway(database),
+    environmentUse: options.environmentUse ?? new ControlledEnvironmentUseGateway(database),
   });
 };
 
@@ -546,12 +578,16 @@ export async function startRealEnvironmentServer(
     ownerId: string;
     accessToken: string;
     existingEnvId?: string;
-    platformOperations?: (database: DatabaseSync) => EnvironmentOperationGateway;
+    mainEnvironmentOperations?: (database: DatabaseSync) => EnvironmentOperationGateway;
   },
 ) {
   mkdirSync(directory, { recursive: true });
   const database = openDatabase(join(directory, 'server.sqlite'));
   seedTestTenant(database, options.ownerId);
+  const mainEnvironment = options.mainEnvironment ?? {
+    envId: 'main',
+    workspace: join(directory, 'workspace-main'),
+  };
   const now = new Date().toISOString();
   database
     .prepare(
@@ -567,39 +603,40 @@ export async function startRealEnvironmentServer(
       now,
       now,
     );
-  new SessionStore(database);
-  const environments = new EnvironmentStore(database);
+  new SessionStore(database, { mainEnvironment });
+  const environments = new EnvironmentStore(database, { mainEnvironment });
   const operations = new EnvironmentOperationStore(database);
   const channel = new DeviceChannel({
     environments,
     environmentOperations: operations,
   });
-  const platformOperations =
-    options.platformOperations?.(database) ?? controlledEnvironmentOperations(database);
-  const platformOperationIds = new Set<string>();
+  const mainEnvironmentOperations =
+    options.mainEnvironmentOperations?.(database) ?? controlledEnvironmentOperations(database);
+  const mainEnvironmentOperationIds = new Set<string>();
   const routedOperations: EnvironmentOperationGateway = {
     startEnvironmentOperation: (input) => {
-      if (environments.get(input.tenantId, input.envId).kind === 'platform_sandbox') {
-        platformOperationIds.add(input.operationId);
-        return platformOperations.startEnvironmentOperation(input);
+      if (input.envId === mainEnvironment.envId) {
+        mainEnvironmentOperationIds.add(input.operationId);
+        return mainEnvironmentOperations.startEnvironmentOperation(input);
       }
       return channel.startEnvironmentOperation(input);
     },
     cancelEnvironmentOperation: (input) =>
-      platformOperationIds.has(input.operationId)
-        ? platformOperations.cancelEnvironmentOperation(input)
+      mainEnvironmentOperationIds.has(input.operationId)
+        ? mainEnvironmentOperations.cancelEnvironmentOperation(input)
         : channel.cancelEnvironmentOperation(input),
     getEnvironmentOperation: (tenantId, operationId) =>
-      platformOperationIds.has(operationId)
-        ? platformOperations.getEnvironmentOperation(tenantId, operationId)
+      mainEnvironmentOperationIds.has(operationId)
+        ? mainEnvironmentOperations.getEnvironmentOperation(tenantId, operationId)
         : channel.getEnvironmentOperation(tenantId, operationId),
     readEnvironmentOperationOutput: (input) =>
-      platformOperationIds.has(input.operationId)
-        ? platformOperations.readEnvironmentOperationOutput(input)
+      mainEnvironmentOperationIds.has(input.operationId)
+        ? mainEnvironmentOperations.readEnvironmentOperationOutput(input)
         : channel.readEnvironmentOperationOutput(input),
   };
   const server = createServer(database, false, {
     ...options,
+    mainEnvironment,
     tenantId: options.ownerId,
     sessionToken: options.accessToken,
     deviceChannel: channel,
@@ -770,6 +807,7 @@ export async function startRealEnvironmentServer(
       environments,
       operations,
       baseUrl,
+      mainEnvironment,
       clients: {
         attachments: createClient(AttachmentService, transport),
         environments: createClient(EnvironmentService, transport),

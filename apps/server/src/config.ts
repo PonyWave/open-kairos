@@ -57,12 +57,8 @@ const environmentSchema = z.object({
     .refine(isAbsolute, 'KAIROS_DATA_DIR must be an absolute path.')
     .default(fileURLToPath(new URL('../../../data/server', import.meta.url))),
   KAIROS_AUTH_SECRET: z.string().min(32).optional(),
-  KAIROS_SANDBOX_CONFIG_FILE: z
-    .string()
-    .refine(isAbsolute, 'KAIROS_SANDBOX_CONFIG_FILE must be an absolute path.')
-    .optional(),
-  KAIROS_STANDALONE_DEVICE_ENV_ID: z.string().optional(),
-  KAIROS_STANDALONE_DEVICE_WORKSPACE: z.string().optional(),
+  KAIROS_MAIN_ENV_ID: z.string().optional(),
+  KAIROS_MAIN_WORKSPACE: z.string().optional(),
   KAIROS_AUTH_INVITED_EMAILS: z.string().optional(),
   KAIROS_PUBLIC_ORIGIN: z.string().optional(),
   KAIROS_SMTP_URL: z.string().optional(),
@@ -514,37 +510,26 @@ function readSmtpConfiguration(urlValue: string | undefined, from: string | unde
   return { url: urlValue, from };
 }
 
-function readStandaloneDeviceConfiguration(
+function readMainEnvironmentConfiguration(
   envId: string | undefined,
   workspace: string | undefined,
-  sandboxConfigFile: string | undefined,
 ) {
-  if (envId === undefined) {
-    if (workspace !== undefined) {
-      throw new Error(
-        'KAIROS_STANDALONE_DEVICE_WORKSPACE requires KAIROS_STANDALONE_DEVICE_ENV_ID.',
-      );
-    }
-    return undefined;
+  const resolvedEnvId = envId ?? 'main';
+  if (!/^[0-9A-Za-z._:-]{1,200}$/.test(resolvedEnvId)) {
+    throw new Error('KAIROS_MAIN_ENV_ID must be a valid environment identifier.');
   }
-  if (!/^[0-9A-Za-z._:-]{1,200}$/.test(envId)) {
-    throw new Error('KAIROS_STANDALONE_DEVICE_ENV_ID must be a valid environment identifier.');
+  const resolvedWorkspace = workspace ?? process.cwd();
+  if (!isAbsolute(resolvedWorkspace)) {
+    throw new Error('KAIROS_MAIN_WORKSPACE must be an absolute path.');
   }
-  if ((workspace ?? '/workspace') !== '/workspace') {
-    throw new Error('KAIROS_STANDALONE_DEVICE_WORKSPACE must be /workspace.');
-  }
-  if (sandboxConfigFile) {
-    throw new Error('KAIROS_STANDALONE_DEVICE_ENV_ID conflicts with KAIROS_SANDBOX_CONFIG_FILE.');
-  }
-  return { envId, workspace: '/workspace' as const };
+  return { envId: resolvedEnvId, workspace: resolvedWorkspace };
 }
 
 export function readServerConfig(environment: NodeJS.ProcessEnv = process.env) {
   const config = environmentSchema.parse(environment);
-  const standaloneDevice = readStandaloneDeviceConfiguration(
-    config.KAIROS_STANDALONE_DEVICE_ENV_ID,
-    config.KAIROS_STANDALONE_DEVICE_WORKSPACE,
-    config.KAIROS_SANDBOX_CONFIG_FILE,
+  const mainEnvironment = readMainEnvironmentConfiguration(
+    config.KAIROS_MAIN_ENV_ID,
+    config.KAIROS_MAIN_WORKSPACE,
   );
   const modelApiType = {
     openai_chat_completions: ModelApiType.OPENAI_CHAT_COMPLETIONS,
@@ -592,8 +577,7 @@ export function readServerConfig(environment: NodeJS.ProcessEnv = process.env) {
     port: config.KAIROS_PORT,
     trustedProxies: config.KAIROS_TRUSTED_PROXIES ?? [],
     dataDirectory: config.KAIROS_DATA_DIR,
-    sandboxConfigFile: config.KAIROS_SANDBOX_CONFIG_FILE,
-    standaloneDevice,
+    mainEnvironment,
     daemonReleaseDirectory:
       config.KAIROS_DAEMON_RELEASE_DIR ??
       fileURLToPath(new URL('../../../dist/releases', import.meta.url)),

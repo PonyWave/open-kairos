@@ -6,7 +6,7 @@ import { z } from 'zod';
 import type { AttachmentMetadata } from '../attachments/types.js';
 import type { EnvironmentOperationAction } from '../devices/environment-operation-store.js';
 import type { EnvironmentStore } from '../devices/environment-store.js';
-import type { PlatformUse, PlatformUseGateway } from '../platform/contracts.js';
+import type { EnvironmentUse, EnvironmentUseGateway } from '../devices/environment-use.js';
 import {
   compareWorkspaceResourceSnapshots,
   createWorkspaceResourceSnapshot,
@@ -120,7 +120,7 @@ export interface EnvironmentRuntimeOptions {
   store: SessionStore;
   environments: EnvironmentStore;
   operations: EnvironmentOperationGateway;
-  platformUse: PlatformUseGateway;
+  environmentUse: EnvironmentUseGateway;
   createId?: () => string;
   now?: () => Date;
   bashDefaultTimeoutSeconds?: number;
@@ -180,8 +180,8 @@ export class AgentEnvironmentRuntime {
   readonly store: SessionStore;
   readonly environments: EnvironmentStore;
   readonly operations: EnvironmentOperationGateway;
-  readonly #platformUse: PlatformUseGateway;
-  readonly #runUses = new Map<string, PlatformUse>();
+  readonly #environmentUse: EnvironmentUseGateway;
+  readonly #runUses = new Map<string, EnvironmentUse>();
   readonly #createId: () => string;
   readonly #now: () => Date;
   readonly #bashDefaultTimeoutSeconds: number;
@@ -193,7 +193,7 @@ export class AgentEnvironmentRuntime {
     this.store = options.store;
     this.environments = options.environments;
     this.operations = options.operations;
-    this.#platformUse = options.platformUse;
+    this.#environmentUse = options.environmentUse;
     this.#createId = options.createId ?? randomId;
     this.#now = options.now ?? (() => new Date());
     this.#bashDefaultTimeoutSeconds = options.bashDefaultTimeoutSeconds ?? 120;
@@ -302,24 +302,16 @@ export class AgentEnvironmentRuntime {
     const pending = this.store.attachments.listPendingWorkspace(run.threadId, run.agentId);
     if (pending.length === 0) return;
     const specification = this.store.agentEnvironments.requireExecution(run);
-    if (!specification.allowedEnv.includes(specification.defaultEnv)) {
-      throw new SessionError(
-        'permission_denied',
-        'The fixed attachment environment is not allowed for this execution.',
-      );
-    }
-    const standalone = this.store.agentEnvironments.isStandaloneDevice(
-      specification.defaultEnv,
-      specification.defaultPwd,
-    );
     if (
-      specification.defaultPwd !== '/workspace' ||
-      (!standalone &&
-        this.environments.get(run.ownerId, specification.defaultEnv).kind !== 'platform_sandbox')
+      !this.store.agentEnvironments.isMainEnvironment(
+        specification.defaultEnv,
+        specification.defaultPwd,
+        run.ownerId,
+      )
     ) {
       throw new SessionError(
         'failed_precondition',
-        'Attachments must be written only to the tenant sandbox /workspace.',
+        'Attachments must be written only to the main environment workspace.',
       );
     }
     this.#requireUsable(run.ownerId, specification.defaultEnv);
@@ -632,41 +624,31 @@ export class AgentEnvironmentRuntime {
 
   reserveRun(run: RunRecord): void {
     const specification = this.store.agentEnvironments.requireExecution(run);
-    const standalone = this.store.agentEnvironments.isStandaloneDevice(
-      specification.defaultEnv,
-      specification.defaultPwd,
-    );
-    if (!standalone) {
-      const environment = this.environments.get(run.ownerId, specification.defaultEnv);
-      if (environment.kind !== 'platform_sandbox' || specification.defaultPwd !== '/workspace')
-        throw new SessionError(
-          'version_conflict',
-          'This historical execution uses a different workspace; Continue must create a new sandbox execution.',
-          { retryable: true },
-        );
-    }
-    const use: PlatformUse = {
+    if (
+      !this.store.agentEnvironments.isMainEnvironment(
+        specification.defaultEnv,
+        specification.defaultPwd,
+        run.ownerId,
+      )
+    )
+      throw new SessionError(
+        'version_conflict',
+        'This historical execution uses a different workspace; Continue must create a new execution in the main environment.',
+        { retryable: true },
+      );
+    const use: EnvironmentUse = {
       tenantId: run.ownerId,
       envId: specification.defaultEnv,
       usageId: `run:${run.runId}:${run.generation}`,
       kind: 'run',
     };
-    this.#platformUse.reserveUse(use);
+    this.#environmentUse.reserveUse(use);
     this.#runUses.set(use.usageId, use);
   }
 
   async ensureRunReady(run: RunRecord, signal: AbortSignal): Promise<void> {
     const use = this.#runUses.get(`run:${run.runId}:${run.generation}`);
-    const specification = this.store.agentEnvironments.requireExecution(run);
-    if (
-      !use &&
-      this.environments.get(run.ownerId, specification.defaultEnv).kind === 'platform_sandbox'
-    )
-      throw new SessionError(
-        'failed_precondition',
-        'The platform execution has no reserved usage reference.',
-      );
-    if (use) await this.#platformUse.ensureReady({ ...use, signal });
+    if (use) await this.#environmentUse.ensureReady({ ...use, signal });
     signal.throwIfAborted();
   }
 
@@ -674,7 +656,7 @@ export class AgentEnvironmentRuntime {
     const key = `run:${run.runId}:${run.generation}`;
     const use = this.#runUses.get(key);
     if (!use) return;
-    this.#platformUse.releaseUse(use);
+    this.#environmentUse.releaseUse(use);
     this.#runUses.delete(key);
   }
 
@@ -753,7 +735,7 @@ export class AgentEnvironmentRuntime {
       .update(JSON.stringify({ threadId: input.threadId }))
       .digest('hex');
     const operationId = this.#createId();
-    let use: PlatformUse | undefined;
+    let use: EnvironmentUse | undefined;
     const started = this.store.transaction((): { completed?: ReloadResourcesResult } => {
       const existing = this.#readReloadAction(input, fingerprint);
       if (existing?.status === 'completed') return { completed: existing.result };
@@ -801,18 +783,15 @@ export class AgentEnvironmentRuntime {
       const envId = policy.defaultEnv;
       const pwd = policy.defaultPwd;
       if (!envId || !pwd)
-        throw new SessionError('failed_precondition', 'The Thread sandbox workspace is missing.');
-      const environment = this.environments.get(input.ownerId, envId);
-      if (environment.kind === 'platform_sandbox') {
-        use = {
-          tenantId: input.ownerId,
-          envId,
-          usageId: `reload:${input.ownerId}:${input.clientActionId}`,
-          kind: 'reload',
-        };
-        this.#platformUse.reserveUse(use);
-        await this.#platformUse.ensureReady({ ...use, signal: new AbortController().signal });
-      }
+        throw new SessionError('failed_precondition', 'The Thread workspace is missing.');
+      use = {
+        tenantId: input.ownerId,
+        envId,
+        usageId: `reload:${input.ownerId}:${input.clientActionId}`,
+        kind: 'reload',
+      };
+      this.#environmentUse.reserveUse(use);
+      await this.#environmentUse.ensureReady({ ...use, signal: new AbortController().signal });
       this.#requireUsable(input.ownerId, envId, true);
       const operation = await this.#startAndWait({
         operationId,
@@ -836,7 +815,7 @@ export class AgentEnvironmentRuntime {
       )
         throw new SessionError(
           'failed_precondition',
-          outcome.reason ?? 'The sandbox workspace is not usable.',
+          outcome.reason ?? 'The workspace is not usable.',
         );
       const snapshot = remoteSnapshot(outcome.resources);
       return this.store.transaction(() => {
@@ -926,7 +905,7 @@ export class AgentEnvironmentRuntime {
         cause: error,
       });
     } finally {
-      if (use) this.#platformUse.releaseUse(use);
+      if (use) this.#environmentUse.releaseUse(use);
     }
   }
 
@@ -990,7 +969,7 @@ export class AgentEnvironmentRuntime {
     if (!resources)
       throw new SessionError(
         'failed_precondition',
-        'The sandbox workspace resources have not been loaded.',
+        'The workspace resources have not been loaded.',
       );
     const effectiveAllowed =
       specification?.allowedEnv ??
@@ -998,8 +977,7 @@ export class AgentEnvironmentRuntime {
         .list(ownerId)
         .environments.filter(
           (environment) =>
-            environment.bindingStatus !== 'revoked' &&
-            (environment.bindingStatus === 'active' || environment.kind === 'platform_sandbox') &&
+            environment.bindingStatus === 'active' &&
             (policy.allowedEnv === null || policy.allowedEnv.includes(environment.envId)),
         )
         .map((environment) => environment.envId)
@@ -1011,9 +989,10 @@ export class AgentEnvironmentRuntime {
           ? 'task_thread'
           : 'subagent';
     const defaultEnv = specification?.defaultEnv ?? policy.defaultEnv;
+    const defaultPwd = specification?.defaultPwd ?? policy.defaultPwd;
     const instructions = [
-      'All Agents share this tenant sandbox workspace at /workspace and load AGENTS.md and Skills from it. Omitting env_id always executes a file or command tool in the sandbox. The sandbox env_id and name are both sandbox. Optional env_id selects an authorized target for that call only and does not change subsequent calls or loaded instructions. Relative paths use /workspace in the sandbox and the validated recommended directory in another environment. Task Threads and Subagents share the sandbox and inherit or narrow the caller authorization. Read project rules explicitly when working in another environment.',
-      `<agent-execution-environment>${jsonStringify({ allowed_env: effectiveAllowed.map((envId) => this.#modelEnvId(ownerId, envId)), main_env: defaultEnv ? this.#modelEnvId(ownerId, defaultEnv) : null, workspace: '/workspace', resource_version: specification?.resourceVersion ?? binding.resourceVersion, role })}</agent-execution-environment>`,
+      'All Agents load AGENTS.md and Skills from the main environment workspace. Omitting env_id executes a file or command tool in the main environment. The main environment env_id and name are both main. Optional env_id selects an authorized target for that call only and does not change subsequent calls or loaded instructions. Relative paths use the main environment workspace in the main environment and the validated recommended directory in another environment. Task Threads and Subagents inherit or narrow the caller authorization. Read project rules explicitly when working in another environment.',
+      `<agent-execution-environment>${jsonStringify({ allowed_env: effectiveAllowed.map((envId) => this.#modelEnvId(ownerId, envId)), main_env: defaultEnv ? this.#modelEnvId(ownerId, defaultEnv) : null, workspace: defaultPwd, resource_version: specification?.resourceVersion ?? binding.resourceVersion, role })}</agent-execution-environment>`,
     ];
     if (role === 'main_agent')
       instructions.push(
@@ -1030,15 +1009,9 @@ export class AgentEnvironmentRuntime {
 
   private listForScope(ownerId: string, allowedEnv: readonly string[] | null): string {
     const catalog = this.environments.list(ownerId);
-    const standalone = this.store.agentEnvironments.standaloneDevice;
-    const platform = catalog.environments.find(
-      (environment) => environment.kind === 'platform_sandbox',
-    );
-    const configuredMain = standalone?.envId ?? platform?.envId;
+    const configuredMain = this.store.agentEnvironments.mainEnvironmentIdFor(ownerId);
     const mainEnv =
-      configuredMain && (allowedEnv === null || allowedEnv.includes(configuredMain))
-        ? configuredMain
-        : null;
+      allowedEnv === null || allowedEnv.includes(configuredMain) ? configuredMain : null;
     return jsonStringify({
       environments: catalog.environments
         .filter(
@@ -1050,7 +1023,7 @@ export class AgentEnvironmentRuntime {
           ...catalogEntry(environment, environment.envId === mainEnv),
           is_main: environment.envId === mainEnv,
         })),
-      main_env: mainEnv === null ? null : 'sandbox',
+      main_env: mainEnv === null ? null : 'main',
     });
   }
 
@@ -1084,21 +1057,14 @@ export class AgentEnvironmentRuntime {
   }
 
   #modelEnvId(ownerId: string, envId: string): string {
-    if (this.store.agentEnvironments.standaloneDevice?.envId === envId) return 'sandbox';
-    const environment = this.environments.get(ownerId, envId);
-    return environment.kind === 'platform_sandbox' ? 'sandbox' : envId;
+    if (envId === this.store.agentEnvironments.mainEnvironmentIdFor(ownerId)) return 'main';
+    this.environments.get(ownerId, envId);
+    return envId;
   }
 
   #resolveEnvId(ownerId: string, envId: string): string {
-    if (envId !== 'sandbox') return envId;
-    const standalone = this.store.agentEnvironments.standaloneDevice;
-    if (standalone) return standalone.envId;
-    const platform = this.environments
-      .list(ownerId)
-      .environments.find((environment) => environment.kind === 'platform_sandbox');
-    if (!platform)
-      throw new SessionError('not_found', 'The tenant sandbox environment is missing.');
-    return platform.envId;
+    if (envId !== 'main') return envId;
+    return this.store.agentEnvironments.mainEnvironmentIdFor(ownerId);
   }
 
   async execute(
@@ -1128,18 +1094,10 @@ export class AgentEnvironmentRuntime {
     if ('path' in action.value && action.value.path.includes('\0'))
       throw new SessionError('invalid_argument', 'path must not contain a null character.');
     const operationId = this.#createId();
-    const use: PlatformUse | undefined =
-      environment.kind === 'platform_sandbox'
-        ? { tenantId: run.ownerId, envId, usageId: `operation:${operationId}`, kind: 'operation' }
-        : undefined;
     let remoteStarted = false;
     let recordedIntent = false;
     let operation: EnvironmentOperationRecord | undefined;
     try {
-      if (use) {
-        this.#platformUse.reserveUse(use);
-        await this.#platformUse.ensureReady({ ...use, signal });
-      }
       signal.throwIfAborted();
       this.#requireUsable(run.ownerId, envId);
       const current = this.environments.get(run.ownerId, envId);
@@ -1202,8 +1160,6 @@ export class AgentEnvironmentRuntime {
           }),
         );
       throw error;
-    } finally {
-      if (use && !remoteStarted) this.#platformUse.releaseUse(use);
     }
   }
 
@@ -1494,27 +1450,8 @@ export class AgentEnvironmentRuntime {
     operationId: string;
     signal: AbortSignal;
   }): Promise<void> {
-    const environment = this.environments.get(input.tenantId, input.envId);
-    const use: PlatformUse | undefined =
-      environment.kind === 'platform_sandbox'
-        ? {
-            tenantId: input.tenantId,
-            envId: input.envId,
-            usageId: `operation:${input.operationId}`,
-            kind: 'operation',
-          }
-        : undefined;
-    try {
-      if (use) {
-        this.#platformUse.reserveUse(use);
-        await this.#platformUse.ensureReady({ ...use, signal: input.signal });
-      }
-      input.signal.throwIfAborted();
-      this.#requireUsable(input.tenantId, input.envId);
-    } catch (error) {
-      if (use) this.#platformUse.releaseUse(use);
-      throw error;
-    }
+    input.signal.throwIfAborted();
+    this.#requireUsable(input.tenantId, input.envId);
   }
 
   async #startAndWait(input: {
@@ -1529,67 +1466,30 @@ export class AgentEnvironmentRuntime {
     onDispatched?: () => void;
   }): Promise<EnvironmentOperationRecord> {
     input.signal.throwIfAborted();
-    const environment = this.environments.get(input.tenantId, input.envId);
-    const use: PlatformUse | undefined =
-      environment.kind === 'platform_sandbox'
-        ? {
-            tenantId: input.tenantId,
-            envId: input.envId,
-            usageId: `operation:${input.operationId}`,
-            kind: 'operation',
-          }
-        : undefined;
-    if (use) this.#platformUse.reserveUse(use);
-    let dispatched = input.existingOperation !== undefined;
     let operation = input.existingOperation;
-    try {
-      input.signal.throwIfAborted();
-      if (!operation) {
-        dispatched = true;
-        input.onDispatched?.();
-        operation = await this.operations.startEnvironmentOperation({
-          operationId: input.operationId,
-          tenantId: input.tenantId,
-          envId: input.envId,
-          ...(input.bindingVersion === undefined ? {} : { bindingVersion: input.bindingVersion }),
-          action: input.action,
-          expiresAt: input.expiresAt,
-        });
-      }
-      while (!terminal(operation)) {
-        input.signal.throwIfAborted();
-        if (this.#now().getTime() >= Date.parse(operation.expiresAt))
-          throw new SessionError(
-            'operation_unknown',
-            'The environment operation expired before its result was confirmed.',
-            { retryable: true },
-          );
-        await delay(10, input.signal);
-        operation = this.operations.getEnvironmentOperation(input.tenantId, input.operationId);
-      }
-      return operation;
-    } finally {
-      if (use && !dispatched) this.#platformUse.releaseUse(use);
-      else if (operation) this.#releaseSettledOperation(operation);
+    if (!operation) {
+      input.onDispatched?.();
+      operation = await this.operations.startEnvironmentOperation({
+        operationId: input.operationId,
+        tenantId: input.tenantId,
+        envId: input.envId,
+        ...(input.bindingVersion === undefined ? {} : { bindingVersion: input.bindingVersion }),
+        action: input.action,
+        expiresAt: input.expiresAt,
+      });
     }
-  }
-
-  #releaseSettledOperation(operation: EnvironmentOperationRecord): void {
-    if (
-      terminal(operation) === undefined ||
-      !operation.postProcessedAt ||
-      operation.outputComplete !== true ||
-      operation.resultSource !== 'device'
-    )
-      return;
-    if (this.environments.get(operation.tenantId, operation.envId).kind !== 'platform_sandbox')
-      return;
-    this.#platformUse.releaseUse({
-      tenantId: operation.tenantId,
-      envId: operation.envId,
-      usageId: `operation:${operation.operationId}`,
-      kind: 'operation',
-    });
+    while (!terminal(operation)) {
+      input.signal.throwIfAborted();
+      if (this.#now().getTime() >= Date.parse(operation.expiresAt))
+        throw new SessionError(
+          'operation_unknown',
+          'The environment operation expired before its result was confirmed.',
+          { retryable: true },
+        );
+      await delay(10, input.signal);
+      operation = this.operations.getEnvironmentOperation(input.tenantId, input.operationId);
+    }
+    return operation;
   }
 
   async #cancel(
@@ -1620,7 +1520,6 @@ export class AgentEnvironmentRuntime {
           'The remote operation result is unknown after cancellation.',
         );
       }
-      this.#releaseSettledOperation(operation);
       return operation;
     } catch (cause) {
       if (cause instanceof AgentLoopError && cause.code === 'operation_unknown') throw cause;
@@ -1800,11 +1699,11 @@ function withSavedImageParts(result: { content: string; status: 'success' | 'err
 
 function catalogEntry(
   environment: ReturnType<EnvironmentStore['get']>,
-  sandbox = false,
+  main = false,
 ): Record<string, unknown> {
   return {
-    env_id: sandbox ? 'sandbox' : environment.envId,
-    name: sandbox ? 'sandbox' : environment.name,
+    env_id: main ? 'main' : environment.envId,
+    name: main ? 'main' : environment.name,
     kind: environment.kind,
     lifecycle_state: environment.lifecycleState,
     recommended_pwd: environment.recommendedPwd,

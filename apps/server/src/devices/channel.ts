@@ -15,7 +15,6 @@ import {
   OperationStatus,
 } from '@kairos/contracts/device';
 import type { RawData, WebSocket } from 'ws';
-import type { PlatformHelloAuthorization, PlatformHelloAuthorizer } from '../platform/manager.js';
 import { SessionError } from '../sessions/errors.js';
 import { inTransaction } from '../storage/transaction.js';
 import { arbitrateEnvironmentConnection } from './connection.js';
@@ -203,7 +202,6 @@ export interface StartEnvironmentOperationInput {
 export interface DeviceChannelOptions {
   environments: EnvironmentStore;
   environmentOperations: EnvironmentOperationStore;
-  platform?: PlatformHelloAuthorizer;
   now?: () => Date;
   maxMessageBytes?: number;
   maxOutputChunkBytes?: number;
@@ -226,7 +224,6 @@ export class DeviceChannel {
   private readonly maxOutputChunkBytes: number;
   private readonly maxQueueBytes: number;
   private readonly authenticationTimeoutMilliseconds: number;
-  private readonly platformAuthenticationTimeoutMilliseconds: number;
   private readonly offlineAfterMilliseconds: number;
   private readonly now: () => Date;
   private readonly environmentConnections = new Map<string, ServerPeer>();
@@ -239,10 +236,6 @@ export class DeviceChannel {
     this.maxOutputChunkBytes = options.maxOutputChunkBytes ?? 64 * 1024;
     this.maxQueueBytes = options.maxQueueBytes ?? 2 * 1024 * 1024;
     this.authenticationTimeoutMilliseconds = options.authenticationTimeoutMilliseconds ?? 5000;
-    this.platformAuthenticationTimeoutMilliseconds = Math.min(
-      options.authenticationTimeoutMilliseconds ?? 30_000,
-      30_000,
-    );
     this.offlineAfterMilliseconds = options.offlineAfterMilliseconds ?? 30_000;
     for (const value of [
       this.maxMessageBytes,
@@ -769,42 +762,10 @@ export class DeviceChannel {
         DeviceErrorCode.UNAUTHENTICATED,
         'Environment authentication is missing.',
       );
-    const platformEnvironment =
-      environments.get(preliminary.tenantId, hello.envId).kind === 'platform_sandbox';
-    let platformAuthorization: PlatformHelloAuthorization | undefined;
-    if (platformEnvironment) {
-      if (!this.options.platform || !hello.platformPodUid || !hello.platformPodName)
-        throw new DeviceFailure(
-          DeviceErrorCode.PERMISSION_DENIED,
-          'Platform Pod identity is required.',
-        );
-      peer.authenticationController.signal.throwIfAborted();
-      if (peer.rejected || peer.socket.readyState !== peer.socket.OPEN)
-        throw new DeviceFailure(
-          DeviceErrorCode.UNAUTHENTICATED,
-          'Device connection closed before platform authorization.',
-        );
-      peer.authenticationDeadline(this.platformAuthenticationTimeoutMilliseconds);
-      platformAuthorization = await this.options.platform.authorizeHello({
-        tenantId: preliminary.tenantId,
-        envId: hello.envId,
-        instanceId: hello.instanceId,
-        podUid: hello.platformPodUid,
-        podName: hello.platformPodName,
-        controlOnly: hello.controlOnly,
-        signal: peer.authenticationController.signal,
-        ...(hello.deviceBindingId ? { deviceBindingId: hello.deviceBindingId } : {}),
-      });
-      peer.authenticationController.signal.throwIfAborted();
-      if (peer.rejected || peer.socket.readyState !== peer.socket.OPEN)
-        throw new DeviceFailure(
-          DeviceErrorCode.UNAUTHENTICATED,
-          'Device connection closed before platform registration.',
-        );
-    } else if (hello.platformPodUid || hello.platformPodName)
+    if (hello.platformPodUid || hello.platformPodName)
       throw new DeviceFailure(
         DeviceErrorCode.PERMISSION_DENIED,
-        'Self-hosted device hello must not claim a platform Pod.',
+        'Device hello must not claim a platform Pod.',
       );
     if (hello.authentication.case === 'pairingCredential') {
       requiredText(hello.authentication.value, 'pairing credential', 512);
@@ -887,11 +848,7 @@ export class DeviceChannel {
     }
 
     const previous = this.environmentConnections.get(authenticated.deviceBindingId);
-    if (
-      previous !== undefined &&
-      previous !== peer &&
-      !platformAuthorization?.previousInstanceGone
-    ) {
+    if (previous !== undefined && previous !== peer) {
       arbitrateEnvironmentConnection(
         previous.authentication === undefined
           ? undefined
@@ -949,9 +906,6 @@ export class DeviceChannel {
           serverTime: timestamp(this.now()),
           envId: authenticated.envId,
           deviceBindingId: authenticated.deviceBindingId,
-          ...(platformEnvironment
-            ? { platformPodUid: hello.platformPodUid, platformPodName: hello.platformPodName }
-            : {}),
           ...('deviceCredential' in authenticated
             ? { deviceCredential: authenticated.deviceCredential }
             : {}),
@@ -969,7 +923,7 @@ export class DeviceChannel {
       authenticated.deviceBindingId,
       hello.instanceId,
     );
-    if (!platformEnvironment) await this.startEnvironmentDirectoryCheck(peer);
+    await this.startEnvironmentDirectoryCheck(peer);
     for (const operation of pending) {
       await peer.send({
         payload: {

@@ -207,7 +207,7 @@ it('marks an active Run interrupted during shutdown and restores it on reopen', 
   }
 });
 
-it('keeps history available and records a missing platform backend before any Provider request', async () => {
+it('keeps history available and records an unpaired main environment before any Provider request', async () => {
   const database = openDatabase(':memory:');
   const provider = new ScriptedProvider([]);
   const server = createProductionServer(database, false, {
@@ -248,7 +248,7 @@ it('keeps history available and records a missing platform backend before any Pr
     await vi.waitFor(() =>
       expect(store.getRunById(runId)).toMatchObject({
         status: 'failed',
-        error: { code: 'sandbox_unavailable' },
+        error: { code: 'failed_precondition' },
       }),
     );
     expect(provider.requests).toHaveLength(0);
@@ -272,7 +272,10 @@ it('keeps history available and records a missing platform backend before any Pr
       payload: { threadId: thread.threadId },
     });
     expect(snapshot.statusCode).toBe(200);
-    expect(snapshot.json().snapshot.mainEnvironment).toBeUndefined();
+    expect(snapshot.json().snapshot.mainEnvironment).toMatchObject({
+      envId: 'main',
+      lifecycleState: 'PLATFORM_LIFECYCLE_STATE_ERROR',
+    });
   } finally {
     await server.close();
   }
