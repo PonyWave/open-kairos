@@ -47,11 +47,16 @@ export const recallScopeSchema = z
 
 export type RecallScope = z.infer<typeof recallScopeSchema>;
 
+export const recallVisibilitySchema = z.enum(['self', 'workspace', 'owner']);
+
+export type RecallVisibility = z.infer<typeof recallVisibilitySchema>;
+
 export const recallAuthorizationSchema = z
   .object({
     scope: recallScopeSchema,
     currentRunId: z.string().min(1).max(200),
     includeDescendants: z.boolean(),
+    visibility: recallVisibilitySchema,
   })
   .strict();
 

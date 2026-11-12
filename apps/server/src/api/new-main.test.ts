@@ -132,6 +132,7 @@ it('starts an empty main conversation and excludes archived content from recall 
       scope: { threadId: newThreadId, agentId: 'thread' },
       currentRunId: 'no-active-run',
       includeDescendants: false,
+      visibility: 'self',
     });
     expect(recall.context).toEqual([]);
     expect(recall.recap).toEqual([]);

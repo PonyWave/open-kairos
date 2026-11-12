@@ -306,7 +306,7 @@ function acceptancePrompt(seedMaxSeq: number, assistantSeq: number): string {
        (SELECT count(*) FROM context
         WHERE seq <= ${seedMaxSeq} AND content LIKE '%ORCHID-OLD%') AS stale_count,
        (SELECT count(*) FROM context
-        WHERE seq <= ${seedMaxSeq} AND content LIKE '%OTHER-THREAD-SECRET%') AS unauthorized_count,
+        WHERE seq <= ${seedMaxSeq} AND content LIKE '%OTHER-THREAD-SECRET%') AS cross_thread_count,
        (SELECT count(*) FROM recap WHERE content LIKE '%OLD-RECAP%') AS stale_recap_count`,
   ];
   return [
@@ -344,7 +344,7 @@ describe.skipIf(!enabled)('real SQL recall acceptance', () => {
       const otherId = (
         await fixture.clients.thread.createThread({
           clientActionId: 'real-recall-create-other',
-          title: 'Real SQL recall unauthorized Thread',
+          title: 'Real SQL recall other Thread',
         })
       ).thread?.threadId;
       if (!mainId || !otherId) throw new Error('The real recall Threads are missing.');
@@ -464,7 +464,7 @@ describe.skipIf(!enabled)('real SQL recall acceptance', () => {
         [alpha.seq, 'thread', 'ORCHID-CURRENT'],
         [beta.seq, 'thread', 'VELVET-CURRENT'],
       ]);
-      expect(expectSingleResult('authorization_and_stale').rows).toEqual([[0, 0, 0]]);
+      expect(expectSingleResult('authorization_and_stale').rows).toEqual([[0, 1, 0]]);
       expect(report.usage.input_tokens).toBeGreaterThan(0);
       expect(report.usage.output_tokens).toBeGreaterThan(0);
       expect(report.usage.total_tokens).toBe(

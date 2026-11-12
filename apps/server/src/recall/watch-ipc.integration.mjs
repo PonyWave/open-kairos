@@ -109,6 +109,7 @@ const authorization = {
   scope: { threadId: 'thread-main', agentId: 'thread' },
   currentRunId: 'watch-run',
   includeDescendants: false,
+  visibility: 'self',
 };
 const executorInput = (sql) => ({
   sql,

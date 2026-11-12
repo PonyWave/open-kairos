@@ -12,6 +12,7 @@ const authorization = {
   scope: { threadId: 'thread-main', agentId: 'thread' },
   currentRunId: 'internal-run',
   includeDescendants: false,
+  visibility: 'self' as const,
 };
 
 function createDatabase() {

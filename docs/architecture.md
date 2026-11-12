@@ -59,7 +59,7 @@ Server 首次启动时自动注册主环境：写入环境记录、完成设备�
 
 ## 5. 召回与 Automation
 
-- recall 只开放 `thread`、`context`、`recap` 三张查询表。`thread` 表包含 `workspace_id` 列，临时对话该列为 `NULL`。
+- recall 只开放 `thread`、`context`、`recap` 三张查询表。`thread` 表包含 `workspace_id` 列，临时对话该列为 `NULL`。可见范围按调用方 Run 分级：全局 main 根 Run 覆盖本用户全部 Thread，工作空间 main 根 Run 覆盖本工作空间，其余限当前 Thread，矩阵见[数据定义与运行状态](domain-and-state.md#6-recall-查询表)。
 - `workspace_list` 工具供 Agent 查询合法工作空间。
 - Automation 定义包含可选 `workspace_id`。fire 创建新 Thread 时写入对应工作空间，为空时落入临时对话列表。
 

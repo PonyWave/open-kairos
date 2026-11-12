@@ -43,7 +43,7 @@ describe('recall tool', () => {
       },
     };
     const engine = { execute: vi.fn(async () => result) };
-    const tool = createRecallTool({ engine, scope });
+    const tool = createRecallTool({ engine, scope, visibility: 'self' });
     const controller = new AbortController();
 
     expect(tool.name).toBe('recall');
@@ -98,6 +98,7 @@ describe('recall tool', () => {
     const tool = createRecallTool({
       engine: { execute: vi.fn(async () => Promise.reject(failure)) },
       scope,
+      visibility: 'self',
     });
 
     const error = await execute(tool, { sql: 'SELECT 1' }).catch((reason: unknown) => reason);
@@ -117,9 +118,23 @@ describe('recall tool', () => {
         }),
       },
       scope,
+      visibility: 'self',
     });
 
     await expect(execute(tool, { sql: 'SELECT 1' }, controller.signal)).rejects.toBe(reason);
+  });
+
+  it('describes the visible range for each visibility level', () => {
+    const engine = { execute: vi.fn(async () => ({ columns: [], rows: [], truncated: false })) };
+    expect(createRecallTool({ engine, scope, visibility: 'self' }).description).toContain(
+      'the current Thread and its authorized Agent scopes only',
+    );
+    expect(createRecallTool({ engine, scope, visibility: 'workspace' }).description).toContain(
+      'every Thread in the current workspace',
+    );
+    expect(createRecallTool({ engine, scope, visibility: 'owner' }).description).toContain(
+      'every Thread of the current user',
+    );
   });
 
   it('executes a real query through the M60 engine', async () => {
@@ -132,8 +147,9 @@ describe('recall tool', () => {
         scope: { threadId: thread.threadId, agentId: 'thread' },
         currentRunId: 'recall-tool-run',
         includeDescendants: false,
+        visibility: 'self',
       });
-      const tool = createRecallTool({ engine, scope });
+      const tool = createRecallTool({ engine, scope, visibility: 'self' });
       const result = JSON.parse(await execute(tool, { sql: 'SELECT 1 AS value' }));
       expect(result).toEqual({ columns: ['value'], rows: [[1]], truncated: false });
       expect(engine.activeProcessCount).toBe(0);

@@ -26,7 +26,12 @@ import {
 import type { ContextMessage, DelegationKey } from '../context/types.js';
 import type { EnvironmentStore } from '../devices/environment-store.js';
 import type { EnvironmentUseGateway } from '../devices/environment-use.js';
-import { SqlRecallEngine, type SqlRecallLimits, SqlRecallProcessPool } from '../recall/index.js';
+import {
+  type RecallVisibility,
+  SqlRecallEngine,
+  type SqlRecallLimits,
+  SqlRecallProcessPool,
+} from '../recall/index.js';
 import { RecapModelGenerator } from '../recap/generation.js';
 import { type PeriodicRecapConfiguration, PeriodicRecapService } from '../recap/periodic.js';
 import type { SettingsStore } from '../settings/store.js';
@@ -76,6 +81,7 @@ import type {
   RunRecord,
   StreamDeltaRecord,
   ThreadNotificationRecord,
+  ThreadType,
 } from './records.js';
 import { RequestSlots } from './request-slots.js';
 import type { AcceptedThreadCall, AcceptedThreadNotification, SessionStore } from './store.js';
@@ -1752,13 +1758,14 @@ export class RunCoordinator {
     };
   }
 
-  #recallEngine(run: RunRecord): SqlRecallEngine {
+  #recallEngine(run: RunRecord, threadType: ThreadType): SqlRecallEngine {
     return new SqlRecallEngine(
       this.store.database,
       {
         scope: { threadId: run.threadId, agentId: run.agentId },
         currentRunId: run.runId,
         includeDescendants: run.agentId === 'thread',
+        visibility: recallVisibility(run, threadType),
       },
       {
         ...(this.#options.sqlRecall ? { limits: this.#options.sqlRecall } : {}),
@@ -1769,13 +1776,14 @@ export class RunCoordinator {
 
   #tools(run: RunRecord, depth: number): AgentTool[] {
     const scope = { threadId: run.threadId, agentId: run.agentId };
-    const recall = {
-      execute: (sql: string, options: { signal?: AbortSignal }) =>
-        this.#recallEngine(run).execute(sql, options),
-    };
     const thread = this.store.getThread(run.ownerId, run.threadId);
     const threadType = thread.threadType;
-    const tools: AgentTool[] = [createRecallTool({ engine: recall, scope })];
+    const visibility = recallVisibility(run, threadType);
+    const recall = {
+      execute: (sql: string, options: { signal?: AbortSignal }) =>
+        this.#recallEngine(run, threadType).execute(sql, options),
+    };
+    const tools: AgentTool[] = [createRecallTool({ engine: recall, scope, visibility })];
     tools.push(...createEnvironmentTools(this.#environmentRuntime, run));
     tools.push(
       ...createWebTools({
@@ -2005,6 +2013,13 @@ export class RunCoordinator {
       retryable: false,
     };
   }
+}
+
+function recallVisibility(run: RunRecord, threadType: ThreadType): RecallVisibility {
+  if (run.agentId !== 'thread') return 'self';
+  if (threadType === 'main') return 'owner';
+  if (threadType === 'workspace_main') return 'workspace';
+  return 'self';
 }
 
 function toolAttachmentIds(message: ModelMessage): string[] {

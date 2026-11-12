@@ -386,6 +386,7 @@ it('writes clipboard images into the unified sandbox without exposing env_id', a
       scope: { threadId, agentId: 'thread' },
       currentRunId: created.runId,
       includeDescendants: false,
+      visibility: 'self',
     });
     const recalled = await recall.execute(
       `SELECT attachments_json FROM context WHERE seq = ${user.seq}`,

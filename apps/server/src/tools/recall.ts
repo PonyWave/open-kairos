@@ -4,6 +4,7 @@ import {
   RECALL_TABLE_COLUMNS,
   RecallError,
   type RecallScope,
+  type RecallVisibility,
   type SqlRecallResult,
 } from '../recall/index.js';
 
@@ -18,12 +19,13 @@ export interface SqlRecallExecutor {
 export interface RecallToolOptions {
   engine: SqlRecallExecutor;
   scope: RecallScope;
+  visibility: RecallVisibility;
 }
 
 export function createRecallTool(options: RecallToolOptions): AgentTool<RecallInput> {
   return {
     name: 'recall',
-    description: recallDescription(options.scope),
+    description: recallDescription(options.scope, options.visibility),
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -45,13 +47,19 @@ export function createRecallTool(options: RecallToolOptions): AgentTool<RecallIn
   };
 }
 
-function recallDescription(scope: RecallScope): string {
+function recallDescription(scope: RecallScope, visibility: RecallVisibility): string {
   const schema = Object.entries(RECALL_TABLE_COLUMNS)
     .map(([table, columns]) => `${table}(${columns.join(', ')})`)
     .join('\n');
+  const visibleRange =
+    visibility === 'owner'
+      ? 'Visible range: every Thread of the current user, including its delegated Agent scopes.'
+      : visibility === 'workspace'
+        ? 'Visible range: the current Thread and every Thread in the current workspace, including their delegated Agent scopes.'
+        : 'Visible range: the current Thread and its authorized Agent scopes only.';
   return [
     'Execute one read-only SQLite SQL query over the authorized current view. Only the thread, context and recap tables below are available; internal database tables are not accessible.',
-    `Current Thread ID: ${JSON.stringify(scope.threadId)}. Current Agent ID: ${JSON.stringify(scope.agentId)}. The Server determines which authorized scopes are visible; SQL does not change the authorization boundary.`,
+    `Current Thread ID: ${JSON.stringify(scope.threadId)}. Current Agent ID: ${JSON.stringify(scope.agentId)}. ${visibleRange} The Server determines which authorized scopes are visible; SQL does not change the authorization boundary.`,
     `Table schema:\n${schema}`,
     'Types: seq is INTEGER; all other columns are TEXT. Nullable columns are thread.summary, thread.last_message_at, context.tool_calls_json, context.tool_result_json, context.source_json and context.attachments_json.',
     'JSON TEXT fields: context.tool_calls_json is an array containing complete calls ({id,name,arguments}) and incomplete calls ({id,name,arguments_text,error}); context.tool_result_json is an object with tool_call_id and optional status and error; context.source_json contains the input source type and optional source thread_id and agent_id; recap.source_message_seqs is a JSON array of exact source message sequences; context.attachments_json is null or an array of attachment objects ({attachment_id,file_name,media_type,source,workspace_required,workspace_status,path}). Use json_each(context.attachments_json) to inspect attachments. For an attachment whose workspace_status is completed, call read({path}) for text/plain and read_image({path}) for image/png or image/jpeg without env_id to read the original file at that workspace path. Attachment bodies are not included.',

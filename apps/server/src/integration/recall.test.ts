@@ -125,7 +125,7 @@ function sequence(fixture: RecallFixture, content: string): number {
     ).seq;
 }
 
-it('accepts the public schema, current view, tool JSON, exact sources and cross-Run scope over HTTP', async () => {
+it('accepts the public schema, current view, tool JSON, exact sources and visibility scopes over HTTP', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'kairos-recall-schema-'));
   const initialProvider = new ScriptedProvider([response('seed response')]);
   let fixture = await startRecallFixture(directory, initialProvider);
@@ -276,7 +276,7 @@ it('accepts the public schema, current view, tool JSON, exact sources and cross-
           'recall-after-revision',
           `SELECT
              (SELECT content FROM context WHERE seq = ${alpha.seq}),
-             (SELECT summary FROM thread),
+             (SELECT summary FROM thread WHERE thread_id = '${mainId}'),
              (SELECT count(*) FROM context WHERE content IN ('ORCHID old', 'VELVET current')),
              (SELECT count(*) FROM recap WHERE recap_id IN ('recap-tie-a', 'recap-tie-z'))`,
         ),
@@ -306,16 +306,21 @@ it('accepts the public schema, current view, tool JSON, exact sources and cross-
     expect(request?.tools.some((tool) => tool.name === 'recall_context')).toBe(false);
     expect(request?.tools.some((tool) => tool.name === 'recall_recap')).toBe(false);
 
-    expect(sqlResult(fixture, 'recall-schema').rows).toEqual([
-      [mainId, 'main', '主对话', 'summary from recap-tie-z'],
-    ]);
+    expect(sqlResult(fixture, 'recall-schema').rows).toEqual(
+      [
+        [mainId, 'main', '主对话', 'summary from recap-tie-z'],
+        [taskId, 'task', 'SQL recall other Thread', null],
+      ].sort((left, right) => String(left[0]).localeCompare(String(right[0]))),
+    );
     const current = sqlResult(fixture, 'recall-current');
     const currentText = JSON.stringify(current);
     expect(currentText).toContain('seed response');
     expect(currentText).toContain('ORCHID old');
-    expect(currentText).not.toContain('OTHER-THREAD-SECRET');
-    expect(currentText).not.toContain('child secret');
-    expect(current.rows.every((row) => row[1] === 'thread')).toBe(true);
+    expect(currentText).toContain('OTHER-THREAD-SECRET');
+    expect(currentText).toContain('child secret');
+    expect(new Set(current.rows.map((row) => row[1]))).toEqual(
+      new Set(['thread', 'subagent-fixture']),
+    );
     const assistantRow = current.rows.find((row) => row[0] === assistant.seq);
     const toolRowValue = current.rows.find((row) => row[0] === tool.seq);
     const incompleteToolRow = current.rows.find((row) => row[0] === incompleteTool.seq);
@@ -345,7 +350,7 @@ it('accepts the public schema, current view, tool JSON, exact sources and cross-
       [alpha.seq, 'thread', 'ORCHID old'],
       [beta.seq, 'thread', 'VELVET current'],
     ]);
-    expect(sqlResult(fixture, 'recall-cross-run-auth').rows).toEqual([[0, 1, 0, 0]]);
+    expect(sqlResult(fixture, 'recall-cross-run-auth').rows).toEqual([[1, 1, 1, 1]]);
     expect(
       z
         .array(z.object({ agent_id: z.string() }))

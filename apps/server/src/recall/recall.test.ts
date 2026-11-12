@@ -135,6 +135,7 @@ function fixture(limits: Partial<SqlRecallLimits> = {}) {
     scope: { threadId: 'thread-main', agentId: 'thread' },
     currentRunId: 'internal-run',
     includeDescendants: false,
+    visibility: 'self' as const,
   };
   const engine = new SqlRecallEngine(database, authorization, { limits });
   return {
@@ -749,3 +750,161 @@ function insertBulkMessages(
     )
     .run(count, `${prefix}-`);
 }
+
+describe('SQL recall visibility', () => {
+  function visibilityFixture() {
+    const directory = mkdtempSync(join(tmpdir(), 'kairos-recall-visibility-'));
+    temporaryDirectories.push(directory);
+    const database = openDatabase(join(directory, 'server.sqlite'));
+    new SessionStore(database);
+    database
+      .prepare(
+        `INSERT INTO workspaces(workspace_id, tenant_id, name, env_id, path, created_at) VALUES
+         ('workspace-1', 'owner', '空间一', 'main', '/one', '2026-11-02T00:00:00.000Z'),
+         ('workspace-2', 'owner', '空间二', 'main', '/two', '2026-11-02T00:00:00.000Z')`,
+      )
+      .run();
+    const insertThread = database.prepare(
+      `INSERT INTO threads(thread_id, owner_id, title, thread_type, workspace_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, '2026-11-02T00:00:00.000Z', '2026-11-02T00:00:00.000Z')`,
+    );
+    insertThread.run('thread-global-main', 'owner', '全局主对话', 'main', null);
+    insertThread.run('thread-ws1-main', 'owner', '空间一主对话', 'workspace_main', 'workspace-1');
+    insertThread.run('thread-ws1-task', 'owner', '空间一任务', 'task', 'workspace-1');
+    insertThread.run('thread-ws2-task', 'owner', '空间二任务', 'task', 'workspace-2');
+    insertThread.run('thread-alien', 'other-owner', '其他用户任务', 'task', null);
+    const context = new ContextStore(database);
+    context.append({
+      threadId: 'thread-global-main',
+      agentId: 'thread',
+      message: { role: 'user', content: 'global main note' },
+    });
+    context.append({
+      threadId: 'thread-ws1-main',
+      agentId: 'thread',
+      message: { role: 'user', content: 'ws1 main note' },
+    });
+    context.append({
+      threadId: 'thread-ws1-task',
+      agentId: 'thread',
+      message: { role: 'user', content: 'ws1 task note' },
+    });
+    context.append({
+      threadId: 'thread-ws1-task',
+      agentId: 'child',
+      message: { role: 'user', content: 'ws1 task child note' },
+    });
+    context.append({
+      threadId: 'thread-ws2-task',
+      agentId: 'thread',
+      message: { role: 'user', content: 'ws2 task note' },
+    });
+    context.append({
+      threadId: 'thread-alien',
+      agentId: 'thread',
+      message: { role: 'user', content: 'alien note' },
+    });
+    return { database };
+  }
+
+  const snapshotContents = (snapshot: ReturnType<typeof projectRecallSnapshot>) =>
+    snapshot.context.map((row) => row[4]);
+  const snapshotThreadIds = (snapshot: ReturnType<typeof projectRecallSnapshot>) =>
+    snapshot.thread.map((row) => row[0]);
+
+  it('projects every owned Thread and Agent scope under owner visibility', () => {
+    const { database } = visibilityFixture();
+    try {
+      const snapshot = projectRecallSnapshot(database, {
+        scope: { threadId: 'thread-global-main', agentId: 'thread' },
+        currentRunId: 'visibility-run',
+        includeDescendants: false,
+        visibility: 'owner',
+      });
+      expect(snapshotThreadIds(snapshot)).toEqual([
+        'thread-global-main',
+        'thread-ws1-main',
+        'thread-ws1-task',
+        'thread-ws2-task',
+      ]);
+      expect(snapshotContents(snapshot)).toEqual(
+        expect.arrayContaining([
+          'global main note',
+          'ws1 main note',
+          'ws1 task note',
+          'ws1 task child note',
+          'ws2 task note',
+        ]),
+      );
+      expect(snapshotContents(snapshot)).not.toContain('alien note');
+    } finally {
+      database.close();
+    }
+  });
+
+  it('projects only same-workspace Threads plus the scope Thread under workspace visibility', () => {
+    const { database } = visibilityFixture();
+    try {
+      const snapshot = projectRecallSnapshot(database, {
+        scope: { threadId: 'thread-ws1-main', agentId: 'thread' },
+        currentRunId: 'visibility-run',
+        includeDescendants: false,
+        visibility: 'workspace',
+      });
+      expect(snapshotThreadIds(snapshot)).toEqual(['thread-ws1-main', 'thread-ws1-task']);
+      expect(snapshotContents(snapshot)).toEqual(
+        expect.arrayContaining(['ws1 main note', 'ws1 task note', 'ws1 task child note']),
+      );
+      expect(snapshotContents(snapshot)).not.toContain('ws2 task note');
+      expect(snapshotContents(snapshot)).not.toContain('global main note');
+      expect(snapshotContents(snapshot)).not.toContain('alien note');
+    } finally {
+      database.close();
+    }
+  });
+
+  it('falls back to self visibility when the scope Thread is missing', () => {
+    const { database } = visibilityFixture();
+    try {
+      const snapshot = projectRecallSnapshot(database, {
+        scope: { threadId: 'thread-missing', agentId: 'thread' },
+        currentRunId: 'visibility-run',
+        includeDescendants: false,
+        visibility: 'owner',
+      });
+      expect(snapshot.thread).toEqual([]);
+      expect(snapshot.context).toEqual([]);
+      expect(snapshot.recap).toEqual([]);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('executes cross-Thread queries under owner visibility', async () => {
+    const { database } = visibilityFixture();
+    try {
+      const engine = new SqlRecallEngine(database, {
+        scope: { threadId: 'thread-global-main', agentId: 'thread' },
+        currentRunId: 'visibility-run',
+        includeDescendants: false,
+        visibility: 'owner',
+      });
+      const result = await engine.execute(
+        `SELECT thread_id, content FROM context WHERE content LIKE '%note' ORDER BY thread_id, seq`,
+      );
+      expect(result).toEqual({
+        columns: ['thread_id', 'content'],
+        rows: [
+          ['thread-global-main', 'global main note'],
+          ['thread-ws1-main', 'ws1 main note'],
+          ['thread-ws1-task', 'ws1 task note'],
+          ['thread-ws1-task', 'ws1 task child note'],
+          ['thread-ws2-task', 'ws2 task note'],
+        ],
+        truncated: false,
+      });
+    } finally {
+      database.close();
+    }
+  });
+});

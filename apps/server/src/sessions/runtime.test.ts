@@ -1172,6 +1172,198 @@ it('authorizes parent and child recall tools by the current Run relationship', a
   }
 });
 
+it('elevates recall visibility to the owner for the global main root Run', async () => {
+  const provider = new ScriptedProvider([
+    response('', [
+      {
+        id: 'main-owner-recall',
+        name: 'recall',
+        arguments: { sql: "SELECT content FROM context WHERE content = 'task secret note'" },
+      },
+    ]),
+    response('done'),
+  ]);
+  const { database, store, coordinator, directory } = await fixture(provider);
+  try {
+    const main = store.getOrCreateMainThread(ownerId);
+    const task = store.createThread(action('CreateThread', 'create-owner-task', { title: '任务' }));
+    const taskRun = send(store, task.threadId, 'task secret note', 'send-owner-task');
+    store.appendModelMessage({
+      runId: taskRun.runId,
+      inputId: taskRun.input.inputId,
+      message: { role: 'user', content: taskRun.input.text },
+    });
+    store.updateRunStatus(taskRun.runId, 'completed');
+    const sent = send(store, main.threadId, 'query owner visibility', 'send-owner-main');
+    await coordinator.deliver(sent.input, sent.runId);
+    await waitStatus(store, sent.runId, 'completed');
+    const message = store
+      .listContext(ownerId, main.threadId, 'thread')
+      .map((record) => record.message)
+      .find(
+        (candidate) => candidate.role === 'tool' && candidate.tool_call_id === 'main-owner-recall',
+      );
+    const result = JSON.parse(message?.content ?? '{}');
+    expect(result.rows).toEqual([['task secret note']]);
+  } finally {
+    await cleanup(coordinator, database, directory);
+  }
+});
+
+it('limits recall visibility to the same workspace for a workspace main root Run', async () => {
+  const provider = new ScriptedProvider([
+    response('', [
+      {
+        id: 'ws-visibility',
+        name: 'recall',
+        arguments: {
+          sql: "SELECT content FROM context WHERE content LIKE '%workspace note' ORDER BY content",
+        },
+      },
+    ]),
+    response('done'),
+  ]);
+  const { database, store, coordinator, directory } = await fixture(provider);
+  try {
+    const created = store.createWorkspace({
+      ownerId,
+      name: '空间一',
+      envId: 'main',
+      path: '/ws-one',
+    });
+    const insideTask = store.createThread(
+      action('CreateThread', 'create-ws-inside', {
+        title: '空间内任务',
+        workspaceId: created.workspace.workspaceId,
+      }),
+    );
+    const insideRun = send(store, insideTask.threadId, 'inside workspace note', 'send-ws-inside');
+    store.appendModelMessage({
+      runId: insideRun.runId,
+      inputId: insideRun.input.inputId,
+      message: { role: 'user', content: insideRun.input.text },
+    });
+    store.updateRunStatus(insideRun.runId, 'completed');
+    const outsideTask = store.createThread(
+      action('CreateThread', 'create-ws-outside', { title: '空间外任务' }),
+    );
+    const outsideRun = send(
+      store,
+      outsideTask.threadId,
+      'outside workspace note',
+      'send-ws-outside',
+    );
+    store.appendModelMessage({
+      runId: outsideRun.runId,
+      inputId: outsideRun.input.inputId,
+      message: { role: 'user', content: outsideRun.input.text },
+    });
+    store.updateRunStatus(outsideRun.runId, 'completed');
+    const sent = send(
+      store,
+      created.mainThread.threadId,
+      'query workspace visibility',
+      'send-ws-main',
+    );
+    await coordinator.deliver(sent.input, sent.runId);
+    await waitStatus(store, sent.runId, 'completed');
+    const message = store
+      .listContext(ownerId, created.mainThread.threadId, 'thread')
+      .map((record) => record.message)
+      .find((candidate) => candidate.role === 'tool' && candidate.tool_call_id === 'ws-visibility');
+    const result = JSON.parse(message?.content ?? '{}');
+    expect(result.rows).toEqual([['inside workspace note']]);
+  } finally {
+    await cleanup(coordinator, database, directory);
+  }
+});
+
+it('keeps delegated Runs in the global main Thread at self visibility', async () => {
+  const provider = new GatedProvider([
+    response('', [
+      {
+        id: 'main-delegate',
+        name: 'subagent',
+        arguments: { task: 'child task', mode: 'foreground' },
+      },
+    ]),
+    response('child placeholder'),
+    response('child answer'),
+    response('parent placeholder'),
+    response('parent answer'),
+  ]);
+  const { database, store, coordinator, directory } = await fixture(provider);
+  const replaceResponse = (index: number, events: ModelEvent[]) => {
+    const target = provider.responses[index];
+    if (!target) throw new Error(`Missing response ${index}.`);
+    target.splice(0, target.length, ...events);
+  };
+  try {
+    const otherThread = store.createThread(
+      action('CreateThread', 'create-narrow-other', { title: '其他会话' }),
+    );
+    const otherRun = send(store, otherThread.threadId, 'narrowing secret', 'send-narrow-other');
+    store.appendModelMessage({
+      runId: otherRun.runId,
+      inputId: otherRun.input.inputId,
+      message: { role: 'user', content: otherRun.input.text },
+    });
+    store.updateRunStatus(otherRun.runId, 'completed');
+    const main = store.getOrCreateMainThread(ownerId);
+    const sent = send(store, main.threadId, 'delegate work', 'send-narrow-main');
+    await coordinator.deliver(sent.input, sent.runId);
+    await vi.waitFor(() => expect(provider.requests).toHaveLength(1));
+    provider.gates[0]?.resolve();
+    await vi.waitFor(() => expect(provider.requests).toHaveLength(2));
+    const child = store
+      .listRuns(ownerId, main.threadId)
+      .find((run) => run.parentRunId === sent.runId);
+    if (!child) throw new Error('Child Run was not created.');
+    replaceResponse(
+      1,
+      response('', [
+        {
+          id: 'child-cross',
+          name: 'recall',
+          arguments: { sql: "SELECT content FROM context WHERE content = 'narrowing secret'" },
+        },
+      ]),
+    );
+    replaceResponse(
+      3,
+      response('', [
+        {
+          id: 'parent-cross',
+          name: 'recall',
+          arguments: { sql: "SELECT content FROM context WHERE content = 'narrowing secret'" },
+        },
+      ]),
+    );
+    provider.gates[1]?.resolve();
+    await vi.waitFor(() => expect(provider.requests).toHaveLength(3), { timeout: 3000 });
+    provider.gates[2]?.resolve();
+    await vi.waitFor(() => expect(provider.requests).toHaveLength(4));
+    provider.gates[3]?.resolve();
+    await vi.waitFor(() => expect(provider.requests).toHaveLength(5), { timeout: 3000 });
+    provider.gates[4]?.resolve();
+    await waitStatus(store, sent.runId, 'completed');
+    const toolRows = (agentId: string, callId: string): unknown => {
+      const message = store
+        .listContext(ownerId, main.threadId, agentId)
+        .find(
+          (record) => record.message.role === 'tool' && record.message.tool_call_id === callId,
+        )?.message;
+      if (message?.role !== 'tool') throw new Error(`Tool result ${callId} is missing.`);
+      return JSON.parse(message.content).rows;
+    };
+    expect(toolRows(child.agentId, 'child-cross')).toEqual([]);
+    expect(toolRows('thread', 'parent-cross')).toEqual([['narrowing secret']]);
+  } finally {
+    for (const gate of provider.gates) gate.resolve();
+    await cleanup(coordinator, database, directory);
+  }
+});
+
 it('passes configured SQL limits through to real recall results', async () => {
   const provider = new ScriptedProvider([
     response('', [

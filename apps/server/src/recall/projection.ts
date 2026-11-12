@@ -12,6 +12,11 @@ import {
 } from './types.js';
 
 const scopeRowSchema = z.object({ thread_id: z.string(), agent_id: z.string() });
+const threadIdentitySchema = z.object({
+  owner_id: z.string(),
+  workspace_id: z.string().nullable(),
+});
+const threadIdRowSchema = z.object({ thread_id: z.string() });
 const contextRowSchema = z.object({
   seq: z.bigint().positive(),
   thread_id: z.string(),
@@ -47,6 +52,7 @@ type ContextRow = z.infer<typeof contextRowSchema>;
 type RecapRow = z.infer<typeof recapRowSchema>;
 
 const MAX_AUTHORIZATION_RUNS = 10_000;
+const MAX_AUTHORIZATION_SCOPES = 10_000;
 
 export function projectRecallSnapshot(
   database: DatabaseSync,
@@ -84,6 +90,10 @@ function authorizedScopes(
   database: DatabaseSync,
   authorization: RecallAuthorization,
 ): RecallScope[] {
+  if (authorization.visibility !== 'self') {
+    const elevated = elevatedScopes(database, authorization);
+    if (elevated !== undefined) return elevated;
+  }
   const allowedAgentIds = new Set([authorization.scope.agentId]);
   if (authorization.includeDescendants) {
     for (const agentId of descendantAgentIds(database, authorization)) allowedAgentIds.add(agentId);
@@ -111,6 +121,63 @@ function authorizedScopes(
       )
       .iterate(authorization.scope.threadId)) {
       addScope(row);
+    }
+  }
+  return [...authorized.values()];
+}
+
+function elevatedScopes(
+  database: DatabaseSync,
+  authorization: RecallAuthorization,
+): RecallScope[] | undefined {
+  const identity = threadIdentitySchema
+    .optional()
+    .parse(
+      database
+        .prepare('SELECT owner_id, workspace_id FROM threads WHERE thread_id = ?')
+        .get(authorization.scope.threadId),
+    );
+  if (!identity) return undefined;
+  const threadIds: string[] = [];
+  const threadStatement =
+    authorization.visibility === 'owner'
+      ? database.prepare('SELECT thread_id FROM threads WHERE owner_id = ? ORDER BY seq')
+      : database.prepare(
+          `SELECT thread_id FROM threads
+           WHERE owner_id = ? AND (workspace_id = ? OR thread_id = ?) ORDER BY seq`,
+        );
+  const threadParameters =
+    authorization.visibility === 'owner'
+      ? [identity.owner_id]
+      : [identity.owner_id, identity.workspace_id, authorization.scope.threadId];
+  for (const value of threadStatement.iterate(...threadParameters)) {
+    threadIds.push(threadIdRowSchema.parse(value).thread_id);
+  }
+  const authorized = new Map<string, RecallScope>();
+  const addScope = (value: unknown) => {
+    const row = scopeRowSchema.parse(value);
+    const scope = { threadId: row.thread_id, agentId: row.agent_id };
+    const key = scopeKey(scope);
+    if (authorized.has(key)) return;
+    if (authorized.size >= MAX_AUTHORIZATION_SCOPES) {
+      throw new RecallError(
+        'authorization_limit',
+        `SQL recall authorization exceeded the ${MAX_AUTHORIZATION_SCOPES} scope limit.`,
+      );
+    }
+    authorized.set(key, scope);
+  };
+  for (const threadId of threadIds) {
+    addScope({ thread_id: threadId, agent_id: ROOT_AGENT_ID });
+    for (const table of ['context_messages', 'recaps']) {
+      for (const row of database
+        .prepare(
+          `SELECT DISTINCT thread_id, agent_id
+           FROM ${table} WHERE thread_id = ? ORDER BY agent_id`,
+        )
+        .iterate(threadId)) {
+        addScope(row);
+      }
     }
   }
   return [...authorized.values()];

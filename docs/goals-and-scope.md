@@ -26,7 +26,7 @@
 
 - Agent Loop 与 Provider 适配：模型请求与工具执行组成的迭代过程，适配多种模型接口协议。
 - Context 与 Recap：模型实际接收和产生的完整逐条原始消息，以及关联原始消息的逐条区间概述；当前视图与 SQL 召回共用同一套有效性规则。
-- SQL 召回：`recall({ sql })` 工具开放 `thread`、`context`、`recap` 三张只读查询表。
+- SQL 召回：`recall({ sql })` 工具开放 `thread`、`context`、`recap` 三张只读查询表，可见范围按调用方 Thread 类型分级，全局 main 可查全部对话。
 - 对话层级与委派：`thread_call` 委派与结果交付、`thread_notify` 通知、Subagent、`workspace_list` 工作空间查询。
 - Automation：cron 定时与手动触发，目标可指定工作空间。
 - 多设备执行：Daemon 配对、远程 Operation、Bash 输出与 `read_output` 检索、`env_sync` 环境间文件同步。

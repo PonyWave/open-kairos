@@ -5,6 +5,7 @@ export type {
   RecallAuthorization,
   RecallErrorCode,
   RecallScope,
+  RecallVisibility,
   SqlRecallLimits,
   SqlRecallResult,
   SqlRecallTruncation,

@@ -59,6 +59,14 @@
 
 只开放 `thread`、`context`、`recap` 三张查询表。`thread` 表包含 `workspace_id` 列，临时对话该列为 `NULL`。
 
+可见范围按调用方 Run 分级，SQL 不改变授权边界：
+
+| 调用方 Run                        | 可见范围                                                              |
+| --------------------------------- | --------------------------------------------------------------------- |
+| 全局 main 根 Run                  | 本用户全部 Thread（含 automation_only）及其全部 Agent 作用域          |
+| 工作空间 main 根 Run              | 本工作空间全部 Thread 与当前 Thread，及其全部 Agent 作用域            |
+| 任务 Thread、临时对话与子 Agent   | 当前 Thread 内的当前 Agent 作用域；根 Run 扩展为同 Thread 后代 Agent  |
+
 ## 7. 设备与 Operation
 
 主环境在首次启动写入环境记录并完成设备绑定，不可删除、不可撤销。远程设备配对、`environment_operations` 意图与恢复、输出与日志规则沿用现有设计。
