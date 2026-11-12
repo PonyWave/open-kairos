@@ -8,7 +8,6 @@ import {
   WorkspaceService,
 } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
-import { DeviceBashStore } from '../devices/operation-store.js';
 import type { WorkspaceResourceSource } from '../integration/environment-fixture.js';
 import {
   controlledEnvironmentDependencies,
@@ -41,7 +40,6 @@ async function fixture(loader: WorkspaceResourceSource) {
   const database = openDatabase(':memory:');
   seedTestEnvironment(database, ownerId);
   const store = new SessionStore(database);
-  const operations = new DeviceBashStore(database);
   const dependencies = controlledEnvironmentDependencies(store.database, ownerId);
   dependencies.environmentOperations.loadResources = () => loader.load();
   const coordinator = new RunCoordinator({
@@ -59,8 +57,7 @@ async function fixture(loader: WorkspaceResourceSource) {
       registerGuiRoutes(router, {
         store,
         coordinator,
-        operations,
-        logs: new BashLogReader({ store, operations }),
+        logs: new BashLogReader({ store }),
         modelStatus: {
           providerId: '',
           modelId: '',

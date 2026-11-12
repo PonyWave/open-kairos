@@ -371,7 +371,6 @@ it('keeps env_list and main-environment events free of lifecycle side effects', 
         env_id: 'main',
         name: 'main',
         is_main: true,
-        lifecycle_state: null,
       }),
     );
     const environment = f.environments.get(ownerId, main.currentBinding?.envId ?? '');
@@ -970,11 +969,6 @@ it('allows standalone main creation before pairing but rejects execution without
       pwd: '/workspace',
       resourceVersion: null,
     });
-    expect(f.database.prepare('SELECT COUNT(*) AS count FROM platform_environments').get()).toEqual(
-      {
-        count: 0,
-      },
-    );
     const accepted = send(f.store, main.threadId);
     await f.coordinator.deliver(accepted.input, accepted.runId);
     expect(f.store.getRunById(accepted.runId)).toMatchObject({
@@ -1059,11 +1053,6 @@ it('executes standalone main, Rerun, tasks and inherited agents through the read
       defaultPwd: '/workspace',
     });
     expect(f.provider.requests).toHaveLength(3);
-    expect(f.database.prepare('SELECT COUNT(*) AS count FROM platform_environments').get()).toEqual(
-      {
-        count: 0,
-      },
-    );
   } finally {
     await f.close();
   }

@@ -383,31 +383,6 @@ describe('EnvironmentOperationStore', () => {
     });
     expect(store.find(completedInput.operationId)?.resultAcknowledgedAt).toBeUndefined();
   });
-
-  it('rejects a directory-only schema instead of silently accepting an incompatible database', () => {
-    const database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
-    databases.push(database);
-    database.exec(`
-      CREATE TABLE schema_migrations(
-        namespace TEXT NOT NULL,
-        version INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        applied_at TEXT NOT NULL,
-        PRIMARY KEY(namespace, version)
-      );
-      CREATE TABLE environment_operations(operation_id TEXT PRIMARY KEY);
-      INSERT INTO schema_migrations(namespace, version, name, applied_at)
-      VALUES ('environment_operations', 1, 'environment_directory_operations_initial', '2026-01-01T00:00:00.000Z');
-    `);
-    expect(() => new EnvironmentOperationStore(database)).toThrow(
-      'requires an explicit upgrade to version 6',
-    );
-    expect(
-      database.prepare('SELECT COUNT(*) AS count FROM environment_operations').get(),
-    ).toMatchObject({
-      count: 0,
-    });
-  });
 });
 
 describe('EnvironmentOperationStore image results', () => {

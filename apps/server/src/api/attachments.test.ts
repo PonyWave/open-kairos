@@ -11,7 +11,6 @@ import {
 } from '@kairos/contracts';
 import { expect, it } from 'vitest';
 import { utf8 } from '../attachments/fixtures.js';
-import { DeviceBashStore } from '../devices/operation-store.js';
 import {
   controlledEnvironmentDependencies,
   createEnvironmentThreadClient,
@@ -32,7 +31,6 @@ it('exposes authorized idempotent uploads, downloads and metadata-only snapshots
   const database = openDatabase(':memory:');
   seedTestEnvironment(database, 'owner-1');
   const store = new SessionStore(database);
-  const operations = new DeviceBashStore(database);
   const coordinator = new RunCoordinator({
     ...controlledEnvironmentDependencies(store.database, 'owner-1'),
     store,
@@ -43,8 +41,7 @@ it('exposes authorized idempotent uploads, downloads and metadata-only snapshots
         registerGuiRoutes(router, {
           store,
           coordinator,
-          operations,
-          logs: new BashLogReader({ store, operations }),
+          logs: new BashLogReader({ store }),
           modelStatus: {
             providerId: '',
             modelId: '',

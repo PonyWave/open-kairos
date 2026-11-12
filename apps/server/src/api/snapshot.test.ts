@@ -79,9 +79,6 @@ it('projects a configured main environment that is not ready as unavailable', ()
     expect(database.prepare('SELECT COUNT(*) AS count FROM environment_operations').get()).toEqual({
       count: 0,
     });
-    expect(database.prepare('SELECT COUNT(*) AS count FROM platform_usage_intents').get()).toEqual({
-      count: 0,
-    });
   } finally {
     database.close();
   }

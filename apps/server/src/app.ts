@@ -26,7 +26,6 @@ import {
   type MainEnvironmentConfiguration,
   MainEnvironmentUseGateway,
 } from './devices/main-environment.js';
-import { DeviceBashStore } from './devices/operation-store.js';
 import { registerDeviceWebSocket } from './devices/websocket.js';
 import type { SqlRecallLimits } from './recall/index.js';
 import type { PeriodicRecapConfiguration } from './recap/periodic.js';
@@ -99,7 +98,6 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
     ...(options.eventRetentionMs ? { eventRetentionMs: options.eventRetentionMs } : {}),
     mainEnvironment,
   });
-  const operations = new DeviceBashStore(database);
   const environments = new EnvironmentStore(database, {
     ...(options.environment ?? {}),
     ...(options.now ? { now: options.now } : {}),
@@ -154,7 +152,6 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
   });
   const logs = new BashLogReader({
     store,
-    operations,
     ...(options.now ? { now: options.now } : {}),
   });
   const authentication: GuiAuthentication = {
@@ -190,7 +187,6 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
       settings,
       coordinator,
       automations,
-      operations,
       logs,
       modelStatus:
         options.modelStatus ??

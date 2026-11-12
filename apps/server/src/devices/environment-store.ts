@@ -13,18 +13,6 @@ import type { MainEnvironmentConfiguration } from './main-environment.js';
 
 const capabilitySchema = z.number().int().refine(isDeviceCapability);
 const capabilitiesSchema = z.array(capabilitySchema);
-const platformLifecycleStates = [
-  'uninitialized',
-  'starting',
-  'running',
-  'pausing',
-  'paused',
-  'resuming',
-  'deleting',
-  'deleted',
-  'error',
-] as const;
-type PlatformLifecycleState = (typeof platformLifecycleStates)[number];
 const environmentRowSchema = z.object({
   env_id: z.string(),
   tenant_id: z.string(),
@@ -32,7 +20,6 @@ const environmentRowSchema = z.object({
   auto_detect: z.number().int().min(0).max(1),
   settings_version: z.string(),
   kind: z.enum(['self_hosted_linux', 'self_hosted_macos', 'platform_sandbox']),
-  platform_lifecycle_state: z.enum(platformLifecycleStates).nullable(),
   recommended_pwd: z.string(),
   binding_status: z.enum(['pairing', 'active', 'revoked']),
   connection_status: z.enum(['offline', 'online']),
@@ -72,7 +59,6 @@ const environmentRecordSchema = z.object({
   settingsVersion: z.string(),
   favoriteDirectories: z.array(z.string()),
   kind: z.enum(['self_hosted_linux', 'self_hosted_macos', 'platform_sandbox']),
-  lifecycleState: z.enum(platformLifecycleStates).nullable(),
   recommendedPwd: z.string(),
   bindingStatus: z.enum(['pairing', 'active', 'revoked']),
   connectionStatus: z.enum(['offline', 'online']),
@@ -129,7 +115,6 @@ export interface EnvironmentRecord {
   settingsVersion: string;
   favoriteDirectories: string[];
   kind: EnvironmentKind;
-  lifecycleState: PlatformLifecycleState | null;
   recommendedPwd: string;
   bindingStatus: EnvironmentBindingStatus;
   connectionStatus: EnvironmentConnectionStatus;
@@ -967,7 +952,6 @@ export class EnvironmentStore {
         .all(row.tenant_id, row.env_id)
         .map((value) => z.object({ path: z.string() }).parse(value).path),
       kind: row.kind,
-      lifecycleState: row.platform_lifecycle_state,
       recommendedPwd: row.recommended_pwd,
       bindingStatus: row.binding_status,
       connectionStatus: row.connection_status,

@@ -89,11 +89,6 @@ const subagentInputSchema = z
     ...optionalEnvironmentPolicySchema.shape,
   })
   .strict();
-const recoveredResultSchema = z.object({
-  operation_id: z.string(),
-  content: z.string(),
-  status: z.enum(['success', 'error']),
-});
 const serverResultSchema = z.object({
   content: z.string().nullable(),
   status: z.enum(['success', 'error']).nullable(),
@@ -1198,16 +1193,6 @@ export class RunCoordinator {
   async #savedToolResult(runId: string, callId: string): Promise<ToolExecutionResult | undefined> {
     const environmentResult = await this.#environmentRuntime.savedResult(runId, callId);
     if (environmentResult) return environmentResult;
-    const readDeviceResult = () => {
-      const row = this.store.database
-        .prepare(
-          'SELECT operation_id, content, status FROM device_tool_results WHERE run_id = ? AND tool_call_id = ?',
-        )
-        .get(runId, callId);
-      return row === undefined ? undefined : recoveredResultSchema.parse(row);
-    };
-    const deviceResult = readDeviceResult();
-    if (deviceResult) return deviceResult;
 
     const serverRow = this.store.database
       .prepare(

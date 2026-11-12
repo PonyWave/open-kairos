@@ -1705,7 +1705,6 @@ function catalogEntry(
     env_id: main ? 'main' : environment.envId,
     name: main ? 'main' : environment.name,
     kind: environment.kind,
-    lifecycle_state: environment.lifecycleState,
     recommended_pwd: environment.recommendedPwd,
     binding_status: environment.bindingStatus,
     connection_status: environment.connectionStatus,

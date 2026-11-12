@@ -2,29 +2,110 @@ import type { Migration } from '../storage/migrations.js';
 
 export const sessionMigrations: readonly Migration[] = [
   {
-    version: 9,
-    name: 'server_runtime_delegation_identity_final',
+    version: 1,
+    name: 'server_runtime_v1_baseline',
     sql: `
-      CREATE TABLE threads (
+CREATE TABLE automation_fires (
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
-        thread_id TEXT NOT NULL UNIQUE,
+        fire_id TEXT NOT NULL UNIQUE,
+        schedule_id TEXT NOT NULL REFERENCES automations(schedule_id),
         owner_id TEXT NOT NULL,
-        title TEXT NOT NULL,
-        thread_type TEXT NOT NULL CHECK(thread_type IN ('main', 'task')),
+        trigger_source TEXT NOT NULL CHECK(trigger_source IN ('scheduled', 'run_now')),
+        schedule_version INTEGER NOT NULL CHECK(schedule_version > 0),
+        scheduled_at TEXT NOT NULL,
+        actual_at TEXT NOT NULL,
+        coalesced_count INTEGER NOT NULL CHECK(coalesced_count >= 0),
+        prompt TEXT NOT NULL,
+        target_kind TEXT NOT NULL CHECK(target_kind IN (
+          'main', 'existing_thread', 'new_task', 'new_automation_only'
+        )),
+        target_thread_id TEXT REFERENCES threads(thread_id),
+        input_id TEXT UNIQUE REFERENCES inputs(input_id),
+        accepted_run_id TEXT REFERENCES runs(run_id),
+        consumed_run_id TEXT REFERENCES runs(run_id),
+        status TEXT NOT NULL CHECK(status IN (
+          'queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted'
+        )),
+        error_code TEXT,
+        error_message TEXT,
+        error_retryable INTEGER CHECK(error_retryable IN (0, 1)),
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        finished_at TEXT
       );
-      CREATE INDEX threads_owner_seq ON threads(owner_id, seq);
-      CREATE UNIQUE INDEX threads_one_main_per_owner
-        ON threads(owner_id) WHERE thread_type = 'main';
-
-      CREATE TABLE thread_queues (
-        thread_id TEXT PRIMARY KEY REFERENCES threads(thread_id) ON DELETE CASCADE,
-        queue_version INTEGER NOT NULL DEFAULT 0,
-        next_position INTEGER NOT NULL DEFAULT 1
+CREATE TABLE automations (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        schedule_id TEXT NOT NULL UNIQUE,
+        owner_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        schedule_kind TEXT NOT NULL CHECK(schedule_kind IN ('cron', 'once')),
+        cron_expression TEXT,
+        time_zone TEXT NOT NULL,
+        run_at TEXT,
+        target_kind TEXT NOT NULL CHECK(target_kind IN (
+          'main', 'existing_thread', 'new_task', 'new_automation_only'
+        )),
+        target_thread_id TEXT REFERENCES threads(thread_id),
+        environment_policy_json TEXT,
+        enabled INTEGER NOT NULL CHECK(enabled IN (0, 1)),
+        version INTEGER NOT NULL CHECK(version > 0),
+        cursor_at TEXT,
+        next_fire_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT, workspace_id TEXT REFERENCES workspaces(workspace_id),
+        CHECK(
+          (schedule_kind = 'cron' AND cron_expression IS NOT NULL AND run_at IS NULL)
+          OR (schedule_kind = 'once' AND cron_expression IS NULL AND run_at IS NOT NULL)
+        ),
+        CHECK(
+          (target_kind = 'existing_thread' AND target_thread_id IS NOT NULL)
+          OR (target_kind <> 'existing_thread' AND target_thread_id IS NULL)
+        )
       );
-
-      CREATE TABLE inputs (
+CREATE TABLE client_actions (
+        owner_id TEXT NOT NULL,
+        client_action_id TEXT NOT NULL,
+        method TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        response_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(owner_id, client_action_id)
+      );
+CREATE TABLE device_tool_calls (
+        operation_id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
+        run_id TEXT NOT NULL REFERENCES runs(run_id),
+        tool_call_id TEXT NOT NULL,
+        log_path TEXT,
+        log_expires_at TEXT,
+        log_synced_offset TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(run_id, tool_call_id)
+      );
+CREATE TABLE device_tool_results (
+        operation_id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
+        run_id TEXT NOT NULL REFERENCES runs(run_id),
+        tool_call_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('success', 'error')),
+        created_at TEXT NOT NULL,
+        UNIQUE(run_id, tool_call_id)
+      );
+CREATE TABLE input_attachments (
+        input_id TEXT NOT NULL REFERENCES inputs(input_id) ON DELETE CASCADE,
+        position INTEGER NOT NULL CHECK(position > 0),
+        attachment_id TEXT NOT NULL REFERENCES attachments(attachment_id), source TEXT NOT NULL DEFAULT 'file'
+        CHECK(source IN ('file', 'clipboard')), workspace_required INTEGER NOT NULL DEFAULT 0
+        CHECK(workspace_required IN (0, 1)), workspace_status TEXT
+        CHECK(workspace_status IN ('pending', 'completed')), env_id TEXT, path TEXT, operation_id TEXT,
+        PRIMARY KEY(input_id, position),
+        UNIQUE(input_id, attachment_id)
+      );
+CREATE TABLE inputs (
         input_id TEXT PRIMARY KEY,
         thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
         owner_id TEXT NOT NULL,
@@ -43,123 +124,36 @@ export const sessionMigrations: readonly Migration[] = [
         source_thread_id TEXT,
         source_agent_id TEXT,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL, automation_schedule_id TEXT, automation_fire_id TEXT, automation_trigger TEXT
+        CHECK(automation_trigger IS NULL OR automation_trigger IN ('scheduled', 'run_now')), automation_scheduled_at TEXT,
         UNIQUE(thread_id, position),
         CHECK(
           (delegation_source_thread_id IS NULL AND delegation_source_agent_id IS NULL AND source_tool_call_id IS NULL)
           OR (delegation_source_thread_id IS NOT NULL AND delegation_source_agent_id IS NOT NULL AND source_tool_call_id IS NOT NULL)
         )
       );
-      CREATE INDEX inputs_thread_status_position
-        ON inputs(thread_id, status, position);
-      CREATE UNIQUE INDEX inputs_delegation_source
-        ON inputs(delegation_source_thread_id, delegation_source_agent_id, source_tool_call_id, source)
-        WHERE source_tool_call_id IS NOT NULL;
-      CREATE INDEX inputs_source
-        ON inputs(delegation_source_thread_id, delegation_source_agent_id, source_tool_call_id);
-
-      CREATE TABLE runs (
-        run_id TEXT PRIMARY KEY,
-        thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
+CREATE TABLE interaction_deliveries (
+        source_thread_id TEXT NOT NULL,
+        source_agent_id TEXT NOT NULL,
+        source_tool_call_id TEXT NOT NULL,
         owner_id TEXT NOT NULL,
-        agent_id TEXT NOT NULL,
-        status TEXT NOT NULL CHECK(status IN (
-          'queued', 'running', 'waiting', 'cancel_requested',
-          'completed', 'failed', 'cancelled', 'interrupted'
-        )),
-        execution_mode TEXT NOT NULL CHECK(execution_mode IN ('foreground', 'background')),
-        input_ids_json TEXT NOT NULL DEFAULT '[]',
-        parent_run_id TEXT REFERENCES runs(run_id),
-        rerun_from_message_seq INTEGER REFERENCES context_messages(seq),
-        superseded_by_run_id TEXT REFERENCES runs(run_id),
-        error_code TEXT,
-        error_message TEXT,
-        error_retryable INTEGER CHECK(error_retryable IN (0, 1)),
-        usage_input_tokens INTEGER NOT NULL DEFAULT 0,
-        usage_output_tokens INTEGER NOT NULL DEFAULT 0,
-        usage_reported INTEGER NOT NULL DEFAULT 0 CHECK(usage_reported IN (0, 1)),
-        current_request_id TEXT,
-        execution_generation INTEGER NOT NULL DEFAULT 1,
-        cancel_accepted_generation INTEGER,
-        created_at TEXT NOT NULL,
-        started_at TEXT,
-        finished_at TEXT
-      );
-      CREATE INDEX runs_thread_created ON runs(thread_id, created_at, run_id);
-      CREATE INDEX runs_thread_active ON runs(thread_id, status);
-
-      CREATE TABLE client_actions (
-        owner_id TEXT NOT NULL,
-        client_action_id TEXT NOT NULL,
-        method TEXT NOT NULL,
-        fingerprint TEXT NOT NULL,
-        response_json TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        PRIMARY KEY(owner_id, client_action_id)
-      );
-
-      CREATE TABLE thread_events (
-        event_rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_id TEXT NOT NULL UNIQUE,
-        thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
-        seq INTEGER NOT NULL CHECK(seq > 0),
-        occurred_at TEXT NOT NULL,
-        payload_json TEXT NOT NULL,
-        UNIQUE(thread_id, seq)
-      );
-      CREATE INDEX thread_events_thread_seq ON thread_events(thread_id, seq);
-
-      CREATE TABLE thread_event_retention (
-        thread_id TEXT PRIMARY KEY REFERENCES threads(thread_id) ON DELETE CASCADE,
-        first_available_seq INTEGER NOT NULL DEFAULT 1,
-        last_event_seq INTEGER NOT NULL DEFAULT 0
-      );
-
-      CREATE TABLE server_bash_operations (
-        operation_id TEXT PRIMARY KEY,
-        owner_id TEXT NOT NULL,
-        thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
-        run_id TEXT NOT NULL REFERENCES runs(run_id),
-        tool_call_id TEXT NOT NULL,
-        log_path TEXT,
-        output_complete INTEGER NOT NULL CHECK(output_complete IN (0, 1)),
-        end_offset TEXT NOT NULL,
-        expires_at TEXT,
+        reply_thread_id TEXT NOT NULL REFERENCES threads(thread_id),
         content TEXT,
-        status TEXT CHECK(status IN ('success', 'error')),
+        context_message_seq INTEGER REFERENCES context_messages(seq),
+        run_id TEXT REFERENCES runs(run_id),
+        status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'consumed', 'superseded')),
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        UNIQUE(run_id, tool_call_id)
+        queued_at TEXT,
+        consumed_at TEXT,
+        PRIMARY KEY(source_thread_id, source_agent_id, source_tool_call_id),
+        FOREIGN KEY(source_thread_id, source_agent_id, source_tool_call_id)
+          REFERENCES interactions(source_thread_id, source_agent_id, source_tool_call_id),
+        UNIQUE(run_id, source_thread_id, source_agent_id, source_tool_call_id),
+        CHECK(status <> 'consumed' OR context_message_seq IS NOT NULL),
+        CHECK(status = 'consumed' OR context_message_seq IS NULL)
       );
-      CREATE INDEX server_bash_operations_owner
-        ON server_bash_operations(owner_id, created_at, operation_id);
-
-      CREATE TABLE device_tool_calls (
-        operation_id TEXT PRIMARY KEY,
-        owner_id TEXT NOT NULL,
-        thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
-        run_id TEXT NOT NULL REFERENCES runs(run_id),
-        tool_call_id TEXT NOT NULL,
-        log_path TEXT,
-        log_expires_at TEXT,
-        log_synced_offset TEXT,
-        created_at TEXT NOT NULL,
-        UNIQUE(run_id, tool_call_id)
-      );
-      CREATE INDEX device_tool_calls_owner ON device_tool_calls(owner_id, operation_id);
-
-      CREATE TABLE device_tool_results (
-        operation_id TEXT PRIMARY KEY,
-        thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
-        run_id TEXT NOT NULL REFERENCES runs(run_id),
-        tool_call_id TEXT NOT NULL,
-        content TEXT NOT NULL,
-        status TEXT NOT NULL CHECK(status IN ('success', 'error')),
-        created_at TEXT NOT NULL,
-        UNIQUE(run_id, tool_call_id)
-      );
-
-      CREATE TABLE interactions (
+CREATE TABLE interactions (
         owner_id TEXT NOT NULL,
         kind TEXT NOT NULL CHECK(kind IN ('thread_call', 'subagent')),
         execution_mode TEXT NOT NULL CHECK(execution_mode IN ('foreground', 'background')),
@@ -192,43 +186,7 @@ export const sessionMigrations: readonly Migration[] = [
         CHECK(status <> 'completed' OR response_message_seq IS NOT NULL),
         CHECK(status NOT IN ('failed', 'cancelled', 'interrupted') OR response_message_seq IS NULL)
       );
-      CREATE INDEX interactions_consumed_run
-        ON interactions(consumed_run_id, source_thread_id, source_agent_id, source_tool_call_id);
-      CREATE INDEX interactions_target
-        ON interactions(target_thread_id, status, source_thread_id, source_agent_id, source_tool_call_id);
-      CREATE INDEX interactions_reply
-        ON interactions(reply_thread_id, status, source_thread_id, source_agent_id, source_tool_call_id);
-
-      CREATE TABLE interaction_deliveries (
-        source_thread_id TEXT NOT NULL,
-        source_agent_id TEXT NOT NULL,
-        source_tool_call_id TEXT NOT NULL,
-        owner_id TEXT NOT NULL,
-        reply_thread_id TEXT NOT NULL REFERENCES threads(thread_id),
-        content TEXT,
-        context_message_seq INTEGER REFERENCES context_messages(seq),
-        run_id TEXT REFERENCES runs(run_id),
-        status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'consumed', 'superseded')),
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        queued_at TEXT,
-        consumed_at TEXT,
-        PRIMARY KEY(source_thread_id, source_agent_id, source_tool_call_id),
-        FOREIGN KEY(source_thread_id, source_agent_id, source_tool_call_id)
-          REFERENCES interactions(source_thread_id, source_agent_id, source_tool_call_id),
-        UNIQUE(run_id, source_thread_id, source_agent_id, source_tool_call_id),
-        CHECK(status <> 'consumed' OR context_message_seq IS NOT NULL),
-        CHECK(status = 'consumed' OR context_message_seq IS NULL)
-      );
-      CREATE INDEX interaction_deliveries_reply
-        ON interaction_deliveries(reply_thread_id, status, source_thread_id, source_agent_id, source_tool_call_id);
-    `,
-  },
-  {
-    version: 10,
-    name: 'manual_compact_operations_final',
-    sql: `
-      CREATE TABLE manual_compact_operations (
+CREATE TABLE manual_compact_operations (
         operation_id TEXT PRIMARY KEY,
         owner_id TEXT NOT NULL,
         client_action_id TEXT NOT NULL,
@@ -248,129 +206,64 @@ export const sessionMigrations: readonly Migration[] = [
         CHECK(status IN ('running', 'failed', 'interrupted') OR read_through_seq IS NOT NULL),
         CHECK(status NOT IN ('failed', 'interrupted') OR error_message IS NOT NULL)
       );
-      CREATE INDEX manual_compact_operations_thread_status
-        ON manual_compact_operations(thread_id, status, updated_at);
-    `,
-  },
-  {
-    version: 11,
-    name: 'input_attachments_final',
-    sql: `
-      CREATE TABLE input_attachments (
-        input_id TEXT NOT NULL REFERENCES inputs(input_id) ON DELETE CASCADE,
-        position INTEGER NOT NULL CHECK(position > 0),
-        attachment_id TEXT NOT NULL REFERENCES attachments(attachment_id),
-        PRIMARY KEY(input_id, position),
-        UNIQUE(input_id, attachment_id)
-      );
-
-      CREATE INDEX input_attachments_attachment
-        ON input_attachments(attachment_id, input_id);
-    `,
-  },
-  {
-    version: 12,
-    name: 'workspace_attachment_locations',
-    sql: `
-      ALTER TABLE input_attachments ADD COLUMN source TEXT NOT NULL DEFAULT 'file'
-        CHECK(source IN ('file', 'clipboard'));
-      ALTER TABLE input_attachments ADD COLUMN workspace_required INTEGER NOT NULL DEFAULT 0
-        CHECK(workspace_required IN (0, 1));
-      ALTER TABLE input_attachments ADD COLUMN workspace_status TEXT
-        CHECK(workspace_status IN ('pending', 'completed'));
-      ALTER TABLE input_attachments ADD COLUMN env_id TEXT;
-      ALTER TABLE input_attachments ADD COLUMN path TEXT;
-      ALTER TABLE input_attachments ADD COLUMN operation_id TEXT;
-    `,
-  },
-  {
-    version: 13,
-    name: 'persistent_automation_targets_and_fires',
-    sql: `
-      ALTER TABLE threads ADD COLUMN automation_only INTEGER NOT NULL DEFAULT 0
-        CHECK(automation_only IN (0, 1));
-      ALTER TABLE inputs ADD COLUMN automation_schedule_id TEXT;
-      ALTER TABLE inputs ADD COLUMN automation_fire_id TEXT;
-      ALTER TABLE inputs ADD COLUMN automation_trigger TEXT
-        CHECK(automation_trigger IS NULL OR automation_trigger IN ('scheduled', 'run_now'));
-      ALTER TABLE inputs ADD COLUMN automation_scheduled_at TEXT;
-
-      CREATE TABLE automations (
-        seq INTEGER PRIMARY KEY AUTOINCREMENT,
-        schedule_id TEXT NOT NULL UNIQUE,
+CREATE TABLE runs (
+        run_id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
         owner_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        prompt TEXT NOT NULL,
-        schedule_kind TEXT NOT NULL CHECK(schedule_kind IN ('cron', 'once')),
-        cron_expression TEXT,
-        time_zone TEXT NOT NULL,
-        run_at TEXT,
-        target_kind TEXT NOT NULL CHECK(target_kind IN (
-          'main', 'existing_thread', 'new_task', 'new_automation_only'
-        )),
-        target_thread_id TEXT REFERENCES threads(thread_id),
-        environment_policy_json TEXT,
-        enabled INTEGER NOT NULL CHECK(enabled IN (0, 1)),
-        version INTEGER NOT NULL CHECK(version > 0),
-        cursor_at TEXT,
-        next_fire_at TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        deleted_at TEXT,
-        CHECK(
-          (schedule_kind = 'cron' AND cron_expression IS NOT NULL AND run_at IS NULL)
-          OR (schedule_kind = 'once' AND cron_expression IS NULL AND run_at IS NOT NULL)
-        ),
-        CHECK(
-          (target_kind = 'existing_thread' AND target_thread_id IS NOT NULL)
-          OR (target_kind <> 'existing_thread' AND target_thread_id IS NULL)
-        )
-      );
-      CREATE INDEX automations_owner_seq ON automations(owner_id, seq);
-      CREATE INDEX automations_due ON automations(enabled, deleted_at, next_fire_at);
-
-      CREATE TABLE automation_fires (
-        seq INTEGER PRIMARY KEY AUTOINCREMENT,
-        fire_id TEXT NOT NULL UNIQUE,
-        schedule_id TEXT NOT NULL REFERENCES automations(schedule_id),
-        owner_id TEXT NOT NULL,
-        trigger_source TEXT NOT NULL CHECK(trigger_source IN ('scheduled', 'run_now')),
-        schedule_version INTEGER NOT NULL CHECK(schedule_version > 0),
-        scheduled_at TEXT NOT NULL,
-        actual_at TEXT NOT NULL,
-        coalesced_count INTEGER NOT NULL CHECK(coalesced_count >= 0),
-        prompt TEXT NOT NULL,
-        target_kind TEXT NOT NULL CHECK(target_kind IN (
-          'main', 'existing_thread', 'new_task', 'new_automation_only'
-        )),
-        target_thread_id TEXT REFERENCES threads(thread_id),
-        input_id TEXT UNIQUE REFERENCES inputs(input_id),
-        accepted_run_id TEXT REFERENCES runs(run_id),
-        consumed_run_id TEXT REFERENCES runs(run_id),
+        agent_id TEXT NOT NULL,
         status TEXT NOT NULL CHECK(status IN (
-          'queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted'
+          'queued', 'running', 'waiting', 'cancel_requested',
+          'completed', 'failed', 'cancelled', 'interrupted'
         )),
+        execution_mode TEXT NOT NULL CHECK(execution_mode IN ('foreground', 'background')),
+        input_ids_json TEXT NOT NULL DEFAULT '[]',
+        parent_run_id TEXT REFERENCES runs(run_id),
+        rerun_from_message_seq INTEGER REFERENCES context_messages(seq),
+        superseded_by_run_id TEXT REFERENCES runs(run_id),
         error_code TEXT,
         error_message TEXT,
         error_retryable INTEGER CHECK(error_retryable IN (0, 1)),
+        usage_input_tokens INTEGER NOT NULL DEFAULT 0,
+        usage_output_tokens INTEGER NOT NULL DEFAULT 0,
+        usage_reported INTEGER NOT NULL DEFAULT 0 CHECK(usage_reported IN (0, 1)),
+        current_request_id TEXT,
+        execution_generation INTEGER NOT NULL DEFAULT 1,
+        cancel_accepted_generation INTEGER,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
+        started_at TEXT,
         finished_at TEXT
       );
-      CREATE UNIQUE INDEX automation_scheduled_occurrence
-        ON automation_fires(schedule_id, scheduled_at) WHERE trigger_source = 'scheduled';
-      CREATE INDEX automation_fires_schedule_seq ON automation_fires(schedule_id, seq);
-      CREATE INDEX automation_fires_active ON automation_fires(status, schedule_id);
-      CREATE INDEX automation_fires_target ON automation_fires(schedule_id, target_thread_id);
-      CREATE UNIQUE INDEX automation_one_active_fire ON automation_fires(schedule_id)
-        WHERE status IN ('queued', 'running');
-    `,
-  },
-  {
-    version: 14,
-    name: 'thread_main_notifications_final',
-    sql: `
-      CREATE TABLE thread_notifications (
+CREATE TABLE server_bash_operations (
+        operation_id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
+        run_id TEXT NOT NULL REFERENCES runs(run_id),
+        tool_call_id TEXT NOT NULL,
+        log_path TEXT,
+        output_complete INTEGER NOT NULL CHECK(output_complete IN (0, 1)),
+        end_offset TEXT NOT NULL,
+        expires_at TEXT,
+        content TEXT,
+        status TEXT CHECK(status IN ('success', 'error')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(run_id, tool_call_id)
+      );
+CREATE TABLE thread_event_retention (
+        thread_id TEXT PRIMARY KEY REFERENCES threads(thread_id) ON DELETE CASCADE,
+        first_available_seq INTEGER NOT NULL DEFAULT 1,
+        last_event_seq INTEGER NOT NULL DEFAULT 0
+      );
+CREATE TABLE thread_events (
+        event_rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id TEXT NOT NULL UNIQUE,
+        thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
+        seq INTEGER NOT NULL CHECK(seq > 0),
+        occurred_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        UNIQUE(thread_id, seq)
+      );
+CREATE TABLE thread_notifications (
         source_thread_id TEXT NOT NULL REFERENCES threads(thread_id),
         source_agent_id TEXT NOT NULL,
         source_tool_call_id TEXT NOT NULL,
@@ -385,7 +278,8 @@ export const sessionMigrations: readonly Migration[] = [
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         queued_at TEXT,
-        consumed_at TEXT,
+        consumed_at TEXT, target TEXT NOT NULL DEFAULT 'global'
+        CHECK(target IN ('workspace', 'global')),
         PRIMARY KEY(source_thread_id, source_agent_id, source_tool_call_id),
         FOREIGN KEY(source_thread_id, source_agent_id, source_tool_call_id)
           REFERENCES context_tool_calls(thread_id, agent_id, call_id),
@@ -393,38 +287,12 @@ export const sessionMigrations: readonly Migration[] = [
         CHECK(status <> 'consumed' OR context_message_seq IS NOT NULL),
         CHECK(status = 'consumed' OR context_message_seq IS NULL)
       );
-      CREATE INDEX thread_notifications_reply
-        ON thread_notifications(reply_thread_id, status, created_at, source_tool_call_id);
-      CREATE INDEX thread_notifications_source_run
-        ON thread_notifications(source_run_id, source_tool_call_id);
-    `,
-  },
-  {
-    version: 15,
-    name: 'new_main_conversation_boundary',
-    sql: `
-      ALTER TABLE threads ADD COLUMN archived_at TEXT;
-      ALTER TABLE threads ADD COLUMN reset_from_thread_id TEXT REFERENCES threads(thread_id);
-      DROP INDEX threads_one_main_per_owner;
-      CREATE UNIQUE INDEX threads_one_main_per_owner
-        ON threads(owner_id) WHERE thread_type = 'main' AND archived_at IS NULL;
-    `,
-  },
-  {
-    version: 16,
-    name: 'workspaces_and_thread_hierarchy',
-    sql: `
-      PRAGMA defer_foreign_keys = ON;
-      CREATE TABLE workspaces (
-        workspace_id TEXT PRIMARY KEY,
-        tenant_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        env_id TEXT NOT NULL,
-        path TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        UNIQUE(tenant_id, env_id, path)
+CREATE TABLE thread_queues (
+        thread_id TEXT PRIMARY KEY REFERENCES threads(thread_id) ON DELETE CASCADE,
+        queue_version INTEGER NOT NULL DEFAULT 0,
+        next_position INTEGER NOT NULL DEFAULT 1
       );
-      CREATE TABLE threads_next (
+CREATE TABLE "threads" (
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
         thread_id TEXT NOT NULL UNIQUE,
         owner_id TEXT NOT NULL,
@@ -438,23 +306,58 @@ export const sessionMigrations: readonly Migration[] = [
         updated_at TEXT NOT NULL,
         CHECK(thread_type <> 'workspace_main' OR workspace_id IS NOT NULL)
       );
-      INSERT INTO threads_next(
-        seq, thread_id, owner_id, title, thread_type, workspace_id, automation_only,
-        archived_at, reset_from_thread_id, created_at, updated_at
-      )
-      SELECT seq, thread_id, owner_id, title, thread_type, NULL, automation_only,
-        archived_at, reset_from_thread_id, created_at, updated_at
-      FROM threads;
-      DROP TABLE threads;
-      ALTER TABLE threads_next RENAME TO threads;
-      CREATE INDEX threads_owner_seq ON threads(owner_id, seq);
-      CREATE UNIQUE INDEX threads_one_main_per_owner
+CREATE TABLE workspaces (
+        workspace_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        env_id TEXT NOT NULL,
+        path TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(tenant_id, env_id, path)
+      );
+CREATE INDEX automation_fires_active ON automation_fires(status, schedule_id);
+CREATE INDEX automation_fires_schedule_seq ON automation_fires(schedule_id, seq);
+CREATE INDEX automation_fires_target ON automation_fires(schedule_id, target_thread_id);
+CREATE UNIQUE INDEX automation_one_active_fire ON automation_fires(schedule_id)
+        WHERE status IN ('queued', 'running');
+CREATE UNIQUE INDEX automation_scheduled_occurrence
+        ON automation_fires(schedule_id, scheduled_at) WHERE trigger_source = 'scheduled';
+CREATE INDEX automations_due ON automations(enabled, deleted_at, next_fire_at);
+CREATE INDEX automations_owner_seq ON automations(owner_id, seq);
+CREATE INDEX device_tool_calls_owner ON device_tool_calls(owner_id, operation_id);
+CREATE INDEX input_attachments_attachment
+        ON input_attachments(attachment_id, input_id);
+CREATE UNIQUE INDEX inputs_delegation_source
+        ON inputs(delegation_source_thread_id, delegation_source_agent_id, source_tool_call_id, source)
+        WHERE source_tool_call_id IS NOT NULL;
+CREATE INDEX inputs_source
+        ON inputs(delegation_source_thread_id, delegation_source_agent_id, source_tool_call_id);
+CREATE INDEX inputs_thread_status_position
+        ON inputs(thread_id, status, position);
+CREATE INDEX interaction_deliveries_reply
+        ON interaction_deliveries(reply_thread_id, status, source_thread_id, source_agent_id, source_tool_call_id);
+CREATE INDEX interactions_consumed_run
+        ON interactions(consumed_run_id, source_thread_id, source_agent_id, source_tool_call_id);
+CREATE INDEX interactions_reply
+        ON interactions(reply_thread_id, status, source_thread_id, source_agent_id, source_tool_call_id);
+CREATE INDEX interactions_target
+        ON interactions(target_thread_id, status, source_thread_id, source_agent_id, source_tool_call_id);
+CREATE INDEX manual_compact_operations_thread_status
+        ON manual_compact_operations(thread_id, status, updated_at);
+CREATE INDEX runs_thread_active ON runs(thread_id, status);
+CREATE INDEX runs_thread_created ON runs(thread_id, created_at, run_id);
+CREATE INDEX server_bash_operations_owner
+        ON server_bash_operations(owner_id, created_at, operation_id);
+CREATE INDEX thread_events_thread_seq ON thread_events(thread_id, seq);
+CREATE INDEX thread_notifications_reply
+        ON thread_notifications(reply_thread_id, status, created_at, source_tool_call_id);
+CREATE INDEX thread_notifications_source_run
+        ON thread_notifications(source_run_id, source_tool_call_id);
+CREATE UNIQUE INDEX threads_one_main_per_owner
         ON threads(owner_id) WHERE thread_type = 'main' AND archived_at IS NULL;
-      CREATE UNIQUE INDEX threads_one_workspace_main_per_workspace
+CREATE UNIQUE INDEX threads_one_workspace_main_per_workspace
         ON threads(workspace_id) WHERE thread_type = 'workspace_main';
-      ALTER TABLE thread_notifications ADD COLUMN target TEXT NOT NULL DEFAULT 'global'
-        CHECK(target IN ('workspace', 'global'));
-      ALTER TABLE automations ADD COLUMN workspace_id TEXT REFERENCES workspaces(workspace_id);
+CREATE INDEX threads_owner_seq ON threads(owner_id, seq);
     `,
   },
 ];

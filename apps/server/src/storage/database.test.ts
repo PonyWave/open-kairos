@@ -5,10 +5,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { openDatabase } from './database.js';
-import { contextRecapMigrations, migrateDatabase } from './migrations.js';
-import { serverMigrationPlans } from './server-schema.js';
+import { migrateDatabase } from './migrations.js';
 import { inTransaction } from './transaction.js';
-import { upgradeDatabaseFile } from './upgrades.js';
 
 describe('SQLite schema installation', () => {
   it('allows independent business schemas to use their own version', () => {
@@ -30,24 +28,7 @@ describe('SQLite schema installation', () => {
           .prepare('SELECT namespace, version FROM schema_migrations ORDER BY namespace')
           .all(),
       ).toEqual([
-        { namespace: 'context_recap', version: 8 },
-        { namespace: 'context_recap', version: 9 },
-        { namespace: 'context_recap', version: 10 },
-        { namespace: 'context_recap', version: 11 },
-        { namespace: 'context_recap', version: 12 },
-        { namespace: 'context_recap', version: 13 },
-        { namespace: 'context_recap', version: 14 },
-        { namespace: 'context_recap', version: 15 },
-        { namespace: 'context_recap', version: 16 },
-        { namespace: 'context_recap', version: 17 },
-        { namespace: 'context_recap', version: 18 },
-        { namespace: 'context_recap', version: 19 },
-        { namespace: 'context_recap', version: 20 },
-        { namespace: 'context_recap', version: 21 },
-        { namespace: 'context_recap', version: 22 },
-        { namespace: 'context_recap', version: 23 },
-        { namespace: 'context_recap', version: 24 },
-        { namespace: 'context_recap', version: 25 },
+        { namespace: 'context_recap', version: 1 },
         { namespace: 'sessions', version: 1 },
       ]);
       expect(database.prepare('SELECT COUNT(*) AS count FROM session_example').get()).toEqual({
@@ -152,7 +133,7 @@ describe('SQLite schema installation', () => {
           '2026-11-05T00:00:00.000Z',
         );
 
-      expect(() => migrateDatabase(database)).toThrow(/requires an explicit upgrade/);
+      expect(() => migrateDatabase(database)).toThrow(/newer than this Server/);
       expect(database.prepare('PRAGMA table_info(tenants)').all()).not.toEqual(
         expect.arrayContaining([expect.objectContaining({ name: 'default_env_explicit' })]),
       );
@@ -209,7 +190,7 @@ describe('SQLite schema installation', () => {
     const originalPath = realpathSync(path);
     expect(statSync(path).mode & 0o777).toBe(0o644);
 
-    expect(() => openDatabase(path)).toThrow(/requires an explicit upgrade/);
+    expect(() => openDatabase(path)).toThrow(/newer than this Server/);
     const database = new DatabaseSync(path, { readOnly: true });
     try {
       expect(existsSync(path)).toBe(true);
@@ -270,7 +251,7 @@ describe('SQLite schema installation', () => {
             "SELECT MAX(version) AS version FROM schema_migrations WHERE namespace = 'context_recap'",
           )
           .get(),
-      ).toEqual({ version: 25 });
+      ).toEqual({ version: 1 });
       database
         .prepare(
           `INSERT INTO context_messages(
@@ -301,202 +282,4 @@ describe('SQLite schema installation', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
-});
-
-describe('incomplete tool identity offline migration', () => {
-  function legacyDatabase(path: string) {
-    const database = new DatabaseSync(path, { enableForeignKeyConstraints: true });
-    for (const plan of serverMigrationPlans) {
-      migrateDatabase(
-        database,
-        plan.namespace === 'context_recap'
-          ? contextRecapMigrations.filter((migration) => migration.version <= 17)
-          : plan.migrations,
-        plan.namespace,
-      );
-    }
-    return database;
-  }
-
-  function insertAssistant(database: DatabaseSync, calls: unknown[]) {
-    const serialized = JSON.stringify(calls);
-    database
-      .prepare(
-        `INSERT INTO context_messages(
-          seq, message_id, thread_id, agent_id, role, content,
-          incomplete_tool_calls_json, created_at
-        ) VALUES (1, 'assistant', 'thread', 'thread', 'assistant', '', ?, ?)`,
-      )
-      .run(serialized, '2026-11-08T00:00:00.000Z');
-    return serialized;
-  }
-
-  function insertRelation(
-    database: DatabaseSync,
-    callId: string,
-    argumentsText: string,
-    resultSeq: number | null = null,
-  ) {
-    database
-      .prepare(
-        `INSERT INTO context_tool_calls(
-          thread_id, agent_id, call_id, assistant_seq, tool_name, arguments_json,
-          result_seq, call_type, arguments_text, call_error
-        ) VALUES ('thread', 'thread', ?, 1, 'edit', 'null', ?, 'incomplete', ?, 'Invalid JSON.')`,
-      )
-      .run(callId, resultSeq, argumentsText);
-  }
-
-  it('persists exact IDs while preserving tool results and historical request evidence', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'kairos-incomplete-migration-'));
-    const path = join(directory, 'kairos.sqlite');
-    const source = legacyDatabase(path);
-    const calls = [
-      { name: 'edit', arguments_text: '{one', error: 'Invalid JSON.' },
-      { id: 'explicit-call', name: 'edit', arguments_text: '{two', error: 'Invalid JSON.' },
-      { name: 'edit', arguments_text: '{three', error: 'Invalid JSON.' },
-    ];
-    const original = insertAssistant(source, calls);
-    source
-      .prepare(
-        `INSERT INTO context_messages(
-          seq, message_id, thread_id, agent_id, role, content,
-          tool_call_id, tool_name, tool_status, created_at
-        ) VALUES (2, 'result', 'thread', 'thread', 'tool', 'Invalid JSON.',
-          'incomplete-1-0', 'edit', 'error', ?)`,
-      )
-      .run('2026-11-08T00:00:01.000Z');
-    insertRelation(source, 'incomplete-1-0', '{one', 2);
-    insertRelation(source, 'explicit-call', '{two');
-    insertRelation(source, 'incomplete-generated:1:3', '{three');
-    const historicalRequest = JSON.stringify({
-      messages: [{ role: 'assistant', content: '', incomplete_tool_calls: calls }],
-      tools: [],
-    });
-    for (const status of ['ready', 'completed']) {
-      source
-        .prepare(
-          `INSERT INTO model_request_records(
-            request_id, thread_id, agent_id, status, context_window_tokens,
-            output_reserve_tokens, read_through_seq, view_version, selected_recap_ids_json,
-            context_message_seqs_json, created_at, updated_at, request_json, request_fingerprint
-          ) VALUES (?, 'thread', 'thread', ?, 1000, 100, 0, 0, '[]', '[1]', ?, ?, ?, ?)`,
-        )
-        .run(
-          status,
-          status,
-          '2026-11-08T00:00:00.000Z',
-          '2026-11-08T00:00:00.000Z',
-          historicalRequest,
-          'historical-fingerprint',
-        );
-    }
-    source.close();
-    try {
-      expect(() => openDatabase(path)).toThrow(/requires an explicit upgrade/);
-      const upgraded = await upgradeDatabaseFile({
-        dataDirectory: directory,
-        backupDirectory: join(directory, 'backups'),
-      });
-      expect(upgraded.status).toBe('migrated');
-      const database = openDatabase(path);
-      try {
-        expect(
-          database
-            .prepare('SELECT incomplete_tool_calls_json FROM context_messages WHERE seq = 1')
-            .get(),
-        ).toEqual({
-          incomplete_tool_calls_json: JSON.stringify([
-            { ...calls[0], id: 'incomplete-1-0' },
-            calls[1],
-            { ...calls[2], id: 'incomplete-generated:1:3' },
-          ]),
-        });
-        expect(
-          database.prepare('SELECT tool_call_id FROM context_messages WHERE seq = 2').get(),
-        ).toEqual({ tool_call_id: 'incomplete-1-0' });
-        expect(
-          database
-            .prepare(
-              'SELECT status, request_json, request_fingerprint FROM model_request_records ORDER BY request_id',
-            )
-            .all(),
-        ).toEqual(
-          ['completed', 'ready'].map((status) => ({
-            status,
-            request_json: historicalRequest,
-            request_fingerprint: 'historical-fingerprint',
-          })),
-        );
-        const audit = z
-          .object({ payload_json: z.string() })
-          .parse(
-            database
-              .prepare(
-                "SELECT payload_json FROM context_events WHERE event_type = 'incomplete_tool_ids_normalized'",
-              )
-              .get(),
-          );
-        expect(JSON.parse(audit.payload_json)).toEqual({
-          message_seq: 1,
-          original_incomplete_tool_calls_json: original,
-          normalized_ids: ['incomplete-1-0', 'explicit-call', 'incomplete-generated:1:3'],
-        });
-      } finally {
-        database.close();
-      }
-      expect(
-        (
-          await upgradeDatabaseFile({
-            dataDirectory: directory,
-            backupDirectory: join(directory, 'backups'),
-          })
-        ).status,
-      ).toBe('current');
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
-
-  it.each(['explicit conflict', 'ambiguous missing IDs'])(
-    'rejects %s without replacing the original database',
-    async (scenario) => {
-      const directory = mkdtempSync(join(tmpdir(), 'kairos-incomplete-invalid-'));
-      const path = join(directory, 'kairos.sqlite');
-      const source = legacyDatabase(path);
-      const call = { name: 'edit', arguments_text: '{', error: 'Invalid JSON.' };
-      const original = insertAssistant(
-        source,
-        scenario === 'explicit conflict' ? [{ ...call, id: 'explicit-id' }] : [call, call],
-      );
-      insertRelation(source, 'incomplete-1-0', '{');
-      if (scenario === 'ambiguous missing IDs') insertRelation(source, 'incomplete-1-1', '{');
-      source.close();
-      try {
-        await expect(
-          upgradeDatabaseFile({
-            dataDirectory: directory,
-            backupDirectory: join(directory, 'backups'),
-          }),
-        ).rejects.toThrow(/identity .* ambiguous/);
-        const unchanged = new DatabaseSync(path, { readOnly: true });
-        try {
-          expect(
-            unchanged.prepare('SELECT incomplete_tool_calls_json FROM context_messages').get(),
-          ).toEqual({ incomplete_tool_calls_json: original });
-          expect(
-            unchanged
-              .prepare(
-                "SELECT MAX(version) AS version FROM schema_migrations WHERE namespace = 'context_recap'",
-              )
-              .get(),
-          ).toEqual({ version: 17 });
-        } finally {
-          unchanged.close();
-        }
-      } finally {
-        rmSync(directory, { recursive: true, force: true });
-      }
-    },
-  );
 });

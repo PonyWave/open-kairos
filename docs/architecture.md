@@ -1,6 +1,6 @@
 # 整体架构
 
-本文描述 open-kairos 的目标架构。当前状态为设计基线，代码尚未迁入。术语定义见[目标与范围](goals-and-scope.md)。
+本文描述 open-kairos 的当前架构。术语定义见[目标与范围](goals-and-scope.md)。
 
 ## 1. 启动与进程结构
 

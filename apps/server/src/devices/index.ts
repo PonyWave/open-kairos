@@ -27,9 +27,4 @@ export type {
 } from './environment-store.js';
 export { EnvironmentStore } from './environment-store.js';
 export { DeviceFailure } from './errors.js';
-export type {
-  BashOperationRecord,
-  BashOutputRecord,
-} from './operation-store.js';
-export { DeviceBashStore, deviceBashMigrations } from './operation-store.js';
 export { registerDeviceWebSocket } from './websocket.js';

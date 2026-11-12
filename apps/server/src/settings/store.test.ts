@@ -1,6 +1,3 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import {
   ConfiguredModelSchema,
   create,
@@ -13,7 +10,6 @@ import { AuthStore } from '../auth/store.js';
 import { seedTestSession } from '../integration/test-authentication.js';
 import { SessionStore } from '../sessions/store.js';
 import { openDatabase } from '../storage/database.js';
-import { upgradeDatabaseFile } from '../storage/upgrades.js';
 import { normalizeAvatar } from './avatar.js';
 import { modelAddressAllowed, validateModelUrl } from './model-network.js';
 import { SettingsStore } from './store.js';
@@ -380,87 +376,4 @@ describe('model address policy', () => {
     expect(modelAddressAllowed('127.0.0.1', true)).toBe(true);
     expect(modelAddressAllowed('169.254.169.254', true)).toBe(false);
   });
-});
-
-it('migrates schema 20 without changing user identities or deployment model defaults', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'kairos-settings-migration-'));
-  const path = join(directory, 'kairos.sqlite');
-  const database = openDatabase(path);
-  seedTestSession(database, 'migration', 'token');
-  const original = new AuthStore(database).getIdentityForUser('user-migration');
-  for (const table of [
-    'user_profiles',
-    'model_settings',
-    'model_connections',
-    'settings_actions',
-    'run_model_configurations',
-    'request_model_configurations',
-    'automation_fires',
-    'automations',
-  ])
-    database.exec(`DROP TABLE ${table}`);
-  database.exec(`
-    ALTER TABLE context_message_attachments DROP COLUMN source;
-    ALTER TABLE context_message_attachments DROP COLUMN workspace_required;
-    ALTER TABLE context_message_attachments DROP COLUMN workspace_status;
-    ALTER TABLE context_message_attachments DROP COLUMN env_id;
-    ALTER TABLE context_message_attachments DROP COLUMN path;
-    ALTER TABLE context_message_attachments DROP COLUMN operation_id;
-    ALTER TABLE input_attachments DROP COLUMN source;
-    ALTER TABLE input_attachments DROP COLUMN workspace_required;
-    ALTER TABLE input_attachments DROP COLUMN workspace_status;
-    ALTER TABLE input_attachments DROP COLUMN env_id;
-    ALTER TABLE input_attachments DROP COLUMN path;
-    ALTER TABLE input_attachments DROP COLUMN operation_id;
-    DROP INDEX threads_one_main_per_owner;
-    DROP INDEX threads_one_workspace_main_per_workspace;
-    CREATE TABLE threads_legacy (
-      seq INTEGER PRIMARY KEY AUTOINCREMENT,
-      thread_id TEXT NOT NULL UNIQUE,
-      owner_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      thread_type TEXT NOT NULL CHECK(thread_type IN ('main', 'task')),
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-    INSERT INTO threads_legacy(
-      seq, thread_id, owner_id, title, thread_type, created_at, updated_at
-    )
-    SELECT seq, thread_id, owner_id, title, thread_type, created_at, updated_at FROM threads;
-    DROP TABLE threads;
-    ALTER TABLE threads_legacy RENAME TO threads;
-    CREATE INDEX threads_owner_seq ON threads(owner_id, seq);
-    ALTER TABLE inputs DROP COLUMN automation_schedule_id;
-    ALTER TABLE inputs DROP COLUMN automation_fire_id;
-    ALTER TABLE inputs DROP COLUMN automation_trigger;
-    ALTER TABLE inputs DROP COLUMN automation_scheduled_at;
-    ALTER TABLE context_messages DROP COLUMN automation_schedule_id;
-    ALTER TABLE context_messages DROP COLUMN automation_fire_id;
-    ALTER TABLE context_messages DROP COLUMN automation_trigger;
-    ALTER TABLE context_messages DROP COLUMN automation_scheduled_at;
-    CREATE UNIQUE INDEX threads_one_main_per_owner ON threads(owner_id) WHERE thread_type = 'main';
-  `);
-  database
-    .prepare("DELETE FROM schema_migrations WHERE namespace = 'context_recap' AND version >= 21")
-    .run();
-  database
-    .prepare("DELETE FROM schema_migrations WHERE namespace = 'server_runtime' AND version >= 12")
-    .run();
-  database.close();
-  try {
-    const result = await upgradeDatabaseFile({
-      dataDirectory: directory,
-      backupDirectory: join(directory, 'backups'),
-    });
-    expect(result.status).toBe('migrated');
-    const migrated = openDatabase(path);
-    try {
-      expect(new AuthStore(migrated).getIdentityForUser('user-migration')).toEqual(original);
-      expect(migrated.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
-    } finally {
-      migrated.close();
-    }
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
 });

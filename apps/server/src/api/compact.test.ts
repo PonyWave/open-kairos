@@ -5,7 +5,6 @@ import { Code, createClient, createRouterTransport } from '@connectrpc/connect';
 import type { ModelProvider, ModelRequest } from '@kairos/agent-core';
 import { CompactContextStatus, ContextService } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
-import { DeviceBashStore } from '../devices/operation-store.js';
 import {
   controlledEnvironmentDependencies,
   seedTestEnvironment,
@@ -25,7 +24,6 @@ it('keeps a compact operation running after the RPC caller disconnects and repla
   const database = openDatabase(':memory:');
   seedTestEnvironment(database, 'local-user');
   const store = new SessionStore(database);
-  const operations = new DeviceBashStore(database);
   const requests: ModelRequest[] = [];
   let notifyStarted = () => {};
   const started = new Promise<void>((resolve) => {
@@ -64,8 +62,7 @@ it('keeps a compact operation running after the RPC caller disconnects and repla
       registerGuiRoutes(router, {
         store,
         coordinator,
-        operations,
-        logs: new BashLogReader({ store, operations }),
+        logs: new BashLogReader({ store }),
         modelStatus: {
           providerId: 'test',
           modelId: 'test-model',

@@ -1,10 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { sessionMigrations } from '../sessions/migrations.js';
-import {
-  deviceBashMigrations,
-  deviceMigrations,
-  environmentOperationMigrations,
-} from './device-migrations.js';
+import { deviceMigrations, environmentOperationMigrations } from './device-migrations.js';
 import {
   contextRecapMigrations,
   inspectMigration,
@@ -18,7 +14,6 @@ export type ServerNamespace =
   | 'context_recap'
   | 'server_runtime'
   | 'devices'
-  | 'device_bash'
   | 'environment_operations';
 
 export interface ServerMigrationPlan {
@@ -30,7 +25,6 @@ export const serverMigrationPlans: readonly ServerMigrationPlan[] = [
   { namespace: 'context_recap', migrations: contextRecapMigrations },
   { namespace: 'server_runtime', migrations: sessionMigrations },
   { namespace: 'devices', migrations: deviceMigrations },
-  { namespace: 'device_bash', migrations: deviceBashMigrations },
   { namespace: 'environment_operations', migrations: environmentOperationMigrations },
 ];
 

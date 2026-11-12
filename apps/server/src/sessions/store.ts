@@ -285,7 +285,6 @@ const eventPayloadCases = new Set<ThreadEventPayload['case']>([
   'recapCreated',
   'recapInvalidated',
   'deviceChanged',
-  'bashOperationChanged',
   'environmentBindingChanged',
   'mainEnvironmentChanged',
 ]);

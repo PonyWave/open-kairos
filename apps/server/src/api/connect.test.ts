@@ -32,14 +32,8 @@ import {
   ThreadService,
   ThreadType,
 } from '@kairos/contracts';
-import { BashStatus, OutputStream } from '@kairos/contracts/device';
 import { expect, it, vi } from 'vitest';
 import type { ModelConfigurationStatus } from '../config.js';
-import { DeviceBashStore } from '../devices/operation-store.js';
-import {
-  seedHistoricalBashOperation,
-  seedHistoricalDevice,
-} from '../integration/device-audit-fixture.js';
 import { controlledEnvironmentDependencies } from '../integration/environment-fixture.js';
 import {
   createTestAuthentication,
@@ -77,7 +71,6 @@ function response(text: string): ModelEvent[] {
 function clientsFor(
   store: SessionStore,
   coordinator: RunCoordinator,
-  operations: DeviceBashStore,
   _outputDirectory: string,
   authentication = { ownerId, sessionToken: 'secret' },
   suppliedToken = authentication.sessionToken,
@@ -88,8 +81,7 @@ function clientsFor(
       registerGuiRoutes(router, {
         store,
         coordinator,
-        operations,
-        logs: new BashLogReader({ store, operations }),
+        logs: new BashLogReader({ store }),
         modelStatus,
         authentication: createTestAuthentication(
           store.database,
@@ -115,7 +107,6 @@ function clientsFor(
 interface TestFixture {
   database: ReturnType<typeof openDatabase>;
   store: SessionStore;
-  operations: DeviceBashStore;
   coordinator: RunCoordinator;
   clients: ReturnType<typeof clientsFor>;
   outputDirectory: string;
@@ -151,7 +142,6 @@ async function fixture(provider?: ModelProvider): Promise<TestFixture> {
       ) VALUES ('binding-1', ?, 'env-1', 'device-1', 'active', '[1,2,3,4,5]', ?, ?, ?, ?)`,
     )
     .run(ownerId, now, now, now, now);
-  const operations = new DeviceBashStore(database);
   const coordinator = new RunCoordinator({
     ...controlledEnvironmentDependencies(store.database, ownerId),
     store,
@@ -167,8 +157,8 @@ async function fixture(provider?: ModelProvider): Promise<TestFixture> {
         }
       : {}),
   });
-  const clients = clientsFor(store, coordinator, operations, outputDirectory);
-  return { database, store, operations, coordinator, clients, outputDirectory };
+  const clients = clientsFor(store, coordinator, outputDirectory);
+  return { database, store, coordinator, clients, outputDirectory };
 }
 
 async function cleanup(fixture: TestFixture) {
@@ -273,13 +263,10 @@ it('reads exact Subagent targets through the GUI contract without exposing a wri
         })),
       }),
     ).rejects.toMatchObject({ code: Code.InvalidArgument });
-    const unauthorized = clientsFor(
-      value.store,
-      value.coordinator,
-      value.operations,
-      value.outputDirectory,
-      { ownerId: 'another-owner', sessionToken: 'other-secret' },
-    );
+    const unauthorized = clientsFor(value.store, value.coordinator, value.outputDirectory, {
+      ownerId: 'another-owner',
+      sessionToken: 'other-secret',
+    });
     await expect(unauthorized.thread.listSubagentCallViews({ calls: keys })).rejects.toMatchObject({
       code: Code.PermissionDenied,
     });
@@ -941,7 +928,6 @@ it('validates queue versions, authentication and named business errors', async (
     const wrong = clientsFor(
       current.store,
       current.coordinator,
-      current.operations,
       current.outputDirectory,
       { ownerId, sessionToken: 'secret' },
       'wrong',
@@ -1199,90 +1185,6 @@ it('pages Server Bash logs by offset and reports expiration', async () => {
         })
       ).expired,
     ).toBe(true);
-  } finally {
-    await cleanup(current);
-  }
-});
-
-it('returns owned device output chunks with explained gaps and rejects other owners', async () => {
-  const current = await fixture();
-  const { clients, store, operations } = current;
-  try {
-    const threadId =
-      (
-        await clients.thread.createThread({
-          environmentPolicy,
-          clientActionId: 'create-1',
-          title: '会话',
-        })
-      ).thread?.threadId ?? '';
-    const deviceId = seedHistoricalDevice(store.database, ownerId);
-    await clients.messages.sendMessage({
-      clientActionId: 'send-1',
-      threadId,
-      text: 'queued',
-      mode: InputMode.FOLLOW_UP,
-    });
-    const runId = store.listRuns(ownerId, threadId)[0]?.runId ?? '';
-    const operation = { operationId: 'device-operation' };
-    seedHistoricalBashOperation(store.database, {
-      operationId: operation.operationId,
-      ownerId,
-      deviceId,
-      runId,
-      status: BashStatus.UNKNOWN,
-      outputComplete: false,
-      endOffset: 7n,
-      chunks: [
-        { offset: 0n, stream: OutputStream.STDOUT, data: Buffer.from('ab') },
-        { offset: 5n, stream: OutputStream.STDERR, data: Buffer.from('cd') },
-      ],
-    });
-    const page = await clients.bashLogs.readBashLog({
-      operationId: operation.operationId,
-      offset: 0n,
-      limitBytes: 10,
-    });
-    expect(page.chunks).toHaveLength(2);
-    expect(page.gaps[0]).toMatchObject({ startOffset: 2n, endOffset: 5n });
-
-    const paged = { operationId: 'single-fragment-operation' };
-    seedHistoricalBashOperation(store.database, {
-      operationId: paged.operationId,
-      ownerId,
-      deviceId,
-      runId,
-      chunks: [{ offset: 0n, data: Buffer.from('0123456789') }],
-    });
-    let cursor = 0n;
-    let text = '';
-    for (let index = 0; index < 3; index += 1) {
-      const part = await clients.bashLogs.readBashLog({
-        operationId: paged.operationId,
-        offset: cursor,
-        limitBytes: 4,
-      });
-      expect(part.gaps).toEqual([]);
-      text += Buffer.from(part.chunks[0]?.data ?? []).toString();
-      if (part.nextOffset === undefined) {
-        expect(index).toBe(2);
-        break;
-      }
-      cursor = part.nextOffset;
-    }
-    expect(text).toBe('0123456789');
-
-    const other = clientsFor(store, current.coordinator, operations, current.outputDirectory, {
-      ownerId: 'other-owner',
-      sessionToken: 'other-secret',
-    });
-    await expect(
-      other.bashLogs.readBashLog({
-        operationId: operation.operationId,
-        offset: 0n,
-        limitBytes: 10,
-      }),
-    ).rejects.toMatchObject({ code: Code.PermissionDenied });
   } finally {
     await cleanup(current);
   }

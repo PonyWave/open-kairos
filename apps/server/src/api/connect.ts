@@ -27,7 +27,6 @@ import type { ModelConfigurationStatus } from '../config.js';
 import type { DeviceChannel } from '../devices/channel.js';
 import type { EnvironmentStore } from '../devices/environment-store.js';
 import type { MainEnvironmentConfiguration } from '../devices/main-environment.js';
-import type { DeviceBashStore } from '../devices/operation-store.js';
 import { requirePositiveInteger, requireText, SessionError } from '../sessions/errors.js';
 import { EventCursorError, watchThreadEvents } from '../sessions/events.js';
 import type { RunCoordinator } from '../sessions/runtime.js';
@@ -103,7 +102,6 @@ export interface GuiApiOptions {
   store: SessionStore;
   coordinator: RunCoordinator;
   automations?: AutomationManager;
-  operations: DeviceBashStore;
   logs: BashLogReader;
   modelStatus: ModelConfigurationStatus;
   settings?: SettingsStore;

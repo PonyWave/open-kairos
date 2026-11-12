@@ -10,7 +10,6 @@ import {
 } from '@kairos/contracts';
 import { expect, it } from 'vitest';
 import { AutomationService as AutomationManager } from '../automation/service.js';
-import { DeviceBashStore } from '../devices/operation-store.js';
 import { controlledEnvironmentDependencies } from '../integration/environment-fixture.js';
 import {
   createTestAuthentication,
@@ -32,7 +31,6 @@ async function fixture() {
   const automations = new AutomationManager(store, {
     deliver: (_input, runId) => Promise.resolve(runId),
   });
-  const operations = new DeviceBashStore(database);
   const authentication = createTestAuthentication(database, ownerId, 'owner-token');
   createTestAuthentication(database, 'other-owner', 'other-token');
   const clientsFor = (token: string) => {
@@ -42,8 +40,7 @@ async function fixture() {
           store,
           coordinator,
           automations,
-          operations,
-          logs: new BashLogReader({ store, operations }),
+          logs: new BashLogReader({ store }),
           modelStatus: {
             providerId: 'test',
             modelId: 'test',

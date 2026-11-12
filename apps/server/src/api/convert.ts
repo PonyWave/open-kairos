@@ -1,7 +1,6 @@
 import {
   AttachmentSource,
   AutomationTrigger,
-  BashOperationStatus,
   ContentBlockType,
   EnvironmentBindingStatus,
   EnvironmentCapability,
@@ -15,7 +14,6 @@ import {
   InputStatus,
   MessageRole,
   MessageSource,
-  PlatformLifecycleState,
   RecapValidity,
   RunExecutionMode,
   RunStatus,
@@ -29,7 +27,6 @@ import type { AttachmentMetadata } from '../attachments/types.js';
 import type { AutomationReference, ContextMessage } from '../context/types.js';
 import type { DeviceRecord } from '../devices/device-store.js';
 import type { EnvironmentRecord } from '../devices/environment-store.js';
-import type { BashOperationRecord } from '../devices/operation-store.js';
 import type { Recap as RecapRecord } from '../recap/types.js';
 import type {
   AgentEnvironmentBinding,
@@ -501,47 +498,6 @@ export function toDevice(record: DeviceRecord) {
   };
 }
 
-export function toBashOperation(record: BashOperationRecord) {
-  return {
-    operationId: record.operationId,
-    runId: record.runId,
-    deviceId: record.deviceId,
-    command: record.command,
-    cwd: record.cwd,
-    status: bashStatus(record.status),
-    ...(record.exitCode === undefined ? {} : { exitCode: record.exitCode }),
-    outputComplete: record.outputComplete,
-    ...(record.endOffset === undefined ? {} : { endOffset: BigInt(record.endOffset) }),
-    createdAt: timestamp(record.createdAt),
-    updatedAt: timestamp(record.updatedAt),
-  };
-}
-
-function bashStatus(status: BashOperationRecord['status']): BashOperationStatus {
-  switch (status) {
-    case 1:
-      return BashOperationStatus.CREATED;
-    case 2:
-      return BashOperationStatus.ACCEPTED;
-    case 3:
-      return BashOperationStatus.RUNNING;
-    case 4:
-      return BashOperationStatus.CANCEL_REQUESTED;
-    case 5:
-      return BashOperationStatus.COMPLETED;
-    case 6:
-      return BashOperationStatus.FAILED;
-    case 7:
-      return BashOperationStatus.CANCELLED;
-    case 8:
-      return BashOperationStatus.EXPIRED;
-    case 9:
-      return BashOperationStatus.UNKNOWN;
-    default:
-      return BashOperationStatus.UNSPECIFIED;
-  }
-}
-
 export function toThreadEvent(record: ThreadEventRecord) {
   const base = {
     eventId: record.eventId,
@@ -682,14 +638,6 @@ export function toThreadEvent(record: ThreadEventRecord) {
           value: { device: toDevice(payload.value.device) },
         },
       };
-    case 'bashOperationChanged':
-      return {
-        ...base,
-        payload: {
-          case: 'bashOperationChanged' as const,
-          value: { operation: toBashOperation(payload.value.operation) },
-        },
-      };
     case 'environmentBindingChanged':
       return {
         ...base,
@@ -817,21 +765,6 @@ export function toEnvironment(record: EnvironmentRecord) {
           : record.kind === 'self_hosted_macos'
             ? EnvironmentKind.SELF_HOSTED_MACOS
             : EnvironmentKind.SELF_HOSTED_LINUX,
-    ...(record.lifecycleState == null
-      ? {}
-      : {
-          lifecycleState: {
-            uninitialized: PlatformLifecycleState.UNINITIALIZED,
-            starting: PlatformLifecycleState.STARTING,
-            running: PlatformLifecycleState.RUNNING,
-            pausing: PlatformLifecycleState.PAUSING,
-            paused: PlatformLifecycleState.PAUSED,
-            resuming: PlatformLifecycleState.RESUMING,
-            deleting: PlatformLifecycleState.DELETING,
-            deleted: PlatformLifecycleState.DELETED,
-            error: PlatformLifecycleState.ERROR,
-          }[record.lifecycleState],
-        }),
     recommendedPwd: record.recommendedPwd,
     bindingStatus,
     connectionStatus:

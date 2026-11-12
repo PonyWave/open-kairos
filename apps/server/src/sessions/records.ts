@@ -7,7 +7,6 @@ import type {
 } from '../context/types.js';
 import type { DeviceRecord } from '../devices/device-store.js';
 import type { EnvironmentRecord } from '../devices/environment-store.js';
-import type { BashOperationRecord } from '../devices/operation-store.js';
 import type { Recap } from '../recap/types.js';
 import type {
   AgentEnvironmentBinding,
@@ -212,7 +211,6 @@ export type ThreadEventPayload =
   | { case: 'recapCreated'; value: { recap: Recap } }
   | { case: 'recapInvalidated'; value: { recapId: string; reason: string } }
   | { case: 'deviceChanged'; value: { device: DeviceRecord } }
-  | { case: 'bashOperationChanged'; value: { operation: BashOperationRecord } }
   | {
       case: 'environmentBindingChanged';
       value: { agentId: string; binding: AgentEnvironmentBinding | null };

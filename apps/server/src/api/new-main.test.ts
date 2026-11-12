@@ -10,7 +10,6 @@ import {
   ThreadType,
 } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
-import { DeviceBashStore } from '../devices/operation-store.js';
 import {
   controlledEnvironmentDependencies,
   seedTestEnvironment,
@@ -32,7 +31,6 @@ function fixture() {
   const database = openDatabase(':memory:');
   seedTestEnvironment(database, ownerId);
   const store = new SessionStore(database);
-  const operations = new DeviceBashStore(database);
   const requests: ModelRequest[] = [];
   const provider: ModelProvider = {
     async *stream(request) {
@@ -61,8 +59,7 @@ function fixture() {
       registerGuiRoutes(router, {
         store,
         coordinator,
-        operations,
-        logs: new BashLogReader({ store, operations }),
+        logs: new BashLogReader({ store }),
         modelStatus: {
           providerId: 'test',
           modelId: 'test-model',

@@ -66,80 +66,6 @@ export interface DatabaseUpgradeResult {
   backupPath?: string;
 }
 
-const tableIntroductions: Record<ServerNamespace, Readonly<Record<string, number>>> = {
-  context_recap: {
-    recap_generation_operations: 8,
-    attachments: 11,
-    context_message_attachments: 11,
-    users: 12,
-    tenants: 12,
-    auth_email_verifications: 12,
-    auth_setup_credentials: 12,
-    auth_sessions: 12,
-    environments: 13,
-    environment_pairing_credentials: 13,
-    environment_device_bindings: 13,
-    agent_environment_policies: 14,
-    agent_environment_binding_history: 14,
-    agent_environment_message_bindings: 14,
-    agent_environment_requests: 14,
-    agent_environment_operations: 14,
-    environment_favorite_directories: 16,
-    user_profiles: 21,
-    model_settings: 21,
-    model_connections: 21,
-    settings_actions: 21,
-    run_model_configurations: 21,
-    request_model_configurations: 21,
-    platform_environments: 19,
-    platform_usage_intents: 19,
-    platform_lifecycle_intents: 19,
-    agent_execution_environments: 19,
-  },
-  server_runtime: {
-    device_tool_calls: 2,
-    device_tool_results: 2,
-    interactions: 7,
-    interaction_deliveries: 7,
-    manual_compact_operations: 10,
-    input_attachments: 11,
-    automations: 13,
-    automation_fires: 13,
-    thread_notifications: 14,
-    workspaces: 16,
-  },
-  devices: {},
-  device_bash: {},
-  environment_operations: {
-    environment_syncs: 6,
-    environment_sync_files: 6,
-  },
-};
-
-const initialDirectoryOperationColumns = [
-  'operation_id',
-  'tenant_id',
-  'env_id',
-  'device_id',
-  'device_binding_id',
-  'target_instance_id',
-  'action',
-  'path',
-  'load_workspace',
-  'delivery_state',
-  'status',
-  'expires_at',
-  'accepted_at',
-  'sent_at',
-  'result_status',
-  'result_outcome_json',
-  'result_recorded_at',
-  'post_processed_at',
-  'result_acknowledged_at',
-  'created_at',
-  'updated_at',
-] as const;
-
 const initialDirectoryOutcomeSchema = z.object({
   normalizedPath: z.string().min(1).max(4096),
   exists: z.boolean(),
@@ -265,167 +191,16 @@ function expectedTables(
     (candidate) => candidate.namespace === inspection.namespace,
   );
   if (!plan) throw new Error(`Unknown database namespace ${inspection.namespace}.`);
-  const introductions = tableIntroductions[inspection.namespace];
-  return [...migrationTableNames(plan.migrations)].filter((table) => {
-    if (inspection.namespace === 'environment_operations') {
-      if (inspection.variant === 'directory_v1') return table === 'environment_operations';
-      return (introductions[table] ?? 1) <= inspection.currentVersion;
-    }
-    if (
-      inspection.namespace === 'context_recap' &&
-      inspection.currentVersion === 8 &&
-      table === 'recap_generation_operations'
-    ) {
-      return inspection.variant === 'interaction_v8';
-    }
-    return (introductions[table] ?? 1) <= inspection.currentVersion;
-  });
+  return [...migrationTableNames(plan.migrations)];
 }
 
 function expectedColumns(
-  inspection: ServerMigrationInspection & { variant?: SchemaVariant },
+  _inspection: ServerMigrationInspection & { variant?: SchemaVariant },
   table: string,
   currentColumns: ReadonlyMap<string, readonly ColumnDefinition[]>,
 ): string[] {
-  if (inspection.namespace === 'environment_operations' && inspection.variant === 'directory_v1') {
-    return [...initialDirectoryOperationColumns].sort();
-  }
   const columns = new Set((currentColumns.get(table) ?? []).map((column) => column.name));
   if (columns.size === 0) throw new Error(`Current schema does not contain table ${table}.`);
-  const version = inspection.currentVersion;
-  const remove = (names: string[]) => {
-    for (const name of names) columns.delete(name);
-  };
-  if (inspection.namespace === 'context_recap') {
-    if (table === 'context_messages') {
-      if (version < 23) {
-        remove([
-          'automation_schedule_id',
-          'automation_fire_id',
-          'automation_trigger',
-          'automation_scheduled_at',
-        ]);
-      }
-      if (version < 8 || (version === 8 && inspection.variant === 'interaction_v8')) {
-        remove([
-          'delegation_source_thread_id',
-          'delegation_source_agent_id',
-          'source_tool_call_id',
-        ]);
-        columns.add('interaction_id');
-      }
-      if (version < 7) remove(['superseded_by_run_id']);
-      if (version < 6) remove(['content_blocks_json', 'response_usage_json']);
-      if (version < 5) {
-        remove(['source', 'source_input_id', 'source_thread_id', 'source_agent_id']);
-        columns.delete('interaction_id');
-      }
-      if (version < 2) {
-        remove(['incomplete_tool_calls_json', 'tool_status', 'tool_error_json']);
-      }
-    }
-    if (table === 'context_tool_calls' && version < 2) {
-      remove(['call_type', 'arguments_text', 'call_error']);
-    }
-    if (table === 'model_input_states' && version < 7) remove(['view_version']);
-    if (table === 'model_request_records') {
-      if (version < 7) remove(['view_version']);
-      if (version < 4) {
-        remove(['request_fingerprint', 'pending_context_seqs_json', 'preparation_id', 'hard_cut']);
-      }
-      if (version < 3) remove(['request_json']);
-    }
-    if (table === 'recaps' && version < 10) columns.add('title');
-    if (table === 'tenants' && version < 13) remove(['default_env_explicit']);
-    if (table === 'environments' && version < 16) remove(['auto_detect', 'settings_version']);
-    if (table === 'environments' && version < 19) remove(['platform_lifecycle_state']);
-    if (table === 'agent_environment_operations' && version < 19) {
-      remove(['execution_generation', 'resolved_action_json']);
-    }
-  }
-  if (inspection.namespace === 'server_runtime') {
-    if (table === 'threads') {
-      if (version < 7) remove(['thread_type']);
-      if (version < 13) remove(['automation_only']);
-      if (version < 15) remove(['archived_at', 'reset_from_thread_id']);
-      if (version < 16) remove(['workspace_id']);
-    }
-    if (table === 'thread_notifications' && version < 16) remove(['target']);
-    if (table === 'automations' && version < 16) remove(['workspace_id']);
-    if (table === 'inputs') {
-      if (version < 13) {
-        remove([
-          'automation_schedule_id',
-          'automation_fire_id',
-          'automation_trigger',
-          'automation_scheduled_at',
-        ]);
-      }
-      if (version < 9) {
-        remove([
-          'delegation_source_thread_id',
-          'delegation_source_agent_id',
-          'source_tool_call_id',
-        ]);
-        columns.add('interaction_id');
-      }
-      if (version < 7) {
-        remove(['source', 'source_thread_id', 'source_agent_id']);
-        columns.delete('interaction_id');
-      }
-    }
-    if (table === 'runs') {
-      if (version < 8) remove(['rerun_from_message_seq', 'superseded_by_run_id', 'usage_reported']);
-      if (version < 7) remove(['execution_mode']);
-      if (version < 4) remove(['execution_generation', 'cancel_accepted_generation']);
-    }
-    if (table === 'thread_event_retention' && version < 3) remove(['last_event_seq']);
-    if (table === 'server_bash_operations' && version < 3) remove(['content', 'status']);
-    if (table === 'device_tool_calls') {
-      if (version < 6) remove(['log_synced_offset']);
-      if (version < 5) remove(['log_path', 'log_expires_at']);
-    }
-    if (table === 'interactions' && version < 9) columns.add('interaction_id');
-    if (table === 'interaction_deliveries' && version < 9) {
-      remove([
-        'source_thread_id',
-        'source_agent_id',
-        'source_tool_call_id',
-        'content',
-        'context_message_seq',
-      ]);
-      columns.add('interaction_id');
-      columns.add('input_id');
-    }
-  }
-  if (inspection.namespace === 'device_bash' && table === 'device_bash_operations' && version < 2) {
-    remove(['post_processed_at']);
-  }
-  if (
-    inspection.namespace === 'context_recap' &&
-    table === 'context_message_attachments' &&
-    version < 22
-  ) {
-    remove(['source', 'workspace_required', 'workspace_status', 'env_id', 'path', 'operation_id']);
-  }
-  if (inspection.namespace === 'server_runtime' && table === 'input_attachments' && version < 12) {
-    remove(['source', 'workspace_required', 'workspace_status', 'env_id', 'path', 'operation_id']);
-  }
-  if (inspection.namespace === 'environment_operations' && table === 'environment_operations') {
-    if (version < 5) remove(['binary_content', 'create_parents']);
-    if (version < 6) {
-      remove([
-        'sync_action',
-        'sync_offset',
-        'transfer_id',
-        'total_size',
-        'executable',
-        'create_directory',
-        'conflict_scan',
-        'relative_paths_json',
-      ]);
-    }
-  }
   return [...columns].sort();
 }
 
@@ -606,7 +381,6 @@ function sourceColumnOverrides(
 ): Record<string, string> {
   const context = namespaceVersion(inspection, 'context_recap');
   const runtime = namespaceVersion(inspection, 'server_runtime');
-  const deviceBash = namespaceVersion(inspection, 'device_bash');
   const interactionColumn = (column: string) => {
     if (!inspection.tables.has('interactions')) return 'NULL';
     const expression = `interaction.${column}`;
@@ -659,9 +433,6 @@ function sourceColumnOverrides(
         source_row.first_available_seq - 1
       )`,
     };
-  }
-  if (table === 'device_bash_operations' && deviceBash.currentVersion < 2) {
-    return { post_processed_at: 'source_row.result_acknowledged_at' };
   }
   return {};
 }
