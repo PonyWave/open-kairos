@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 3f66760 - 2026-11-13
+
+来源分支：main，合并提交 3f66760。
+
+### 变更
+
+- v1 基线删除无代码使用的 `device_tool_calls`、`device_tool_results`、`auth_email_verifications`、`auth_setup_credentials` 四张表及关联索引，新安装的数据库不再创建这些表。
+
+### 修复
+
+- 文档与实现对齐：固定端口使用 `KAIROS_PORT` 环境变量；启动结构图修正为 Server 同端口托管 GUI；`.env.example` 的迁移与浏览器安装说明改指 `docs/development.md`。
+- `goals-and-scope` 功能范围补全 `web_fetch`、`web_search`、`browser`、`send_to_user`、`env_sync` 与文件工具；`development` 补充受限 browser 工具的 Chromium 安装命令。
+
 ## 7b7b580 - 2026-11-13
 
 来源分支：main，合并提交 7b7b580。
