@@ -13,7 +13,7 @@
 | --- | --- |
 | `pnpm build` | 构建全部包与应用（含 GUI 静态产物）。 |
 | `pnpm start` | 启动 open-kairos：Server + 内嵌 Daemon + 本地网页。 |
-| `pnpm dev` | 开发模式：并行运行 Server 与 Vite 开发服务器。 |
+| `pnpm dev` | 开发模式：并行运行包构建监听、Server 与 Vite 开发服务器。 |
 | `pnpm check` | 完整门禁：依赖边界、文档、proto、lint、类型、测试、构建。 |
 | `pnpm test` | 运行全部测试。 |
 | `pnpm typecheck` | 类型检查。 |
@@ -25,13 +25,21 @@
 
 - `KAIROS_DATA_DIR`：数据目录，默认 `data/server`。
 - `KAIROS_MAIN_WORKSPACE`：主环境工作目录，默认为启动命令所在目录。
-- `KAIROS_PORT`：固定 GUI 端口；未设置时自动选择空闲端口。
+- `KAIROS_PORT`：固定服务端口（GUI 与 RPC 同端口）；未设置时自动选择空闲端口。
 - `KAIROS_AUTH_SECRET`：认证密钥；未设置时自动生成并保存到 `<KAIROS_DATA_DIR>/auth-secret`（0600）。
 - 模型配置：`KAIROS_MODEL_BASE_URL`、`KAIROS_MODEL_ID` 等，未配置时不能执行 Agent 任务。
 
+受限 browser 工具使用 Playwright 驱动的 Chromium，首次使用前安装浏览器二进制：
+
+```bash
+pnpm --filter @kairos/server exec playwright install chromium
+```
+
+`PLAYWRIGHT_BROWSERS_PATH` 与 `KAIROS_BROWSER_EXECUTABLE_PATH` 可覆盖浏览器二进制的解析位置，见 `.env.example`。
+
 ## 数据与迁移
 
-SQLite 数据库为 `<KAIROS_DATA_DIR>/kairos.sqlite`，各命名空间以版本 1 安装最终结构。`node apps/server/dist/migrate.js --data-dir <dir> --backup-dir <dir>` 用于检查与迁移；当前版本只识别 v1 数据库，带旧版本或未版本化应用表的数据库明确拒绝，不为 Kairos 旧数据提供迁移。
+SQLite 数据库为 `<KAIROS_DATA_DIR>/kairos.sqlite`，各命名空间以版本 1 安装最终结构。`node apps/server/dist/migrate.js --data-dir <dir> --backup-dir <dir>` 用于检查与迁移；当前版本只识别 v1 数据库，带旧版本或未版本化应用表的数据库明确拒绝。
 
 ## 验证
 

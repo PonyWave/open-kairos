@@ -4,45 +4,36 @@
 
 ## 术语
 
-| 名称          | 定义                                                                                  |
-| ------------- | ------------------------------------------------------------------------------------- |
-| 主环境        | 运行 `kairos start` 的本机执行环境，内置注册、不可删除，模型侧别名 `main`。            |
+| 名称          | 定义                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------------ |
+| 主环境        | 运行 `kairos start` 的本机执行环境，内置注册、不可删除，模型侧别名 `main`。                             |
 | 工作空间      | 名称、一台设备（`env_id`）和该设备中一个工作目录组成的持久记录，规定所属 Thread 的默认执行设备与路径。 |
-| 全局 main     | 每个用户唯一的全局主对话，不归属任何工作空间。                                         |
-| 工作空间 main | 每个工作空间唯一的对话，与所属工作空间在同一事务创建。                                 |
-| 任务 Thread   | 归属工作空间或作为临时对话存在的持久对话。                                             |
-| 临时对话      | `workspace_id` 为空的任务 Thread，列入临时对话列表，该列表没有工作空间 main。          |
+| 全局 main     | 每个用户唯一的全局主对话，不归属任何工作空间。                                                         |
+| 工作空间 main | 每个工作空间唯一的对话，与所属工作空间在同一事务创建。                                                 |
+| 任务 Thread   | 归属工作空间或作为临时对话存在的持久对话。                                                             |
+| 临时对话      | `workspace_id` 为空的任务 Thread，列入临时对话列表，该列表没有工作空间 main。                          |
 
 ## 设计目标
 
-1. 本地优先：在主电脑执行 `kairos start` 一条命令启动 Server、内嵌 Daemon 与本地网页。GUI 端口启动时自动探测空闲端口，`--port` 用于固定端口。
+1. 本地优先：在主电脑执行 `kairos start` 一条命令启动 Server、内嵌 Daemon 与本地网页。GUI 端口启动时自动探测空闲端口，`KAIROS_PORT` 用于固定端口。
 2. 主环境：运行命令的本机自动注册为设备，默认出现在设备列表，是全局 main 的工作环境。`AGENTS.md` 与 skills 资源快照固定从主环境根目录读取。
 3. 工作空间：Thread 归属工作空间后，其工具默认在该设备的工作目录执行。工作空间只提供默认值，不限制访问其他已授权设备和任意路径。
 4. 对话层级：全局 main、工作空间 main、任务 Thread 三级。话题按工作空间在 GUI 聚类，每个工作空间展示其 main 对话，空工作空间也展示。
-5. 多设备：沿用 Daemon 配对协议连接其他 Linux/macOS 设备。
-6. 单用户：首次启动初始化唯一用户与租户，本地会话令牌认证，无邮箱验证与 SMTP。
+5. 多设备：通过 Daemon 配对协议连接其他 Linux/macOS 设备。
+6. 单用户：首次启动初始化唯一用户与租户，本地会话令牌认证。
 
-## 保留的能力
+## 功能范围
 
-从 Kairos 复制并保留：Agent Loop、Provider 适配、Context 与 Recap、当前视图、SQL 召回、委派与结果交付、Subagent、Automation、环境配对与远程 Operation、Bash 输出与 `read_output`、附件。
-
-## 新增与变更
-
-- 新增 `workspaces` 表与工作空间管理界面。
-- `thread_type` 扩展为 `main` / `workspace_main` / `task`。
-- `thread_notify` 增加目标参数 `workspace`（默认）或 `global`。
-- 工作空间 main 注册 `thread_call` 等 Thread 工具，范围限定本工作空间。
-- Automation 定义增加可选 `workspace_id`。
-- recall 的 `thread` 查询表增加 `workspace_id` 列，新增 `workspace_list` 工具。
-
-## 移除
-
-- 平台 sandbox：平台环境表、共享控制库、容量名额、OpenSandbox/BatchSandbox 生命周期、`sandbox` 别名。
-- 三期部署物：K3s、网关、镜像仓库。
-- 显式单机模式环境变量分支，其能力由主环境内置注册取代。
-- 邮箱验证码、SMTP 与多用户注册流程。
-- 旧 Server Bash 与 `device_bash` 审计结构。开源版无历史数据需要保留。
+- Agent Loop 与 Provider 适配：模型请求与工具执行组成的迭代过程，适配多种模型接口协议。
+- Context 与 Recap：模型实际接收和产生的完整逐条原始消息，以及关联原始消息的逐条区间概述；当前视图与 SQL 召回共用同一套有效性规则。
+- SQL 召回：`recall({ sql })` 工具开放 `thread`、`context`、`recap` 三张只读查询表。
+- 对话层级与委派：`thread_call` 委派与结果交付、`thread_notify` 通知、Subagent、`workspace_list` 工作空间查询。
+- Automation：cron 定时与手动触发，目标可指定工作空间。
+- 多设备执行：Daemon 配对、远程 Operation、Bash 输出与 `read_output` 检索、`env_sync` 环境间文件同步。
+- 文件工具：`read`、`write`、`edit`、`read_image`；附件上传与投递。
+- 网页访问：`web_fetch` 抓取网页，`web_search` 搜索（需配置外部索引），受限 `browser` 工具使用 Playwright 驱动的 Chromium。
+- `send_to_user`：全局 main 向用户投递回复的通道。
 
 ## 与 Kairos 的关系
 
-open-kairos 从 Kairos 复制代码后独立演进，不回流修改，不为 Kairos 数据提供迁移。schema 版本重新计数，各命名空间初始版本为 1。
+open-kairos 是 Kairos 的单用户开源版本，从 Kairos 复制代码后独立演进。schema 版本独立计数，各命名空间初始版本为 1。

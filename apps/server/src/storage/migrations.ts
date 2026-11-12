@@ -134,23 +134,6 @@ CREATE TABLE attachments (
           OR (media_type IN ('image/png', 'image/jpeg') AND width > 0 AND height > 0)
         )
       );
-CREATE TABLE auth_email_verifications (
-        verification_id TEXT PRIMARY KEY,
-        client_action_id TEXT NOT NULL UNIQUE,
-        email TEXT NOT NULL,
-        source_address TEXT NOT NULL,
-        code_hash TEXT NOT NULL,
-        delivery_status TEXT NOT NULL CHECK(delivery_status IN (
-          'pending', 'sent', 'failed', 'not_required'
-        )),
-        delivery_error TEXT,
-        attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL,
-        consumed_at TEXT,
-        invalidated_at TEXT
-      );
 CREATE TABLE auth_sessions (
         session_id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL REFERENCES users(user_id),
@@ -158,13 +141,6 @@ CREATE TABLE auth_sessions (
         created_at TEXT NOT NULL,
         expires_at TEXT NOT NULL,
         revoked_at TEXT
-      );
-CREATE TABLE auth_setup_credentials (
-        credential_id TEXT PRIMARY KEY,
-        email TEXT NOT NULL,
-        token_hash TEXT NOT NULL UNIQUE,
-        created_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL
       );
 CREATE TABLE context_events (
         event_seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -488,15 +464,7 @@ CREATE INDEX agent_environment_requests_owner
         ON agent_environment_requests(thread_id, agent_id, created_at, request_id);
 CREATE INDEX agent_execution_environments_scope
     ON agent_execution_environments(thread_id, agent_id, run_id, generation);
-CREATE INDEX auth_email_verifications_delivery_created
-        ON auth_email_verifications(delivery_status, created_at, verification_id);
-CREATE INDEX auth_email_verifications_email_created
-        ON auth_email_verifications(email, created_at, verification_id);
-CREATE INDEX auth_email_verifications_source_created
-        ON auth_email_verifications(source_address, created_at, verification_id);
 CREATE INDEX auth_sessions_user ON auth_sessions(user_id, created_at, session_id);
-CREATE INDEX auth_setup_credentials_email
-        ON auth_setup_credentials(email, created_at, credential_id);
 CREATE INDEX context_events_owner_seq
         ON context_events(thread_id, agent_id, event_seq);
 CREATE INDEX context_message_attachments_attachment

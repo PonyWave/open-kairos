@@ -68,8 +68,6 @@ describe('SQLite schema installation', () => {
           'context_message_attachments',
           'users',
           'tenants',
-          'auth_email_verifications',
-          'auth_setup_credentials',
           'auth_sessions',
           'environments',
           'environment_pairing_credentials',

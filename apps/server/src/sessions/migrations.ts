@@ -73,28 +73,6 @@ CREATE TABLE client_actions (
         created_at TEXT NOT NULL,
         PRIMARY KEY(owner_id, client_action_id)
       );
-CREATE TABLE device_tool_calls (
-        operation_id TEXT PRIMARY KEY,
-        owner_id TEXT NOT NULL,
-        thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
-        run_id TEXT NOT NULL REFERENCES runs(run_id),
-        tool_call_id TEXT NOT NULL,
-        log_path TEXT,
-        log_expires_at TEXT,
-        log_synced_offset TEXT,
-        created_at TEXT NOT NULL,
-        UNIQUE(run_id, tool_call_id)
-      );
-CREATE TABLE device_tool_results (
-        operation_id TEXT PRIMARY KEY,
-        thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
-        run_id TEXT NOT NULL REFERENCES runs(run_id),
-        tool_call_id TEXT NOT NULL,
-        content TEXT NOT NULL,
-        status TEXT NOT NULL CHECK(status IN ('success', 'error')),
-        created_at TEXT NOT NULL,
-        UNIQUE(run_id, tool_call_id)
-      );
 CREATE TABLE input_attachments (
         input_id TEXT NOT NULL REFERENCES inputs(input_id) ON DELETE CASCADE,
         position INTEGER NOT NULL CHECK(position > 0),
@@ -324,7 +302,6 @@ CREATE UNIQUE INDEX automation_scheduled_occurrence
         ON automation_fires(schedule_id, scheduled_at) WHERE trigger_source = 'scheduled';
 CREATE INDEX automations_due ON automations(enabled, deleted_at, next_fire_at);
 CREATE INDEX automations_owner_seq ON automations(owner_id, seq);
-CREATE INDEX device_tool_calls_owner ON device_tool_calls(owner_id, operation_id);
 CREATE INDEX input_attachments_attachment
         ON input_attachments(attachment_id, input_id);
 CREATE UNIQUE INDEX inputs_delegation_source
