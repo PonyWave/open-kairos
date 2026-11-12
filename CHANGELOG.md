@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## f16b2e2 - 2026-11-13
+
+来源分支：main，合并提交 f16b2e2。
+
+### 变更
+
+- `kairos-daemon start`/`stop`/`status` 的 `env_id` 参数变为可选：单绑定设备自动选择唯一环境；macOS 多绑定设备可传环境 ID 或设备名（如 `kairos-daemon stop my-mac`），终端可交互且未传参时列出候选环境供选择，非交互环境报错并列出可选 ID。
+- 配对安装命令的收尾输出完善：告知已安装、配对并启动，可关闭终端；打印本机 GUI 访问地址（与 Server 同源，用 `kairos start` 打印的带令牌地址登录）和 `status`/`stop`/`start` 管理命令。
+- GUI 环境详情页的 Daemon 命令指引改为不带 `env_id` 的简洁形式。
+
 ## 4f92b6a - 2026-11-13
 
 来源分支：main，合并提交 4f92b6a。
