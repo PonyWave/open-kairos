@@ -8,7 +8,6 @@ import { ensureMainEnvironment, MainEnvironmentUseGateway } from '../devices/mai
 import {
   controlledEnvironmentDependencies,
   seedTestEnvironment,
-  seedTestTenant,
 } from '../integration/environment-fixture.js';
 import { openDatabase } from '../storage/database.js';
 import { createWorkspaceResourceSnapshot } from '../workspace/index.js';
@@ -97,7 +96,7 @@ async function completed(store: SessionStore, runId: string) {
   await vi.waitFor(() => expect(store.getRunById(runId).status).toBe('completed'));
 }
 
-it('fixes main and task workspaces to the sandbox without reserving capacity and preserves device authorization', async () => {
+it('fixes main and task workspaces to the main environment and preserves device authorization', async () => {
   const f = fixture();
   try {
     const main = f.store.getOrCreateMainThread(ownerId);
@@ -213,45 +212,6 @@ it('routes concurrent env_id calls independently and keeps subsequent paths and 
   }
 });
 
-it('persists capacity failure on the accepted Run and only retries a new Continue generation', async () => {
-  const f = fixture();
-  try {
-    const main = f.store.getOrCreateMainThread(ownerId);
-    f.environmentUse.capacity = 0;
-    const accepted = send(f.store, main.threadId);
-    await f.coordinator.deliver(accepted.input, accepted.runId);
-    expect(f.store.getRunById(accepted.runId)).toMatchObject({
-      status: 'failed',
-      error: { code: 'sandbox_capacity_exhausted' },
-    });
-    expect(f.store.listQueuedInputs(main.threadId)).toHaveLength(0);
-    expect(
-      f.store.listContext(ownerId, main.threadId, 'thread').map((message) => message.message.role),
-    ).toEqual(['user']);
-    expect(f.provider.requests).toHaveLength(0);
-    f.environmentUse.capacity = 1;
-    const replay = send(f.store, main.threadId);
-    await f.coordinator.deliver(replay.input, replay.runId);
-    expect(replay.runId).toBe(accepted.runId);
-    expect(f.store.listRuns(ownerId, main.threadId)).toHaveLength(1);
-    expect(f.provider.requests).toHaveLength(0);
-    const continued = f.store.continueRun(
-      action('ContinueRun', 'continue', { threadId: main.threadId, runId: accepted.runId }),
-    );
-    f.coordinator.schedule(main.threadId, continued.runId);
-    await completed(f.store, continued.runId);
-    expect(continued.generation).toBe(2);
-    expect(f.provider.requests).toHaveLength(1);
-    expect(f.store.agentEnvironments.getExecution(continued.runId, 1)?.resourceVersion).toBeNull();
-    expect(f.store.agentEnvironments.getExecution(continued.runId, 2)?.resourceVersion).toMatch(
-      /^[a-f0-9]{64}$/,
-    );
-    await vi.waitFor(() => expect(f.environmentUse.uses.size).toBe(0));
-  } finally {
-    await f.close();
-  }
-});
-
 it('does not call Provider while an accepted default workspace is preparing and releases a cancelled preparation', async () => {
   const f = fixture();
   try {
@@ -281,7 +241,7 @@ it('does not call Provider while an accepted default workspace is preparing and 
   }
 });
 
-it('reloads the fixed main workspace before the first Run and preserves resources on capacity failure', async () => {
+it('reloads the fixed main workspace before the first Run', async () => {
   const f = fixture();
   try {
     const main = f.store.getOrCreateMainThread(ownerId);
@@ -292,30 +252,6 @@ it('reloads the fixed main workspace before the first Run and preserves resource
     });
     expect(loaded.resources).toEqual(['AGENTS.md']);
     expect(f.store.listRuns(ownerId, main.threadId)).toHaveLength(0);
-    const previous = f.store.agentEnvironments.requirePolicy(
-      main.threadId,
-      'thread',
-    ).currentHistoryId;
-    f.environmentUse.capacity = 0;
-    await expect(
-      f.coordinator.reloadResources({
-        ownerId,
-        threadId: main.threadId,
-        clientActionId: 'reload-full',
-      }),
-    ).rejects.toMatchObject({ code: 'sandbox_capacity_exhausted', terminal: true });
-    expect(f.store.agentEnvironments.requirePolicy(main.threadId, 'thread').currentHistoryId).toBe(
-      previous,
-    );
-    f.environmentUse.capacity = 1;
-    await expect(
-      f.coordinator.reloadResources({
-        ownerId,
-        threadId: main.threadId,
-        clientActionId: 'reload-full',
-      }),
-    ).rejects.toMatchObject({ code: 'sandbox_capacity_exhausted' });
-    expect(f.environmentOperations.started).toHaveLength(1);
   } finally {
     await f.close();
   }
@@ -386,50 +322,6 @@ it('keeps env_list and main-environment events free of lifecycle side effects', 
   }
 });
 
-it('requires sandbox capacity even when a task is authorized to use only a device', async () => {
-  const f = fixture([
-    response('', [
-      { id: 'device-read', name: 'read', arguments: { env_id: 'device', path: 'AGENTS.md' } },
-    ]),
-    response('done'),
-  ]);
-  try {
-    const main = f.store.getOrCreateMainThread(ownerId);
-    seedTestEnvironment(f.database, ownerId, 'device', '/device');
-    const task = f.store.createThread(
-      action('CreateThread', 'device-task', {
-        title: 'device',
-        environmentPolicy: { allowedEnv: ['device'] },
-      }),
-    );
-    expect(task.currentBinding?.envId).toBe(main.currentBinding?.envId);
-    f.environmentUse.capacity = 0;
-    const input = send(f.store, task.threadId);
-    await f.coordinator.deliver(input.input, input.runId);
-    expect(f.store.getRunById(input.runId)).toMatchObject({
-      status: 'failed',
-      error: { code: 'sandbox_capacity_exhausted' },
-    });
-    expect(f.provider.requests).toHaveLength(0);
-    expect(f.environmentOperations.started).toHaveLength(0);
-    f.environmentUse.capacity = 1;
-    const continued = f.store.continueRun(
-      action('ContinueRun', 'continue-device-task', {
-        threadId: task.threadId,
-        runId: input.runId,
-      }),
-    );
-    f.coordinator.schedule(task.threadId, continued.runId);
-    await completed(f.store, continued.runId);
-    expect(f.environmentOperations.started.at(-1)).toMatchObject({
-      envId: 'device',
-      action: { value: { cwd: '/device', path: '/device/AGENTS.md' } },
-    });
-  } finally {
-    await f.close();
-  }
-});
-
 it('inherits resources from the caller execution after its policy has a newer reload snapshot', async () => {
   const f = fixture();
   try {
@@ -474,138 +366,6 @@ it('inherits resources from the caller execution after its policy has a newer re
   }
 });
 
-it('reserves global capacity before the ordinary background Run queue and cancels queued references', async () => {
-  const f = fixture();
-  const coordinator = new RunCoordinator({
-    store: f.store,
-    environments: f.environments,
-    environmentOperations: f.environmentOperations,
-    environmentUse: f.environmentUse,
-    maxActiveThreads: 1,
-    browser: false,
-    model: {
-      provider: f.provider,
-      providerId: 'test',
-      modelId: 'test',
-      contextWindowTokens: 128000,
-      outputReserveTokens: 4096,
-    },
-  });
-  try {
-    f.environmentUse.prepare = ({ signal }) =>
-      new Promise((_resolve, reject) =>
-        signal.addEventListener('abort', () => reject(signal.reason), { once: true }),
-      );
-    const accepted = [];
-    for (let index = 0; index < 6; index++) {
-      const tenantId = `capacity-tenant-${index}`;
-      seedTestTenant(f.database, tenantId);
-      const task = f.store.createThread({
-        ...action('CreateThread', `task-${index}`, {
-          title: `task ${index}`,
-          initialText: 'work',
-          initialMode: 'follow_up' as const,
-        }),
-        ownerId: tenantId,
-      });
-      accepted.push(task);
-      await coordinator.deliver(task.input, task.runId);
-    }
-    expect(f.environmentUse.uses.size).toBe(5);
-    expect(f.store.getRunById(accepted[5]?.runId ?? '')).toMatchObject({
-      status: 'failed',
-      error: { code: 'sandbox_capacity_exhausted' },
-    });
-    expect(f.provider.requests).toHaveLength(0);
-    const queued = accepted[1];
-    if (!queued) throw new Error('Queued fixture Run is missing.');
-    const cancelled = f.store.requestCancelRun({
-      ...action('CancelRun', 'cancel-queued', {
-        threadId: queued.thread.threadId,
-        runId: queued.runId,
-        reason: 'cancel queued',
-      }),
-      ownerId: queued.input.ownerId,
-    });
-    await coordinator.cancel(cancelled, 'cancel queued');
-    expect(f.environmentUse.uses.size).toBe(4);
-  } finally {
-    await coordinator.close();
-    await f.close();
-  }
-});
-
-it('keeps an undelivered result on its failed capacity Run until explicit Continue', async () => {
-  const f = fixture();
-  try {
-    const main = f.store.getOrCreateMainThread(ownerId);
-    seedTestEnvironment(f.database, ownerId, 'device', '/device');
-    const source = send(f.store, main.threadId);
-    f.store.appendModelMessage({
-      runId: source.runId,
-      inputId: source.input.inputId,
-      message: { role: 'user', content: 'delegate' },
-    });
-    f.store.appendModelMessage({
-      runId: source.runId,
-      message: {
-        role: 'assistant',
-        content: '',
-        tool_calls: [{ id: 'delegate', name: 'thread_call', arguments: { prompt: 'work' } }],
-      },
-    });
-    const accepted = f.store.acceptThreadCall({
-      ownerId,
-      sourceThreadId: main.threadId,
-      sourceAgentId: 'thread',
-      sourceRunId: source.runId,
-      sourceToolCallId: 'delegate',
-      targetThreadId: '',
-      prompt: 'work',
-      mode: 'follow_up',
-      environmentPolicy: { allowedEnv: ['device'] },
-    });
-    f.store.appendModelMessage({
-      runId: accepted.runId,
-      inputId: accepted.input.inputId,
-      message: { role: 'user', content: 'work' },
-    });
-    const result = f.store.appendModelMessage({
-      runId: accepted.runId,
-      message: { role: 'assistant', content: 'persisted child result' },
-    });
-    f.store.recordInteractionResponses({
-      runId: accepted.runId,
-      messageId: result.messageId,
-      interactionKeys: [accepted.interaction],
-    });
-    f.store.updateRunStatus(accepted.runId, 'completed');
-    f.store.updateRunStatus(source.runId, 'completed');
-    f.environmentUse.capacity = 0;
-    f.coordinator.resumeDeliveries();
-    await vi.waitFor(() => expect(f.store.listRuns(ownerId, main.threadId)).toHaveLength(2));
-    const delivery = f.store.getInteractionDelivery(ownerId, accepted.interaction);
-    expect(delivery.status).toBe('queued');
-    const failed = f.store.getRunById(delivery.runId ?? '');
-    expect(failed.error?.code).toBe('sandbox_capacity_exhausted');
-    f.environmentUse.capacity = 1;
-    f.coordinator.resumeDeliveries();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(f.store.getInteractionDelivery(ownerId, accepted.interaction).runId).toBe(failed.runId);
-    expect(f.store.listRuns(ownerId, main.threadId)).toHaveLength(2);
-    expect(f.provider.requests).toHaveLength(0);
-    const continued = f.store.continueRun(
-      action('ContinueRun', 'continue-delivery', { threadId: main.threadId, runId: failed.runId }),
-    );
-    f.coordinator.schedule(main.threadId, continued.runId);
-    await completed(f.store, continued.runId);
-    expect(f.store.getInteractionDelivery(ownerId, accepted.interaction).status).toBe('consumed');
-    expect(f.provider.requests[0]?.messages.at(-1)?.content).toContain('persisted child result');
-  } finally {
-    await f.close();
-  }
-});
-
 it('fails the Run without retaining an environment use when the initial directory Operation result becomes unknown', async () => {
   const f = fixture();
   try {
@@ -639,7 +399,7 @@ it('fails the Run without retaining an environment use when the initial director
   }
 });
 
-it('limits the complete Agent authorization to 32 environments including the shared sandbox', async () => {
+it('limits the complete Agent authorization to 32 environments including the main environment', async () => {
   const f = fixture();
   try {
     const devices = Array.from({ length: 32 }, (_, index) => `device-${index}`);
@@ -731,7 +491,7 @@ it('rejects removed default workspace parameters on task and Subagent tools', as
   }
 });
 
-it('preserves a historical device execution specification and requires a new generation for the sandbox', async () => {
+it('preserves a historical device execution specification and requires a new generation for the main environment', async () => {
   const f = fixture();
   try {
     seedTestEnvironment(f.database, ownerId, 'device', '/device');
@@ -781,7 +541,9 @@ it.each(['preparing', 'prepared', 'dispatched', 'legacy'] as const)(
     try {
       seedTestEnvironment(f.database, ownerId, 'device', '/device');
       f.environmentOperations.loadResources = async () =>
-        createWorkspaceResourceSnapshot([{ path: 'AGENTS.md', content: 'current sandbox rules' }]);
+        createWorkspaceResourceSnapshot([
+          { path: 'AGENTS.md', content: 'current main environment rules' },
+        ]);
       const task = f.store.createThread(
         action('CreateThread', 'migration-task', {
           title: 'migrated',
@@ -888,7 +650,7 @@ it.each(['preparing', 'prepared', 'dispatched', 'legacy'] as const)(
           .filter((message) => message.role === 'system')
           .map((message) => message.content)
           .join('\n');
-        expect(instructions).toContain('current sandbox rules');
+        expect(instructions).toContain('current main environment rules');
         expect(instructions).not.toContain('historical device rules');
         const newRequest = f.database
           .prepare(

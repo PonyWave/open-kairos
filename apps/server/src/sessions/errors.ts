@@ -3,8 +3,6 @@ export type SessionErrorCode =
   | 'permission_denied'
   | 'version_conflict'
   | 'action_conflict'
-  | 'sandbox_capacity_exhausted'
-  | 'sandbox_unavailable'
   | 'device_offline'
   | 'operation_unknown'
   | 'recap_invalid'

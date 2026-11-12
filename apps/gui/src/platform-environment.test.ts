@@ -1,10 +1,10 @@
 import { createRouterTransport } from '@connectrpc/connect';
 import {
   create,
+  EnvironmentConnectionStatus,
   EnvironmentKind,
   EnvironmentSchema,
   EventService,
-  PlatformLifecycleState,
   ThreadSchema,
   ThreadService,
   ThreadSnapshotSchema,
@@ -16,14 +16,14 @@ import { createKairosClients } from './client.js';
 import { ThreadProjector, UnsupportedEventError } from './thread-projection.js';
 
 const main = create(EnvironmentSchema, {
-  envId: 'platform-main',
+  envId: 'main',
   name: '主环境',
-  kind: EnvironmentKind.PLATFORM_SANDBOX,
-  lifecycleState: PlatformLifecycleState.PAUSED,
+  kind: EnvironmentKind.SELF_HOSTED_MACOS,
+  recommendedPwd: '/Users/pony/project',
 });
 
-describe('platform environment projection', () => {
-  it('reads a binary snapshot and lifecycle events through the existing Thread stream', async () => {
+describe('main environment projection', () => {
+  it('reads a binary snapshot and environment events through the existing Thread stream', async () => {
     let reads = 0;
     const clients = createKairosClients({
       transport: createRouterTransport((router) => {
@@ -38,26 +38,20 @@ describe('platform environment projection', () => {
         });
         router.service(EventService, {
           async *watchThread() {
-            for (const [index, lifecycleState] of [
-              PlatformLifecycleState.RESUMING,
-              PlatformLifecycleState.RUNNING,
-              PlatformLifecycleState.PAUSING,
-              PlatformLifecycleState.PAUSED,
+            for (const [index, connectionStatus] of [
+              EnvironmentConnectionStatus.OFFLINE,
+              EnvironmentConnectionStatus.ONLINE,
             ].entries()) {
               yield {
                 payload: {
                   case: 'event',
                   value: {
-                    eventId: `lifecycle-${index}`,
+                    eventId: `connection-${index}`,
                     threadId: 'main-thread',
                     seq: 11n + BigInt(index),
                     payload: {
                       case: 'mainEnvironmentChanged',
-                      value: {
-                        ...main,
-                        lifecycleState,
-                        ready: lifecycleState === PlatformLifecycleState.RUNNING,
-                      },
+                      value: { ...main, connectionStatus },
                     },
                   },
                 },
@@ -71,10 +65,8 @@ describe('platform environment projection', () => {
     const response = await clients.thread.getThread({ threadId: 'main-thread' });
     if (!response.snapshot) throw new Error('Missing snapshot.');
     projector.applySnapshot(response.snapshot, response.throughSeq);
-    expect(projector.state.snapshot?.mainEnvironment?.lifecycleState).toBe(
-      PlatformLifecycleState.PAUSED,
-    );
-    const observed: PlatformLifecycleState[] = [];
+    expect(projector.state.snapshot?.mainEnvironment?.kind).toBe(EnvironmentKind.SELF_HOSTED_MACOS);
+    const observed: EnvironmentConnectionStatus[] = [];
     let latest: WatchThreadResponse | undefined;
     for await (const event of clients.events.watchThread({
       threadId: 'main-thread',
@@ -82,26 +74,25 @@ describe('platform environment projection', () => {
     })) {
       projector.applyWatchResponse(event);
       latest = event;
-      const state = projector.state.snapshot?.mainEnvironment?.lifecycleState;
-      if (state !== undefined) observed.push(state);
+      const status = projector.state.snapshot?.mainEnvironment?.connectionStatus;
+      if (status !== undefined) observed.push(status);
     }
     expect(observed).toEqual([
-      PlatformLifecycleState.RESUMING,
-      PlatformLifecycleState.RUNNING,
-      PlatformLifecycleState.PAUSING,
-      PlatformLifecycleState.PAUSED,
+      EnvironmentConnectionStatus.OFFLINE,
+      EnvironmentConnectionStatus.ONLINE,
     ]);
     if (!latest) throw new Error('Missing event.');
     projector.applyWatchResponse(latest);
-    expect(projector.state.throughSeq).toBe(14n);
+    expect(projector.state.throughSeq).toBe(12n);
     expect(reads).toBe(1);
   });
 
-  it('rejects unknown lifecycle states and a different environment without advancing the cursor', async () => {
+  it('rejects a missing envId or a non-device kind without advancing the cursor', () => {
     const projector = new ThreadProjector('main-thread');
-    for (const lifecycleState of [PlatformLifecycleState.UNSPECIFIED, 99]) {
-      const environment = create(EnvironmentSchema, { ...main });
-      Reflect.set(environment, 'lifecycleState', lifecycleState);
+    for (const environment of [
+      create(EnvironmentSchema, { ...main, envId: '' }),
+      create(EnvironmentSchema, { ...main, kind: EnvironmentKind.UNSPECIFIED }),
+    ]) {
       expect(() =>
         projector.applySnapshot(
           create(ThreadSnapshotSchema, {
@@ -119,10 +110,7 @@ describe('platform environment projection', () => {
       }),
       10n,
     );
-    for (const environment of [
-      create(EnvironmentSchema, { ...main, envId: 'other-tenant-main' }),
-      create(EnvironmentSchema, { ...main, lifecycleState: PlatformLifecycleState.UNSPECIFIED }),
-    ]) {
+    for (const environment of [create(EnvironmentSchema, { ...main, envId: 'other-main' })]) {
       const event = create(WatchThreadResponseSchema, {
         payload: {
           case: 'event',
@@ -150,7 +138,7 @@ describe('platform environment projection', () => {
     expect(projector.state.snapshot?.mainEnvironment).toBe(main);
     expect(() =>
       projector.applySnapshotPage(
-        create(ThreadSnapshotSchema, { mainEnvironment: { ...main, envId: 'another-platform' } }),
+        create(ThreadSnapshotSchema, { mainEnvironment: { ...main, envId: 'another-main' } }),
         10n,
       ),
     ).toThrow(UnsupportedEventError);

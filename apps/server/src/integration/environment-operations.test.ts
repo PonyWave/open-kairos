@@ -122,8 +122,6 @@ async function startFixture(): Promise<Fixture> {
     KAIROS_DEVICE_IDENTITY_PATH: identityPath,
     KAIROS_DAEMON_VERSION: 'integration-test',
   };
-  delete environment.KAIROS_DEVICE_BASH_ENABLED;
-  delete environment.KAIROS_DEVICE_ENV_ID;
   const pairing = spawn(
     process.execPath,
     [

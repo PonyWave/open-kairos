@@ -9,7 +9,6 @@ import {
   InputSchema,
   type Message,
   MessageSchema,
-  PlatformLifecycleState,
   type Recap,
   RecapSchema,
   type Run,
@@ -105,10 +104,7 @@ export function getThreadSnapshot(
                 mainEnvironment: {
                   ...toEnvironment(mainEnvironment),
                   ...(options.mainEnvironmentReady === false
-                    ? {
-                        lifecycleState: PlatformLifecycleState.ERROR,
-                        statusReason: '主环境当前不可用。',
-                      }
+                    ? { statusReason: '主环境当前不可用。' }
                     : {}),
                 },
               }

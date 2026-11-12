@@ -18,20 +18,9 @@ enum EnvironmentKind {
   ENVIRONMENT_KIND_UNSPECIFIED = 0;
   ENVIRONMENT_KIND_SELF_HOSTED_LINUX = 1;
   ENVIRONMENT_KIND_SELF_HOSTED_MACOS = 2;
-  ENVIRONMENT_KIND_PLATFORM_SANDBOX = 3;
-}
 
-enum PlatformLifecycleState {
-  PLATFORM_LIFECYCLE_STATE_UNSPECIFIED = 0;
-  PLATFORM_LIFECYCLE_STATE_UNINITIALIZED = 1;
-  PLATFORM_LIFECYCLE_STATE_STARTING = 2;
-  PLATFORM_LIFECYCLE_STATE_RUNNING = 3;
-  PLATFORM_LIFECYCLE_STATE_PAUSING = 4;
-  PLATFORM_LIFECYCLE_STATE_PAUSED = 5;
-  PLATFORM_LIFECYCLE_STATE_RESUMING = 6;
-  PLATFORM_LIFECYCLE_STATE_DELETING = 7;
-  PLATFORM_LIFECYCLE_STATE_DELETED = 8;
-  PLATFORM_LIFECYCLE_STATE_ERROR = 9;
+  reserved 3;
+  reserved "ENVIRONMENT_KIND_PLATFORM_SANDBOX";
 }
 
 enum EnvironmentBindingStatus {
@@ -98,7 +87,9 @@ message Environment {
   uint64 maintenance_version = 27;
   uint64 settings_version = 28;
   repeated string favorite_directories = 29;
-  optional PlatformLifecycleState lifecycle_state = 30;
+
+  reserved 30;
+  reserved "lifecycle_state";
 }
 
 message EnvironmentInstallation {

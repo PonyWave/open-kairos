@@ -280,7 +280,7 @@ CREATE TABLE environments (
         env_id TEXT PRIMARY KEY,
         tenant_id TEXT NOT NULL REFERENCES tenants(tenant_id),
         name TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK(kind IN ('self_hosted_linux', 'self_hosted_macos', 'platform_sandbox')),
+        kind TEXT NOT NULL CHECK(kind IN ('self_hosted_linux', 'self_hosted_macos')),
         recommended_pwd TEXT NOT NULL,
         binding_status TEXT NOT NULL CHECK(binding_status IN ('pairing', 'active', 'revoked')),
         connection_status TEXT NOT NULL CHECK(connection_status IN ('offline', 'online')),

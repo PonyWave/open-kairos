@@ -10,7 +10,6 @@ import {
   type GetThreadResponse,
   GetThreadResponseSchema,
   InputStatus,
-  PlatformLifecycleState,
   ThreadService,
   ThreadSnapshotCursorSchema,
   toBinary,
@@ -68,14 +67,14 @@ it('projects a configured main environment that is not ready as unavailable', ()
     }).snapshot?.mainEnvironment;
     expect(unavailable).toMatchObject({
       envId: 'main',
-      lifecycleState: PlatformLifecycleState.ERROR,
+      statusReason: '主环境当前不可用。',
     });
     const ready = getThreadSnapshot(store, ownerId, request, {
       mainEnvironment,
       mainEnvironmentReady: true,
     }).snapshot?.mainEnvironment;
     expect(ready?.envId).toBe(unavailable?.envId);
-    expect(ready?.lifecycleState).toBeUndefined();
+    expect(ready?.statusReason).toBeUndefined();
     expect(database.prepare('SELECT COUNT(*) AS count FROM environment_operations').get()).toEqual({
       count: 0,
     });

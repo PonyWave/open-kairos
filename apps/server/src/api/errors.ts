@@ -21,8 +21,6 @@ const connectCodes: Record<SessionErrorCode, Code> = {
   not_found: Code.NotFound,
   failed_precondition: Code.FailedPrecondition,
   internal: Code.Internal,
-  sandbox_capacity_exhausted: Code.ResourceExhausted,
-  sandbox_unavailable: Code.Unavailable,
 };
 
 export function sessionConnectError(

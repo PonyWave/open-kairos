@@ -23,7 +23,7 @@ const pairingCredentialRowSchema = z.object({
 
 const environmentRowSchema = z.object({
   tenant_id: z.string(),
-  kind: z.enum(['self_hosted_linux', 'self_hosted_macos', 'platform_sandbox']),
+  kind: z.enum(['self_hosted_linux', 'self_hosted_macos']),
   binding_status: z.enum(['pairing', 'active', 'revoked']),
   authorized_capabilities_json: z.string(),
   auto_detect: z.number().int().min(0).max(1),

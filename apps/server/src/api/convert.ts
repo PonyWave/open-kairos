@@ -246,8 +246,6 @@ const errorCodes: Record<SessionErrorCode, ErrorCode> = {
   not_found: ErrorCode.NOT_FOUND,
   failed_precondition: ErrorCode.FAILED_PRECONDITION,
   internal: ErrorCode.INTERNAL,
-  sandbox_capacity_exhausted: ErrorCode.SANDBOX_CAPACITY_EXHAUSTED,
-  sandbox_unavailable: ErrorCode.SANDBOX_UNAVAILABLE,
 };
 
 export function toErrorDetail(error: RunError & { terminal?: boolean }, clientActionId?: string) {
@@ -757,14 +755,11 @@ export function toEnvironment(record: EnvironmentRecord) {
   return {
     envId: record.envId,
     name: record.name,
-    kind:
-      record.kind === 'platform_sandbox'
-        ? EnvironmentKind.PLATFORM_SANDBOX
-        : record.autoDetect
-          ? EnvironmentKind.UNSPECIFIED
-          : record.kind === 'self_hosted_macos'
-            ? EnvironmentKind.SELF_HOSTED_MACOS
-            : EnvironmentKind.SELF_HOSTED_LINUX,
+    kind: record.autoDetect
+      ? EnvironmentKind.UNSPECIFIED
+      : record.kind === 'self_hosted_macos'
+        ? EnvironmentKind.SELF_HOSTED_MACOS
+        : EnvironmentKind.SELF_HOSTED_LINUX,
     recommendedPwd: record.recommendedPwd,
     bindingStatus,
     connectionStatus:

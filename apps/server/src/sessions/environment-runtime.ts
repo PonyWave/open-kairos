@@ -158,8 +158,6 @@ const reloadActionSchema = z.discriminatedUnion('status', [
         'permission_denied',
         'version_conflict',
         'action_conflict',
-        'sandbox_capacity_exhausted',
-        'sandbox_unavailable',
         'device_offline',
         'operation_unknown',
         'recap_invalid',
@@ -302,18 +300,6 @@ export class AgentEnvironmentRuntime {
     const pending = this.store.attachments.listPendingWorkspace(run.threadId, run.agentId);
     if (pending.length === 0) return;
     const specification = this.store.agentEnvironments.requireExecution(run);
-    if (
-      !this.store.agentEnvironments.isMainEnvironment(
-        specification.defaultEnv,
-        specification.defaultPwd,
-        run.ownerId,
-      )
-    ) {
-      throw new SessionError(
-        'failed_precondition',
-        'Attachments must be written only to the main environment workspace.',
-      );
-    }
     this.#requireUsable(run.ownerId, specification.defaultEnv);
     const bindingVersion = this.store.agentEnvironments.requireHistory(
       specification.historyId,
@@ -624,23 +610,12 @@ export class AgentEnvironmentRuntime {
 
   reserveRun(run: RunRecord): void {
     const specification = this.store.agentEnvironments.requireExecution(run);
-    if (
-      !this.store.agentEnvironments.isMainEnvironment(
-        specification.defaultEnv,
-        specification.defaultPwd,
-        run.ownerId,
-      )
-    )
-      throw new SessionError(
-        'version_conflict',
-        'This historical execution uses a different workspace; Continue must create a new execution in the main environment.',
-        { retryable: true },
-      );
     const use: EnvironmentUse = {
       tenantId: run.ownerId,
       envId: specification.defaultEnv,
       usageId: `run:${run.runId}:${run.generation}`,
       kind: 'run',
+      pwd: specification.defaultPwd,
     };
     this.#environmentUse.reserveUse(use);
     this.#runUses.set(use.usageId, use);

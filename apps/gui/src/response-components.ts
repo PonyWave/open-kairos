@@ -1,4 +1,4 @@
-import { ErrorCode, type Input, type Run, RunStatus } from '@kairos/contracts';
+import { type Input, type Run, RunStatus } from '@kairos/contracts';
 import { createElement } from 'react';
 import { FailureNotice } from './failure-notice.js';
 import { Icon } from './icon.js';
@@ -22,23 +22,6 @@ export function RunOutcomeCard({
     run.status === RunStatus.CANCELLED ||
     run.status === RunStatus.INTERRUPTED;
   if (!continuable) return null;
-  if (run.error?.code === ErrorCode.SANDBOX_CAPACITY_EXHAUSTED) {
-    return createElement(
-      'div',
-      { className: 'sandbox-capacity-failure', role: 'status' },
-      createElement('span', null, '当前 sandbox 均被占用，暂时无法启动环境，请稍后重试。'),
-      createElement(
-        'button',
-        {
-          type: 'button',
-          className: 'text-button',
-          disabled: busy,
-          onClick: () => void onContinue(run),
-        },
-        '重试',
-      ),
-    );
-  }
   if (run.status === RunStatus.CANCELLED)
     return createElement(
       'div',

@@ -1,11 +1,5 @@
 import { createRouterTransport } from '@connectrpc/connect';
-import {
-  EnvironmentKind,
-  EventService,
-  MessageRole,
-  PlatformLifecycleState,
-  ThreadService,
-} from '@kairos/contracts';
+import { EnvironmentKind, EventService, MessageRole, ThreadService } from '@kairos/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { createKairosClients } from './client.js';
 import { ThreadSyncManager } from './thread-sync-manager.js';
@@ -22,10 +16,9 @@ function snapshot(content: string) {
     snapshot: {
       thread: { threadId, title: '共享会话' },
       mainEnvironment: {
-        envId: 'platform-main',
+        envId: 'main',
         name: content,
-        kind: EnvironmentKind.PLATFORM_SANDBOX,
-        lifecycleState: PlatformLifecycleState.PAUSED,
+        kind: EnvironmentKind.SELF_HOSTED_LINUX,
       },
       messages: [
         {
@@ -209,11 +202,9 @@ describe('account-owned ThreadSyncManager', () => {
                     payload: {
                       case: 'mainEnvironmentChanged',
                       value: {
-                        envId: 'platform-main',
+                        envId: 'main',
                         name: 'late account A',
-                        kind: EnvironmentKind.PLATFORM_SANDBOX,
-                        lifecycleState: PlatformLifecycleState.RUNNING,
-                        ready: true,
+                        kind: EnvironmentKind.SELF_HOSTED_LINUX,
                       },
                     },
                   },

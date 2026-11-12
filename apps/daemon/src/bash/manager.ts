@@ -2,8 +2,8 @@ import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  BASH_MAX_TIMEOUT_SECONDS,
   BashStatus,
-  DEVICE_BASH_MAX_TIMEOUT_SECONDS,
   DeviceErrorAction,
   DeviceErrorCode,
   OutputStream,
@@ -507,11 +507,11 @@ export class BashManager {
     if (
       !Number.isSafeInteger(command.timeoutSeconds) ||
       command.timeoutSeconds <= 0 ||
-      command.timeoutSeconds > DEVICE_BASH_MAX_TIMEOUT_SECONDS
+      command.timeoutSeconds > BASH_MAX_TIMEOUT_SECONDS
     ) {
       throw new BashOperationFailure(
         DeviceErrorCode.INVALID_MESSAGE,
-        `Bash timeoutSeconds must be between 1 and ${DEVICE_BASH_MAX_TIMEOUT_SECONDS}.`,
+        `Bash timeoutSeconds must be between 1 and ${BASH_MAX_TIMEOUT_SECONDS}.`,
         DeviceErrorAction.ABORT,
         command.operationId,
         command.requestId,

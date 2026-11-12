@@ -19,7 +19,7 @@ const environmentRowSchema = z.object({
   name: z.string(),
   auto_detect: z.number().int().min(0).max(1),
   settings_version: z.string(),
-  kind: z.enum(['self_hosted_linux', 'self_hosted_macos', 'platform_sandbox']),
+  kind: z.enum(['self_hosted_linux', 'self_hosted_macos']),
   recommended_pwd: z.string(),
   binding_status: z.enum(['pairing', 'active', 'revoked']),
   connection_status: z.enum(['offline', 'online']),
@@ -58,7 +58,7 @@ const environmentRecordSchema = z.object({
   autoDetect: z.boolean(),
   settingsVersion: z.string(),
   favoriteDirectories: z.array(z.string()),
-  kind: z.enum(['self_hosted_linux', 'self_hosted_macos', 'platform_sandbox']),
+  kind: z.enum(['self_hosted_linux', 'self_hosted_macos']),
   recommendedPwd: z.string(),
   bindingStatus: z.enum(['pairing', 'active', 'revoked']),
   connectionStatus: z.enum(['offline', 'online']),
@@ -101,7 +101,7 @@ const maintenanceResponseSchema = z.object({
   maintenanceVersion: z.string(),
 });
 
-export type EnvironmentKind = 'self_hosted_linux' | 'self_hosted_macos' | 'platform_sandbox';
+export type EnvironmentKind = 'self_hosted_linux' | 'self_hosted_macos';
 export type EnvironmentBindingStatus = 'pairing' | 'active' | 'revoked';
 export type EnvironmentConnectionStatus = 'offline' | 'online';
 export type EnvironmentCheckStatus = 'pending' | 'ready' | 'failed';
@@ -267,11 +267,6 @@ export class EnvironmentStore {
     const name = requireText(input.name, 'name', 200);
     const recommendedPwd = requirePosixPath(input.recommendedPwd, 'recommendedPwd');
     const kind = input.kind ?? 'self_hosted_linux';
-    if (kind === 'platform_sandbox')
-      throw new SessionError(
-        'permission_denied',
-        'Platform environments are created only by the platform registry.',
-      );
     return this.#action(
       {
         tenantId,
@@ -590,11 +585,6 @@ export class EnvironmentStore {
             'A revoked environment cannot be paired again.',
           );
         }
-        if (current.kind === 'platform_sandbox')
-          throw new SessionError(
-            'permission_denied',
-            'Platform pairing is managed by its lifecycle controller.',
-          );
         const now = this.#now().toISOString();
         this.pairing.invalidate(envId, now, 'superseded');
         this.database
@@ -679,11 +669,6 @@ export class EnvironmentStore {
       maintenanceResponseSchema,
       () => {
         const environment = this.#ownedRow(tenantId, envId);
-        if (environment.kind === 'platform_sandbox')
-          throw new SessionError(
-            'permission_denied',
-            'Platform environments do not use device maintenance.',
-          );
         if (environment.binding_status !== 'active') {
           throw new SessionError(
             'failed_precondition',

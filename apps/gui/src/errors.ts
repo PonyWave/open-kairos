@@ -16,8 +16,6 @@ const notExecutedBusinessErrors: ReadonlySet<ErrorCode> = new Set([
   ErrorCode.INVALID_ARGUMENT,
   ErrorCode.NOT_FOUND,
   ErrorCode.FAILED_PRECONDITION,
-  ErrorCode.SANDBOX_CAPACITY_EXHAUSTED,
-  ErrorCode.SANDBOX_UNAVAILABLE,
 ]);
 
 const notExecutedRpcCodes: ReadonlySet<Code> = new Set([
@@ -57,15 +55,12 @@ const businessErrors: Partial<Record<ErrorCode, string>> = {
   [ErrorCode.NOT_FOUND]: '请求的记录不存在或已删除。',
   [ErrorCode.FAILED_PRECONDITION]: '当前状态不允许该操作。',
   [ErrorCode.INTERNAL]: 'Server 处理失败。',
-  [ErrorCode.SANDBOX_CAPACITY_EXHAUSTED]: '当前 sandbox 均被占用，暂时无法启动环境，请稍后重试。',
-  [ErrorCode.SANDBOX_UNAVAILABLE]: '平台环境暂时不可用，请核对状态后重试。',
 };
 
 export function formatClientError(error: unknown): string {
   if (error instanceof ConnectError) {
     for (const detail of error.findDetails(ErrorDetailSchema)) {
       const explanation = businessErrors[detail.code];
-      if (detail.code === ErrorCode.SANDBOX_CAPACITY_EXHAUSTED && explanation) return explanation;
       if (detail.message) return `${explanation ?? '操作失败'} ${detail.message}`;
       if (explanation) return explanation;
     }

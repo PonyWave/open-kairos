@@ -22,7 +22,7 @@ export * from './error.js';
 export * from './gen/kairos/device/v1/device_pb.js';
 
 export const DEVICE_PROTOCOL_MAJOR = 1;
-export const DEVICE_BASH_MAX_TIMEOUT_SECONDS = 2_147_483;
+export const BASH_MAX_TIMEOUT_SECONDS = 2_147_483;
 export const DEVICE_SYNC_LIMITS = {
   maxFiles: 256,
   maxEntries: 512,
@@ -184,7 +184,7 @@ function assertOperationStart(start: OperationStart): void {
       assertAbsolutePath(start.action.value.cwd, 'BashAction.cwd');
       if (
         start.action.value.timeoutSeconds === 0 ||
-        start.action.value.timeoutSeconds > DEVICE_BASH_MAX_TIMEOUT_SECONDS
+        start.action.value.timeoutSeconds > BASH_MAX_TIMEOUT_SECONDS
       ) {
         rejectMessage('BashAction.timeout_seconds exceeds the supported range.');
       }

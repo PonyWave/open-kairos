@@ -7,7 +7,7 @@ import type {
   OperationTarget as ProtocolOperationTarget,
 } from '@kairos/contracts/device';
 import {
-  DEVICE_BASH_MAX_TIMEOUT_SECONDS,
+  BASH_MAX_TIMEOUT_SECONDS,
   DEVICE_SYNC_LIMITS,
   DeviceErrorAction,
   DeviceErrorCode,
@@ -488,7 +488,7 @@ function validateAction(
       if (
         !Number.isSafeInteger(action.value.timeoutSeconds) ||
         action.value.timeoutSeconds <= 0 ||
-        action.value.timeoutSeconds > DEVICE_BASH_MAX_TIMEOUT_SECONDS
+        action.value.timeoutSeconds > BASH_MAX_TIMEOUT_SECONDS
       ) {
         throw new DeviceFailure(DeviceErrorCode.INVALID_MESSAGE, 'Bash timeout is invalid.');
       }

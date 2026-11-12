@@ -93,8 +93,6 @@ const runErrorSchema = z.object({
     'permission_denied',
     'version_conflict',
     'action_conflict',
-    'sandbox_capacity_exhausted',
-    'sandbox_unavailable',
     'device_offline',
     'operation_unknown',
     'recap_invalid',
@@ -2968,12 +2966,6 @@ export class SessionStore {
         }
         return { notification: this.getThreadNotification(input.ownerId, input.key), runId: null };
       }
-      if (
-        current.runId !== null &&
-        this.getRunById(current.runId).error?.code === 'sandbox_capacity_exhausted'
-      ) {
-        return { notification: current, runId: current.runId };
-      }
       const replyThread = this.getThread(input.ownerId, current.replyThreadId);
       if (replyThread.threadType !== 'main' && replyThread.threadType !== 'workspace_main') {
         throw new SessionError(
@@ -3241,12 +3233,6 @@ export class SessionStore {
             );
         }
         return { delivery: this.getInteractionDelivery(input.ownerId, input.key), runId: null };
-      }
-      if (
-        current.runId !== null &&
-        this.getRunById(current.runId).error?.code === 'sandbox_capacity_exhausted'
-      ) {
-        return { delivery: current, runId: current.runId };
       }
       const replyThread = this.getThread(input.ownerId, interaction.replyThreadId);
       const run =
@@ -4185,8 +4171,6 @@ export class SessionStore {
         'permission_denied',
         'version_conflict',
         'action_conflict',
-        'sandbox_capacity_exhausted',
-        'sandbox_unavailable',
         'device_offline',
         'operation_unknown',
         'recap_invalid',

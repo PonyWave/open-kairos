@@ -3,7 +3,6 @@ import {
   EnvironmentKind,
   EnvironmentSchema,
   MessageSource,
-  PlatformLifecycleState,
   ThreadSnapshotSchema,
 } from '@kairos/contracts';
 import { describe, expect, it } from 'vitest';
@@ -52,14 +51,13 @@ describe('workbench navigation', () => {
     ).toBe(true);
   });
 
-  it('does not requery conversation previews when only the platform lifecycle changes', () => {
+  it('does not requery conversation previews when only the main environment changes', () => {
     const previous = create(ThreadSnapshotSchema, { thread: { threadId: 'main' } });
     const lifecycle = create(ThreadSnapshotSchema, {
       ...previous,
       mainEnvironment: create(EnvironmentSchema, {
-        envId: 'main-platform',
-        kind: EnvironmentKind.PLATFORM_SANDBOX,
-        lifecycleState: PlatformLifecycleState.PAUSED,
+        envId: 'main',
+        kind: EnvironmentKind.SELF_HOSTED_LINUX,
       }),
     });
     expect(

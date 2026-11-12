@@ -21,7 +21,7 @@ class MemoryStorage implements StorageLike {
   }
 }
 
-describe('new-topic sandbox workspace', () => {
+describe('new-topic workspace drafts', () => {
   it('restores the text of old drafts while discarding obsolete environment choices', () => {
     const storage = new MemoryStorage();
     storage.setItem(

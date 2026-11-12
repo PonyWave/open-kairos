@@ -268,11 +268,6 @@ function AccountSettings({
       </div>
       <fieldset disabled={busy || requests.pending !== null}>
         <div className="settings-field">
-          <span className="settings-label">邮箱</span>
-          <div className="settings-readonly">{identity.email}</div>
-          <span className="settings-help">用于登录。</span>
-        </div>
-        <div className="settings-field">
           <span className="settings-label">头像</span>
           <div className="settings-avatar-row">
             <UserAvatar

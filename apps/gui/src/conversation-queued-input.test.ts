@@ -1,12 +1,10 @@
 import { createRouterTransport } from '@connectrpc/connect';
 import {
   create,
-  EnvironmentKind,
   InputMode,
   InputStatus,
   MessageRole,
   MessageSource,
-  PlatformLifecycleState,
   RunStatus,
   ThreadSnapshotSchema,
 } from '@kairos/contracts';
@@ -21,11 +19,9 @@ import * as sync from './use-thread-sync.js';
 afterEach(() => vi.restoreAllMocks());
 
 function renderConversation({
-  state = PlatformLifecycleState.RUNNING,
   mode = 'full',
   queued = false,
 }: {
-  state?: PlatformLifecycleState;
   mode?: 'compact' | 'full';
   queued?: boolean;
 } = {}): string {
@@ -33,12 +29,6 @@ function renderConversation({
   const noop = () => {};
   const snapshot = create(ThreadSnapshotSchema, {
     thread: { threadId: 'main', title: '主对话' },
-    mainEnvironment: {
-      envId: 'sandbox',
-      kind: EnvironmentKind.PLATFORM_SANDBOX,
-      lifecycleState: state,
-      recommendedPwd: '/workspace',
-    },
     runs: [{ runId: 'run', threadId: 'main', agentId: 'thread', status: RunStatus.QUEUED }],
     messages: [
       {
@@ -116,24 +106,7 @@ function renderConversation({
   );
 }
 
-describe('sandbox startup in the conversation', () => {
-  it('uses the ordinary waiting state for creating and restoring the workspace', () => {
-    const ordinary = renderConversation();
-    expect(ordinary).toContain('aria-label="停止执行"');
-    expect(ordinary).toContain('执行要求');
-    for (const state of [
-      PlatformLifecycleState.STARTING,
-      PlatformLifecycleState.RESUMING,
-      PlatformLifecycleState.PAUSED,
-    ]) {
-      const html = renderConversation({ state });
-      expect(html).toBe(ordinary);
-      expect(html).not.toContain('平台主环境');
-      expect(html).not.toContain('/workspace');
-      expect(html).not.toContain('主环境状态');
-    }
-  });
-
+describe('queued input in the conversation', () => {
   it('shows queued input immediately with compact and full pending indicators', () => {
     const compact = renderConversation({ queued: true, mode: 'compact' });
     expect(compact).toContain('等待中的消息');

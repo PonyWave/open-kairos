@@ -40,13 +40,15 @@ it('rejects startup without identity authentication before creating business dat
 it('serves the versioned health response and rejects unimplemented routes', async () => {
   const server = createServer(openDatabase(':memory:'));
   try {
-    const response = await server.inject({ method: 'GET', url: '/health' });
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      protocol_version: '1.0',
-      service: 'kairos-server',
-      status: 'ok',
-    });
+    for (const url of ['/health', '/api/health']) {
+      const response = await server.inject({ method: 'GET', url });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        protocol_version: '1.0',
+        service: 'kairos-server',
+        status: 'ok',
+      });
+    }
     const unknown = await server.inject({ method: 'POST', url: '/message.send' });
     expect(unknown.statusCode).toBe(404);
   } finally {
@@ -274,7 +276,7 @@ it('keeps history available and records an unpaired main environment before any 
     expect(snapshot.statusCode).toBe(200);
     expect(snapshot.json().snapshot.mainEnvironment).toMatchObject({
       envId: 'main',
-      lifecycleState: 'PLATFORM_LIFECYCLE_STATE_ERROR',
+      statusReason: '主环境当前不可用。',
     });
   } finally {
     await server.close();

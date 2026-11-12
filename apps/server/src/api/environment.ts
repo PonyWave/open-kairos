@@ -48,15 +48,6 @@ function pairingFields(issued: EnvironmentPairingIssue) {
   };
 }
 
-function requireDeviceEnvironment(kind: string): void {
-  if (kind === 'platform_sandbox') {
-    throw new SessionError(
-      'permission_denied',
-      'Platform environments do not use device management operations.',
-    );
-  }
-}
-
 export function registerEnvironmentRoutes(
   router: ConnectRouter,
   options: EnvironmentApiOptions,
@@ -126,7 +117,6 @@ export function registerEnvironmentRoutes(
         if (replay)
           return { clientActionId: request.clientActionId, environment: toEnvironment(replay) };
         const current = options.environments.get(tenantId, request.envId);
-        requireDeviceEnvironment(current.kind);
         if (
           request.recommendedPwd !== undefined &&
           current.connectionStatus === 'online' &&
@@ -153,7 +143,7 @@ export function registerEnvironmentRoutes(
     setFavoriteDirectory: (request, context) =>
       handle(request.clientActionId, () => {
         validateSetFavoriteDirectoryRequest(request);
-        requireDeviceEnvironment(options.environments.get(owner(context), request.envId).kind);
+        options.environments.get(owner(context), request.envId);
         const updated = options.environments.setFavorite({
           tenantId: owner(context),
           clientActionId: request.clientActionId,
@@ -167,7 +157,7 @@ export function registerEnvironmentRoutes(
       handle(undefined, async () => {
         validateListEnvironmentDirectoriesRequest(request);
         const tenantId = owner(context);
-        requireDeviceEnvironment(options.environments.get(tenantId, request.envId).kind);
+        options.environments.get(tenantId, request.envId);
         if (!options.directories)
           throw new SessionError('failed_precondition', 'Device directory access is unavailable.');
         const listed = await options.directories.list(
@@ -229,12 +219,6 @@ export function registerEnvironmentRoutes(
       handle(undefined, () => {
         validateGetEnvironmentDaemonCommandsRequest(request);
         const environment = options.environments.get(owner(context), request.envId);
-        if (environment.kind === 'platform_sandbox') {
-          throw new SessionError(
-            'failed_precondition',
-            'Platform environments do not use device commands.',
-          );
-        }
         if (environment.bindingStatus !== 'active')
           throw new SessionError(
             'failed_precondition',

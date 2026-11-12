@@ -7,7 +7,6 @@ import {
   EnvironmentKind,
   EnvironmentSchema,
   EnvironmentService,
-  PlatformLifecycleState,
 } from '@kairos/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createKairosClients } from './client.js';
@@ -116,22 +115,21 @@ afterEach(() => {
 });
 
 describe('connected devices GUI state', () => {
-  it('keeps platform environments out of device management and local startup commands', async () => {
+  it('keeps non-device environments out of device management and local startup commands', async () => {
     const commands = vi.fn((request) => daemonCommands(request.envId));
-    const platform = create(EnvironmentSchema, {
-      envId: 'platform-main',
-      name: '平台主环境',
-      kind: EnvironmentKind.PLATFORM_SANDBOX,
+    const pending = create(EnvironmentSchema, {
+      envId: 'pending-main',
+      name: '待识别环境',
+      kind: EnvironmentKind.UNSPECIFIED,
       bindingStatus: EnvironmentBindingStatus.ACTIVE,
-      lifecycleState: PlatformLifecycleState.PAUSED,
     });
     const { controller } = fixture({
-      listEnvironments: () => ({ environments: [platform, device()], mainEnvId: platform.envId }),
+      listEnvironments: () => ({ environments: [pending, device()], mainEnvId: pending.envId }),
       getEnvironmentDaemonCommands: commands,
     });
     await controller.reload();
     expect(controller.state.devices.map((environment) => environment.envId)).toEqual(['env-1']);
-    await controller.copyStartCommand(platform, async () => {});
+    await controller.copyStartCommand(pending, async () => {});
     expect(commands).not.toHaveBeenCalled();
   });
   it('does not create a second polling loop when React restarts the controller effect', async () => {

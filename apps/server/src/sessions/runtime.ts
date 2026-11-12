@@ -416,8 +416,7 @@ export class RunCoordinator {
     try {
       this.#environmentRuntime.reserveRun(run);
     } catch (cause) {
-      if (!(cause instanceof SessionError && cause.code === 'sandbox_capacity_exhausted'))
-        this.#options.onError?.(cause);
+      this.#options.onError?.(cause);
       return;
     }
     const controller = new AbortController();
@@ -442,7 +441,6 @@ export class RunCoordinator {
     if (this.#closing) return runId;
     const current = this.store.getInput(input.ownerId, input.inputId);
     if (current.status !== 'queued') return current.consumedRunId ?? runId;
-    if (this.store.getRunById(runId).error?.code === 'sandbox_capacity_exhausted') return runId;
     const active = this.#activeByThread.get(current.threadId);
     if (active?.pendingInputIds.includes(current.inputId)) return active.runId;
     if (active?.rerunAnchorPending) return active.runId;
@@ -1438,7 +1436,6 @@ export class RunCoordinator {
     if (this.#closing || delivery.status === 'consumed') return;
     const run = this.store.getRunById(runId);
     if (isTerminal(run.status)) {
-      if (run.error?.code === 'sandbox_capacity_exhausted') return;
       const interaction = this.store.getInteraction(delivery.ownerId, delivery);
       const reassigned = this.#enqueueDelivery(interaction);
       if (reassigned.runId !== null && reassigned.runId !== runId) {
@@ -1454,7 +1451,6 @@ export class RunCoordinator {
     if (this.#closing || notification.status === 'consumed') return;
     const run = this.store.getRunById(runId);
     if (isTerminal(run.status)) {
-      if (run.error?.code === 'sandbox_capacity_exhausted') return;
       const reassigned = this.store.enqueueThreadNotification({
         ownerId: notification.ownerId,
         key: notification,

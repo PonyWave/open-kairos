@@ -684,15 +684,6 @@ button.title-icon {
   margin: 0 auto;
   padding: 0 var(--gutter) 12px;
 }
-.sandbox-capacity-failure {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 8px 0;
-  color: var(--muted);
-  font-size: 12px;
-}
 .conversation-topic .session-body {
   padding: 16px var(--gutter);
 }
@@ -2502,24 +2493,84 @@ button.dropdown-item {
 .workspace-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin-bottom: 8px;
+  gap: 1px;
+  margin-bottom: 2px;
 }
 
-.workspace-header {
+.workspace-group-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 6px;
-  font-size: 12px;
-  color: var(--muted, #6b7280);
+  gap: 4px;
+  min-height: 34px;
+  padding: 0 6px 0 10px;
+  border-radius: 8px;
+  color: var(--body);
+  font-size: 13px;
+}
+.workspace-group-header:not(.current):hover {
+  background: var(--hover);
+}
+.workspace-group-header.current {
+  color: var(--ink);
+  background: var(--selected);
+  font-weight: 550;
 }
 
-.workspace-name {
+.workspace-main-open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 0;
+  color: inherit;
+  text-align: left;
+}
+.workspace-main-open .workspace-name {
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.workspace-avatar {
+  transition: transform 160ms ease;
+}
+.workspace-main-open:hover .workspace-avatar {
+  transform: scale(1.15) rotate(-6deg);
+}
+.workspace-main-open:active .workspace-avatar {
+  transform: scale(0.95);
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-avatar {
+    transition: none;
+  }
+  .workspace-main-open:hover .workspace-avatar,
+  .workspace-main-open:active .workspace-avatar {
+    transform: none;
+  }
+}
+
+.workspace-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.workspace-group-actions .icon-button {
+  width: 24px;
+  height: 24px;
+}
+.workspace-chevron {
+  transition: transform 160ms ease;
+}
+.workspace-chevron.expanded {
+  transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-chevron {
+    transition: none;
+  }
 }
 
 .workspaces-page {

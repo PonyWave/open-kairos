@@ -103,7 +103,11 @@ const notificationStatuses: ReadonlySet<number> = new Set([
   ThreadNotificationStatus.CONSUMED,
   ThreadNotificationStatus.SUPERSEDED,
 ]);
-const threadTypes: ReadonlySet<number> = new Set([ThreadType.MAIN, ThreadType.TASK]);
+const threadTypes: ReadonlySet<number> = new Set([
+  ThreadType.MAIN,
+  ThreadType.TASK,
+  ThreadType.WORKSPACE_MAIN,
+]);
 const executionModes: ReadonlySet<number> = new Set([
   RunExecutionMode.FOREGROUND,
   RunExecutionMode.BACKGROUND,
@@ -149,8 +153,6 @@ const errorCodes: ReadonlySet<number> = new Set([
   ErrorCode.NOT_FOUND,
   ErrorCode.FAILED_PRECONDITION,
   ErrorCode.INTERNAL,
-  ErrorCode.SANDBOX_CAPACITY_EXHAUSTED,
-  ErrorCode.SANDBOX_UNAVAILABLE,
 ]);
 
 function validateEnum(value: number, known: ReadonlySet<number>, field: string): void {

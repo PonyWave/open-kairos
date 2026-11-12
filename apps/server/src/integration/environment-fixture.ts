@@ -32,7 +32,6 @@ import type {
   EnvironmentOperationGateway,
   EnvironmentOperationRecord,
 } from '../sessions/environment-runtime.js';
-import { SessionError } from '../sessions/errors.js';
 import { SessionStore } from '../sessions/store.js';
 import { openDatabase } from '../storage/database.js';
 import type { WorkspaceResourceSnapshot } from '../workspace/index.js';
@@ -426,20 +425,12 @@ export class ControlledEnvironmentUseGateway implements EnvironmentUseGateway {
   readonly uses = new Map<string, EnvironmentUse>();
   readonly reserved: EnvironmentUse[] = [];
   readonly released: EnvironmentUse[] = [];
-  capacity = 5;
   prepare: ((input: EnvironmentUse & { signal: AbortSignal }) => Promise<void>) | undefined;
 
   constructor(readonly database: DatabaseSync) {}
 
   reserveUse(input: EnvironmentUse): void {
     if (this.uses.has(input.usageId)) return;
-    const environments = new Set([...this.uses.values()].map((use) => use.envId));
-    if (!environments.has(input.envId) && environments.size >= this.capacity) {
-      throw new SessionError(
-        'sandbox_capacity_exhausted',
-        '当前 sandbox 均被占用，暂时无法启动环境，请稍后重试。',
-      );
-    }
     this.uses.set(input.usageId, { ...input });
     this.reserved.push({ ...input });
   }
@@ -692,8 +683,6 @@ export async function startRealEnvironmentServer(
       KAIROS_DEVICE_IDENTITY_PATH: identityPath,
       KAIROS_DAEMON_VERSION: 'agent-integration-test',
     };
-    delete environment.KAIROS_DEVICE_BASH_ENABLED;
-    delete environment.KAIROS_DEVICE_ENV_ID;
     if (issued) {
       const pairing = spawn(
         process.execPath,

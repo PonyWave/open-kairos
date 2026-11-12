@@ -1,51 +1,31 @@
 {
-  "baselineCommit": "f6085f6f896819212b91ca79d64021141b1ecc13",
-  "reason": "open-kairos 单用户本地认证移除邮箱验证码与资料补全流程，新增本地会话引导 BootstrapSession。",
+  "baselineCommit": "d063e3067e1f310f9549a346c7f0474ae1288f94",
+  "reason": "open-kairos 移除平台 sandbox 遗留协议：平台环境种类、平台生命周期状态与 sandbox 错误码。",
   "changes": [
     {
-      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
-      "type": "MESSAGE_NO_DELETE",
-      "message": "Previously present message \"CompleteProfileRequest\" was deleted from file."
+      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
+      "type": "ENUM_NO_DELETE",
+      "message": "Previously present enum \"PlatformLifecycleState\" was deleted from file."
     },
     {
-      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
-      "type": "MESSAGE_NO_DELETE",
-      "message": "Previously present message \"CompleteProfileResponse\" was deleted from file."
+      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
+      "type": "ENUM_VALUE_NO_DELETE",
+      "message": "Previously present enum value \"3\" on enum \"EnvironmentKind\" was deleted."
     },
     {
-      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
-      "type": "MESSAGE_NO_DELETE",
-      "message": "Previously present message \"RequestEmailCodeRequest\" was deleted from file."
+      "path": "packages/contracts/proto/kairos/gui/v1/environment.proto",
+      "type": "FIELD_NO_DELETE",
+      "message": "Previously present field \"30\" with name \"lifecycle_state\" on message \"Environment\" was deleted."
     },
     {
-      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
-      "type": "MESSAGE_NO_DELETE",
-      "message": "Previously present message \"RequestEmailCodeResponse\" was deleted from file."
+      "path": "packages/contracts/proto/kairos/gui/v1/gui.proto",
+      "type": "ENUM_VALUE_NO_DELETE",
+      "message": "Previously present enum value \"14\" on enum \"ErrorCode\" was deleted."
     },
     {
-      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
-      "type": "MESSAGE_NO_DELETE",
-      "message": "Previously present message \"VerifyEmailCodeRequest\" was deleted from file."
-    },
-    {
-      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
-      "type": "MESSAGE_NO_DELETE",
-      "message": "Previously present message \"VerifyEmailCodeResponse\" was deleted from file."
-    },
-    {
-      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
-      "type": "RPC_NO_DELETE",
-      "message": "Previously present RPC \"CompleteProfile\" on service \"AuthService\" was deleted."
-    },
-    {
-      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
-      "type": "RPC_NO_DELETE",
-      "message": "Previously present RPC \"RequestEmailCode\" on service \"AuthService\" was deleted."
-    },
-    {
-      "path": "packages/contracts/proto/kairos/gui/v1/auth.proto",
-      "type": "RPC_NO_DELETE",
-      "message": "Previously present RPC \"VerifyEmailCode\" on service \"AuthService\" was deleted."
+      "path": "packages/contracts/proto/kairos/gui/v1/gui.proto",
+      "type": "ENUM_VALUE_NO_DELETE",
+      "message": "Previously present enum value \"15\" on enum \"ErrorCode\" was deleted."
     }
   ]
 }
