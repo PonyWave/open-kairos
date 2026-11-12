@@ -174,7 +174,7 @@ describe('conversation display settings', () => {
       const html = renderToStaticMarkup(
         createElement(ConversationDisplaySettings, { mode, error: null, onChange: () => {} }),
       );
-      expect(html).toContain('主对话视图');
+      expect(html).toContain('主对话展示模式');
       expect(html).toContain('精简视图');
       expect(html).toContain('完整视图');
       expect(html.match(/<input[^>]*checked=""[^>]*>/)?.[0]).toContain(`value="${mode}"`);

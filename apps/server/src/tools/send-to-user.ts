@@ -53,9 +53,12 @@ export function createSendToUserTool(options: {
       if (
         source.agentId !== 'thread' ||
         source.parentRunId !== null ||
-        thread.threadType !== 'main'
+        (thread.threadType !== 'main' && thread.threadType !== 'workspace_main')
       ) {
-        throw new SessionError('permission_denied', 'send_to_user requires the main root Agent.');
+        throw new SessionError(
+          'permission_denied',
+          'send_to_user requires a main conversation root Agent.',
+        );
       }
       if (currentRun.generation !== source.generation) {
         throw new SessionError('action_conflict', 'The send_to_user execution changed.');

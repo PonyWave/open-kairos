@@ -1814,6 +1814,7 @@ export class RunCoordinator {
           );
         }
       } else if (threadType === 'workspace_main') {
+        tools.push(createSendToUserTool({ store: this.store, source: run }));
         tools.push(...createThreadDelegationTools(delegation));
         tools.push(createWorkspaceListTool(delegation));
         tools.push(

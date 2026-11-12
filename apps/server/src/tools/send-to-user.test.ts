@@ -186,6 +186,52 @@ it('rejects direct task and Subagent execution even when given a persisted call'
   }
 });
 
+it('allows a workspace main root Agent to send its reply', async () => {
+  const database = openDatabase(':memory:');
+  const store = new SessionStore(database);
+  seedTestTenant(database, ownerId);
+  try {
+    const workspace = store.createWorkspace({
+      ownerId,
+      name: 'project-alpha',
+      envId: 'main',
+      path: '/workspace/project-alpha',
+    });
+    const sent = store.sendMessage({
+      ownerId,
+      threadId: workspace.mainThread.threadId,
+      text: 'question',
+      mode: 'follow_up',
+      clientActionId: 'send-ws-question',
+      method: 'SendMessage',
+      parameters: {},
+    });
+    const run = store.getRunById(sent.runId);
+    const call = {
+      id: 'send-ws-final',
+      name: 'send_to_user',
+      arguments: { content: '整理完成。', end_turn: true },
+    };
+    store.appendModelMessage({
+      runId: run.runId,
+      message: { role: 'assistant', content: '', tool_calls: [call] },
+    });
+    const tool = createSendToUserTool({ store, source: run });
+    await expect(
+      tool.execute(await tool.validate(call.arguments), {
+        call,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toEqual({
+      content: JSON.stringify({ status: 'sent', content: '整理完成。', end_turn: true }),
+      status: 'success',
+      endTurn: true,
+    });
+  } finally {
+    database.close();
+  }
+});
+
 it.each(['complete', 'incomplete'] as const)(
   'rejects a final send in a response with another %s tool call',
   async (kind) => {

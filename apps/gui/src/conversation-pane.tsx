@@ -8,6 +8,7 @@ import {
   type SubagentCallView,
   type Thread,
   type ThreadSnapshot,
+  ThreadType,
 } from '@kairos/contracts';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppDialog } from './app-dialog.js';
@@ -128,6 +129,9 @@ export function ConversationPane({
   const isSubagent = variant === 'subagent';
   const isAutomation = variant === 'automation';
   const readOnly = isSubagent || isAutomation;
+  const usesDisplayMode =
+    variant === 'main' ||
+    (variant === 'fullscreen' && thread?.threadType === ThreadType.WORKSPACE_MAIN);
   const agentId = isSubagent ? (subagent?.agentId ?? '') : 'thread';
   const origin: AgentOrigin | null =
     requestedOrigin ??
@@ -267,9 +271,9 @@ export function ConversationPane({
       projectConversationDisplay(
         conversationItems.slice(historyStartIndex),
         snapshot?.runs ?? [],
-        variant === 'main' ? displayMode : 'full',
+        usesDisplayMode ? displayMode : 'full',
       ),
-    [conversationItems, historyStartIndex, snapshot?.runs, variant, displayMode],
+    [conversationItems, historyStartIndex, snapshot?.runs, usesDisplayMode, displayMode],
   );
   const loadEarlierTurns = useCallback((): boolean => {
     if (!hasEarlierTurns) return false;
@@ -286,7 +290,7 @@ export function ConversationPane({
     useConversationScroll(!hidden && snapshot !== null && !isDraft, loadEarlierTurns, {
       key: historyKey,
       startIndex: historyStartIndex,
-      displayMode: variant === 'main' ? displayMode : 'full',
+      displayMode: usesDisplayMode ? displayMode : 'full',
     });
 
   useEffect(() => {
@@ -632,7 +636,7 @@ export function ConversationPane({
       {item.kind === 'pending-agent' ? (
         <PendingAgentCard
           input={item.value}
-          compact={variant === 'main' && displayMode === 'compact'}
+          compact={usesDisplayMode && displayMode === 'compact'}
         />
       ) : item.kind === 'missing-user-reply' ? (
         <div className="missing-user-reply" role="status">
