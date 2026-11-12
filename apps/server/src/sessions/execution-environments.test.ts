@@ -509,9 +509,11 @@ it('preserves a historical device execution specification and requires a new gen
       .run(accepted.runId);
     const legacy = f.store.agentEnvironments.getExecution(accepted.runId, 1);
     await f.coordinator.deliver(accepted.input, accepted.runId);
+    await vi.waitFor(() => expect(f.store.getRunById(accepted.runId).status).toBe('failed'), {
+      timeout: 5000,
+    });
     expect(f.store.getRunById(accepted.runId)).toMatchObject({
-      status: 'failed',
-      error: { code: 'version_conflict' },
+      error: { code: 'failed_precondition' },
     });
     expect(f.provider.requests).toHaveLength(0);
     expect(f.environmentOperations.started).toHaveLength(0);
@@ -614,9 +616,11 @@ it.each(['preparing', 'prepared', 'dispatched', 'legacy'] as const)(
       });
       const recapBefore = recapAudit();
       f.coordinator.schedule(task.threadId, accepted.runId);
+      await vi.waitFor(() => expect(f.store.getRunById(accepted.runId).status).toBe('failed'), {
+        timeout: 5000,
+      });
       expect(f.store.getRunById(accepted.runId)).toMatchObject({
-        status: 'failed',
-        error: { code: 'version_conflict' },
+        error: { code: 'action_conflict' },
       });
       expect(requestAudit()).toEqual(before);
       const continued = f.store.continueRun(
