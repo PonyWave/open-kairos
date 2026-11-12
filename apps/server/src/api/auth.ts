@@ -117,7 +117,8 @@ export function requireStateRequest(
   authentication: GuiAuthentication,
 ): void {
   const origin = context.requestHeader.get('origin') ?? '';
-  if (!isAllowedOrigin(origin, authentication.allowedOrigin)) {
+  const host = context.requestHeader.get('host') ?? '';
+  if (!isAllowedOrigin(origin, authentication.allowedOrigin, host)) {
     throw new AuthError('permission_denied', 'The request Origin is not allowed.');
   }
   const expected = cookieValue(context, csrfCookie) ?? '';
@@ -127,14 +128,13 @@ export function requireStateRequest(
   }
 }
 
-function isAllowedOrigin(origin: string, allowedOrigin: string | null): boolean {
+function isAllowedOrigin(origin: string, allowedOrigin: string | null, host: string): boolean {
   if (allowedOrigin !== null) return origin === allowedOrigin;
   try {
     const url = new URL(origin);
-    return (
-      (url.protocol === 'http:' || url.protocol === 'https:') &&
-      ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname)
-    );
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    if (['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname)) return true;
+    return host !== '' && url.host === host;
   } catch {
     return false;
   }

@@ -148,7 +148,7 @@ kairos-daemon start    # 重新启动
 | `KAIROS_MAIN_WORKSPACE`                                              | 主环境工作目录                  | 启动命令所在目录            |
 | `KAIROS_AUTH_SECRET`                                                 | 认证密钥（至少 32 字符）        | 自动生成并保存到数据目录    |
 | `KAIROS_MODEL_BASE_URL` / `KAIROS_MODEL_ID` / `KAIROS_MODEL_API_KEY` | 平台默认模型接口                | 未配置时不能执行 Agent 任务 |
-| `KAIROS_PUBLIC_ORIGIN`                                               | 通过反向代理暴露时的公开 Origin | 仅接受回环来源              |
+| `KAIROS_PUBLIC_ORIGIN`                                               | 通过反向代理暴露时的公开 Origin | 接受回环与同源来源          |
 
 ## 数据与迁移
 

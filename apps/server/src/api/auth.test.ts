@@ -57,6 +57,62 @@ it('creates the local identity idempotently and bootstraps sessions', () => {
   }
 });
 
+it('allows loopback and same-origin requests by default and rejects foreign origins', async () => {
+  const { database, service } = fixture();
+  try {
+    const csrf = 'test-csrf-token';
+    let origin = 'http://127.0.0.1:4317';
+    let host = '127.0.0.1:4317';
+    const router = createRouterTransport(
+      (connectRouter) => {
+        registerAuthRoutes(connectRouter, {
+          authService: service,
+          allowedOrigin: null,
+          secureCookies: false,
+        });
+      },
+      {
+        transport: {
+          interceptors: [
+            (next) => async (request) => {
+              request.header.set('origin', origin);
+              request.header.set('host', host);
+              request.header.set('cookie', `kairos_csrf=${csrf}`);
+              request.header.set('x-csrf-token', csrf);
+              return next(request);
+            },
+          ],
+        },
+      },
+    );
+    const client = createClient(AuthService, router);
+
+    await expect(client.bootstrapSession({ token: 'invalid-token' })).rejects.toMatchObject({
+      code: 16,
+    });
+
+    origin = 'http://192.168.1.10:4317';
+    host = '192.168.1.10:4317';
+    await expect(client.bootstrapSession({ token: 'invalid-token' })).rejects.toMatchObject({
+      code: 16,
+    });
+
+    origin = 'https://attacker.example.com';
+    host = '192.168.1.10:4317';
+    await expect(client.bootstrapSession({ token: 'invalid-token' })).rejects.toMatchObject({
+      code: 7,
+    });
+
+    origin = 'http://192.168.1.10:4317';
+    host = '192.168.1.10:4317';
+    const session = service.createLocalSession();
+    const bootstrapped = await client.bootstrapSession({ token: session.token });
+    expect(bootstrapped.identity?.userId).toBe(service.ensureLocalIdentity().userId);
+  } finally {
+    database.close();
+  }
+});
+
 it('serves bootstrap, current identity and logout over Connect with cookies', async () => {
   const { database, service } = fixture();
   try {
