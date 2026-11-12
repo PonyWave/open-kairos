@@ -1119,6 +1119,9 @@ it('requires a new binding and fresh readiness after the main environment is re-
       envId: mainEnvironment.envId,
       pairingCredential: initial.pairingCredential,
       reportedCapabilities: capabilities,
+      deviceName: 'gateway-device',
+      homeDirectory: '/workspace',
+      os: 'linux',
     });
     environments.markConnected({
       ...first,
@@ -1174,6 +1177,9 @@ it('requires a new binding and fresh readiness after the main environment is re-
       envId: mainEnvironment.envId,
       pairingCredential: restored.pairingCredential,
       reportedCapabilities: capabilities,
+      deviceName: 'gateway-device',
+      homeDirectory: '/workspace',
+      os: 'linux',
     });
     expect(second.deviceBindingId).not.toBe(first.deviceBindingId);
     await expect(

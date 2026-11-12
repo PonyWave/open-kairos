@@ -135,8 +135,8 @@ it('runs environment RPCs with real sessions and independently verifies SQLite s
     expect(secondList.json().environments).toHaveLength(1);
     expect(secondList.json().environments[0]).toMatchObject({
       envId: secondList.json().mainEnvId,
-      kind: 'ENVIRONMENT_KIND_SELF_HOSTED_LINUX',
     });
+    expect(secondList.json().environments[0].kind).toBeUndefined();
     expect(secondList.json().mainEnvId).not.toBe(
       (await first.call('EnvironmentService', 'ListEnvironments', {})).json().mainEnvId,
     );

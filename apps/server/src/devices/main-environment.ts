@@ -73,6 +73,9 @@ export function ensureMainEnvironment(
       timestamp,
       timestamp,
     );
+  database
+    .prepare('UPDATE environments SET auto_detect = 1 WHERE env_id = ?')
+    .run(configuration.envId);
   return configuration.envId;
 }
 

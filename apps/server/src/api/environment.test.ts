@@ -333,7 +333,7 @@ describe('Environment Connect API', () => {
     expect(firstList.mainEnvId).toBeTruthy();
     expect(
       firstList.environments.find((environment) => environment.envId === firstList.mainEnvId)?.kind,
-    ).toBe(EnvironmentKind.SELF_HOSTED_LINUX);
+    ).toBe(EnvironmentKind.UNSPECIFIED);
     expect((await second.listEnvironments({})).environments).toHaveLength(1);
     await expect(second.getEnvironment({ envId })).rejects.toMatchObject({
       code: Code.PermissionDenied,

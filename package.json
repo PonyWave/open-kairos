@@ -10,6 +10,7 @@
   },
   "scripts": {
     "dev": "pnpm build:packages && pnpm --parallel --filter @kairos/contracts --filter @kairos/agent-core --filter @kairos/server --filter @kairos/gui dev",
+    "start": "node apps/server/dist/main.js",
     "dev:server": "pnpm build:packages && pnpm --filter @kairos/server dev",
     "dev:gui": "pnpm build:packages && pnpm --filter @kairos/gui dev",
     "dev:daemon": "pnpm build:packages && pnpm --filter @kairos/daemon dev",

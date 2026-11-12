@@ -1,8 +1,10 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { fileURLToPath } from 'node:url';
 import { fastifyConnectPlugin } from '@connectrpc/connect-fastify';
 import Fastify from 'fastify';
 import type { GuiAuthentication } from './api/auth.js';
 import { registerGuiRoutes } from './api/connect.js';
+import { registerGuiStatic } from './api/gui-static.js';
 import { registerHealthRoute } from './api/health.js';
 import { BashLogReader } from './api/logs.js';
 import { AuthService } from './auth/service.js';
@@ -168,6 +170,13 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
     request.headers['x-kairos-source-address'] = request.ip;
   });
   registerHealthRoute(server, database);
+  const guiServed = registerGuiStatic(
+    server,
+    fileURLToPath(new URL('../../gui/dist', import.meta.url)),
+  );
+  if (!guiServed) {
+    server.log.warn('GUI build output is missing; run pnpm build to serve the local web page.');
+  }
   const deviceInstaller = new DeviceInstaller(
     options.deviceReleaseDirectory ?? serverConfig.daemonReleaseDirectory,
     () =>
@@ -175,47 +184,53 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
       `http://127.0.0.1:${(server.server.address() as { port: number } | null)?.port ?? serverConfig.port}`,
   );
   deviceInstaller.register(server);
-  void server.register(fastifyConnectPlugin, {
-    routes: (router) =>
-      registerGuiRoutes(router, {
-        store,
-        settings,
-        coordinator,
-        automations,
-        operations,
-        logs,
-        modelStatus:
-          options.modelStatus ??
-          (options.model
-            ? {
-                providerId: options.model.providerId,
-                modelId: options.model.modelId,
-                contextCapacity: options.model.contextWindowTokens,
-                outputReserve: options.model.outputReserveTokens,
-                available: true,
-                configurationErrors: [],
-              }
-            : unavailableModel),
-        authentication,
-        deviceChannel,
+  const guiRoutes = (router: Parameters<typeof registerGuiRoutes>[0]) =>
+    registerGuiRoutes(router, {
+      store,
+      settings,
+      coordinator,
+      automations,
+      operations,
+      logs,
+      modelStatus:
+        options.modelStatus ??
+        (options.model
+          ? {
+              providerId: options.model.providerId,
+              modelId: options.model.modelId,
+              contextCapacity: options.model.contextWindowTokens,
+              outputReserve: options.model.outputReserveTokens,
+              available: true,
+              configurationErrors: [],
+            }
+          : unavailableModel),
+      authentication,
+      deviceChannel,
+      environments,
+      environmentDirectories: new EnvironmentDirectories(
         environments,
-        environmentDirectories: new EnvironmentDirectories(
-          environments,
-          deviceChannel,
-          options.now,
-          (error) => server.log.error(error),
-        ),
-        deviceInstaller,
-        ...(options.maxEventQueue ? { maxEventQueue: options.maxEventQueue } : {}),
-        maxEventBytes: maxRpcBytes,
-        mainEnvironment,
-        isMainEnvironmentReady: (tenantId) =>
-          isMainEnvironmentReady(environments, tenantId, mainEnvironment),
-      }),
+        deviceChannel,
+        options.now,
+        (error) => server.log.error(error),
+      ),
+      deviceInstaller,
+      ...(options.maxEventQueue ? { maxEventQueue: options.maxEventQueue } : {}),
+      maxEventBytes: maxRpcBytes,
+      mainEnvironment,
+      isMainEnvironmentReady: (tenantId) =>
+        isMainEnvironmentReady(environments, tenantId, mainEnvironment),
+    });
+  const connectOptions = {
     shutdownTimeoutMs: 5000,
     readMaxBytes: maxRpcBytes,
     writeMaxBytes: maxRpcBytes,
     requireConnectProtocolHeader: true,
+  };
+  void server.register(fastifyConnectPlugin, { routes: guiRoutes, ...connectOptions });
+  void server.register(fastifyConnectPlugin, {
+    prefix: '/api',
+    routes: guiRoutes,
+    ...connectOptions,
   });
   registerDeviceWebSocket(server, deviceChannel);
   const startup = Promise.resolve().then(() => {

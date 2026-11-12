@@ -5,6 +5,7 @@ import { createServer } from './app.js';
 import { AuthService } from './auth/service.js';
 import { AuthStore } from './auth/store.js';
 import { readServerConfig } from './config.js';
+import { startEmbeddedDaemon } from './embedded-daemon.js';
 import { SessionStore } from './sessions/store.js';
 import { openDatabase } from './storage/database.js';
 
@@ -58,13 +59,15 @@ const authService = new AuthService(new AuthStore(database), {
   secret: authSecret,
   createMainThread: (tenantId) => sessionStore.getOrCreateMainThread(tenantId),
 });
-authService.ensureLocalIdentity();
+const localIdentity = authService.ensureLocalIdentity();
 const localSession = authService.createLocalSession();
 
 let closing = false;
+const shutdownHandlers: Array<() => Promise<void>> = [];
 async function shutdown() {
   if (closing) return;
   closing = true;
+  for (const handler of shutdownHandlers.splice(0).reverse()) await handler();
   await server.close();
 }
 
@@ -78,11 +81,23 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 
 try {
-  await server.listen({ host: config.host, port: config.port });
+  const port = process.env.KAIROS_PORT === undefined ? 0 : config.port;
+  await server.listen({ host: config.host, port });
   const address = server.server.address();
-  const port = typeof address === 'object' && address !== null ? address.port : config.port;
+  const actualPort = typeof address === 'object' && address !== null ? address.port : config.port;
+  const embeddedDaemon = await startEmbeddedDaemon({
+    database,
+    tenantId: localIdentity.tenantId,
+    mainEnvironment: config.mainEnvironment,
+    port: actualPort,
+    dataDirectory: config.dataDirectory,
+    onError: (error) => server.log.error(error),
+  });
   const hostForUrl = config.host.includes(':') ? `[${config.host}]` : config.host;
-  console.log(`open-kairos 已启动：http://${hostForUrl}:${port}/#token=${localSession.token}`);
+  console.log(
+    `open-kairos 已启动：http://${hostForUrl}:${actualPort}/#token=${localSession.token}`,
+  );
+  shutdownHandlers.push(() => embeddedDaemon.stop());
 } catch (error) {
   server.log.error(error);
   await shutdown();
