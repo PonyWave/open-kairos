@@ -131,6 +131,8 @@ class FakeOperations implements EnvironmentOperationGateway {
   readonly #operations = new Map<string, EnvironmentOperationRecord>();
   failDirectory = false;
   deferBash = false;
+  truncateBashOutput = false;
+  agentsMdPaths = new Set<string>();
   deferWrite = false;
   deferDirectory = false;
   deferImage = false;
@@ -222,6 +224,9 @@ class FakeOperations implements EnvironmentOperationGateway {
     const data = new TextEncoder().encode('remote output\n');
     const sliced = data.slice(Number(input.offset), Number(input.offset) + input.limit);
     const nextOffset = input.offset + BigInt(sliced.byteLength);
+    if (this.truncateBashOutput) {
+      return { data: sliced, nextOffset, outputComplete: false, outputGap: true };
+    }
     return {
       data: sliced,
       nextOffset,
@@ -256,6 +261,9 @@ class FakeOperations implements EnvironmentOperationGateway {
       };
     }
     if (action.case === 'read') {
+      if (action.value.path.endsWith('/AGENTS.md') && !this.agentsMdPaths.has(action.value.path)) {
+        return { case: 'error', value: { code: 'file_not_found', message: 'File not found.' } };
+      }
       return {
         case: 'read',
         value: {
@@ -608,6 +616,7 @@ it('uses the main alias only at the model boundary and keeps real audit routing'
   expect(JSON.stringify(catalog)).not.toContain(sandboxId);
   expect(runtime.resolveEnvironmentIds(ownerId, ['main', 'env-1'])).toEqual([sandboxId, 'env-1']);
 
+  operations.agentsMdPaths.add('/workspace/AGENTS.md');
   const result = await runtime.execute(
     run,
     { case: 'read', value: { path: 'AGENTS.md', cwd: '' } },
@@ -769,6 +778,70 @@ it('gives all Agents execution tools and loads main and task resources from the 
   expect(
     store.agentEnvironments.requirePolicy(task.thread.threadId, 'thread').current.resourceVersion,
   ).toMatch(/^[a-f0-9]{64}$/);
+});
+
+it('reminds once about a nested AGENTS.md after writes in its directory tree', async () => {
+  const provider = new ScriptedProvider([
+    response('', [
+      {
+        id: 'write-1',
+        name: 'write',
+        arguments: { env_id: 'env-1', path: 'src/app.ts', content: 'one' },
+      },
+    ]),
+    response('', [
+      {
+        id: 'write-2',
+        name: 'write',
+        arguments: { env_id: 'env-1', path: 'src/lib.ts', content: 'two' },
+      },
+    ]),
+    response('done'),
+  ]);
+  const { store, coordinator, operations } = await fixture(provider);
+  operations.agentsMdPaths.add('/srv/one/src/AGENTS.md');
+  const task = store.createThread(
+    action('CreateThread', 'agents-md-task', {
+      title: 'agents-md',
+      initialText: 'agents-md',
+      initialMode: 'follow_up',
+      environmentPolicy: policy(),
+    }),
+  );
+  await coordinator.deliver(task.input, task.runId);
+  await waitStatus(store, task.runId, 'completed');
+  const results = store
+    .listContext(ownerId, task.thread.threadId, 'thread')
+    .filter((message) => message.message.role === 'tool' && message.message.tool_name === 'write');
+  expect(results).toHaveLength(2);
+  expect(results[0]?.message.content).toContain('agents_md_hint');
+  expect(results[0]?.message.content).toContain('/srv/one/src/AGENTS.md');
+  expect(results[1]?.message.content).not.toContain('agents_md_hint');
+});
+
+it('adds a read_output hint when the bash output preview is truncated', async () => {
+  const provider = new ScriptedProvider([
+    response('', [{ id: 'bash-1', name: 'bash', arguments: { env_id: 'env-1', command: 'pwd' } }]),
+    response('done'),
+  ]);
+  const { store, coordinator, operations } = await fixture(provider);
+  operations.truncateBashOutput = true;
+  const task = store.createThread(
+    action('CreateThread', 'truncated-bash-task', {
+      title: 'truncated',
+      initialText: 'truncated',
+      initialMode: 'follow_up',
+      environmentPolicy: policy(),
+    }),
+  );
+  await coordinator.deliver(task.input, task.runId);
+  await waitStatus(store, task.runId, 'completed');
+  const bashResult = store
+    .listContext(ownerId, task.thread.threadId, 'thread')
+    .find((message) => message.message.role === 'tool' && message.message.tool_name === 'bash');
+  expect(bashResult?.message.content).toContain('The output preview is truncated');
+  expect(bashResult?.message.content).toContain('read_output');
+  expect(bashResult?.message.content).toContain('output_gap');
 });
 
 it('routes remote operations by binding and preserves cwd and output authorization', async () => {

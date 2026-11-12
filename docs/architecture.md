@@ -35,6 +35,8 @@ Server 首次启动时自动注册主环境：写入环境记录、完成设备�
 
 全部 Agent 的 `AGENTS.md` 与 `.agents/skills/<name>/SKILL.md` 资源快照固定从主环境根目录读取，保存在绑定历史快照中，不随工作空间设备变化。Agent 用文件工具读取 skill 内容时显式传 `env_id=main`。
 
+`write` 与 `edit` 在目标环境执行成功后，Server 探测目标文件目录链上的 `AGENTS.md`（最多 5 级，主环境工作区根目录除外），发现时在工具结果中附加 `agents_md_hint` 提醒；同一执行内已提醒过的路径不再重复。`<agent-execution-environment>` JSON 记录 `started_at`（对话创建时间）；需要精确当前时间时在 bash 中执行 `date`。
+
 ## 4. 对话层级与通知
 
 | Thread 类型   | 数量           | 创建方式                                            |

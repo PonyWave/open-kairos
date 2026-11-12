@@ -180,6 +180,7 @@ export class AgentEnvironmentRuntime {
   readonly operations: EnvironmentOperationGateway;
   readonly #environmentUse: EnvironmentUseGateway;
   readonly #runUses = new Map<string, EnvironmentUse>();
+  readonly #agentsMdReminded = new Map<string, Set<string>>();
   readonly #createId: () => string;
   readonly #now: () => Date;
   readonly #bashDefaultTimeoutSeconds: number;
@@ -633,6 +634,53 @@ export class AgentEnvironmentRuntime {
     if (!use) return;
     this.#environmentUse.releaseUse(use);
     this.#runUses.delete(key);
+    this.#agentsMdReminded.delete(key);
+  }
+
+  async #agentsMdReminder(
+    run: RunRecord,
+    envId: string,
+    bindingVersion: number,
+    filePath: string,
+    workspaceRoot: string,
+    signal: AbortSignal,
+  ): Promise<string | undefined> {
+    const mainEnv = this.store.agentEnvironments.mainEnvironmentIdFor(run.ownerId);
+    const dedupKey = `run:${run.runId}:${run.generation}`;
+    const reminded = this.#agentsMdReminded.get(dedupKey) ?? new Set<string>();
+    const found: string[] = [];
+    let dir = posix.dirname(filePath);
+    for (let depth = 0; depth < 5; depth += 1) {
+      const alreadyLoaded = envId === mainEnv && dir === workspaceRoot;
+      const probePath = posix.join(dir, 'AGENTS.md');
+      if (!alreadyLoaded && !reminded.has(probePath)) {
+        const probe = await this.#startAndWait({
+          operationId: this.#createId(),
+          tenantId: run.ownerId,
+          envId,
+          bindingVersion: BigInt(bindingVersion),
+          action: {
+            case: 'read',
+            value: { path: probePath, cwd: workspaceRoot, offset: 1, limit: 1 },
+          },
+          signal,
+          expiresAt: new Date(this.#now().getTime() + 30_000),
+        }).catch(() => undefined);
+        if (
+          probe !== undefined &&
+          terminal(probe) === OperationStatus.COMPLETED &&
+          outcomeCase(probe) === 'read'
+        ) {
+          found.push(probePath);
+          reminded.add(probePath);
+        }
+      }
+      if (dir === workspaceRoot || dir === posix.dirname(dir)) break;
+      dir = posix.dirname(dir);
+    }
+    if (found.length === 0) return undefined;
+    this.#agentsMdReminded.set(dedupKey, reminded);
+    return `An AGENTS.md applies to this file: ${found.join(', ')}. Read it before making further changes in that directory tree.`;
   }
 
   reload(
@@ -966,8 +1014,8 @@ export class AgentEnvironmentRuntime {
     const defaultEnv = specification?.defaultEnv ?? policy.defaultEnv;
     const defaultPwd = specification?.defaultPwd ?? policy.defaultPwd;
     const instructions = [
-      'All Agents load AGENTS.md and Skills from the main environment workspace. Omitting env_id executes a file or command tool in the main environment. The main environment env_id and name are both main. Optional env_id selects an authorized target for that call only and does not change subsequent calls or loaded instructions. Relative paths use the main environment workspace in the main environment and the validated recommended directory in another environment. Task Threads and Subagents inherit or narrow the caller authorization. Read project rules explicitly when working in another environment.',
-      `<agent-execution-environment>${jsonStringify({ allowed_env: effectiveAllowed.map((envId) => this.#modelEnvId(ownerId, envId)), main_env: defaultEnv ? this.#modelEnvId(ownerId, defaultEnv) : null, workspace: defaultPwd, resource_version: specification?.resourceVersion ?? binding.resourceVersion, role })}</agent-execution-environment>`,
+      'All Agents load AGENTS.md and Skills from the main environment workspace. Omitting env_id executes a file or command tool in the main environment. The main environment env_id and name are both main. Optional env_id selects an authorized target for that call only and does not change subsequent calls or loaded instructions. Relative paths use the main environment workspace in the main environment and the validated recommended directory in another environment. Task Threads and Subagents inherit or narrow the caller authorization. Read project rules explicitly when working in another environment. The environment JSON records the conversation start time; run date in bash when precise current time matters.',
+      `<agent-execution-environment>${jsonStringify({ allowed_env: effectiveAllowed.map((envId) => this.#modelEnvId(ownerId, envId)), main_env: defaultEnv ? this.#modelEnvId(ownerId, defaultEnv) : null, workspace: defaultPwd, resource_version: specification?.resourceVersion ?? binding.resourceVersion, role, started_at: thread.createdAt })}</agent-execution-environment>`,
     ];
     if (role === 'main_agent')
       instructions.push(
@@ -1116,7 +1164,24 @@ export class AgentEnvironmentRuntime {
             (action.case === 'bash' ? action.value.timeoutSeconds + 30 : 30) * 1000,
         ),
       });
-      return await this.#toolResult(run, policy.bindingVersion, operation);
+      const result = await this.#toolResult(run, policy.bindingVersion, operation);
+      const writtenPath = 'path' in resolvedAction.value ? resolvedAction.value.path : undefined;
+      if (
+        (action.case === 'write' || action.case === 'edit') &&
+        writtenPath !== undefined &&
+        terminal(operation) === OperationStatus.COMPLETED
+      ) {
+        const reminder = await this.#agentsMdReminder(
+          run,
+          envId,
+          policy.bindingVersion,
+          writtenPath,
+          cwd,
+          signal,
+        );
+        if (reminder !== undefined) return withResultHint(result, reminder);
+      }
+      return result;
     } catch (error) {
       if (signal.aborted && remoteStarted) {
         operation = await this.#cancel(run.ownerId, operationId, 'The Agent Run was cancelled.');
@@ -1521,10 +1586,16 @@ export class AgentEnvironmentRuntime {
       return jsonStringify({ ...base, error: 'Environment operation did not complete.' });
     }
     if (operation.action.case === 'read') {
+      const read = readOutcomeSchema.parse(outcomeValue(operation, 'read'));
+      const hint =
+        read.hasMore || read.truncated
+          ? `More lines are available; call read again with offset=${read.nextOffset ?? read.endLine + 1} to continue.`
+          : undefined;
       return jsonStringify({
         ...base,
         cwd: operation.action.value.cwd,
-        outcome: readOutcomeSchema.parse(outcomeValue(operation, 'read')),
+        outcome: read,
+        ...(hint === undefined ? {} : { hint }),
       });
     }
     if (operation.action.case === 'write') {
@@ -1554,6 +1625,16 @@ export class AgentEnvironmentRuntime {
       offset: 0n,
       limit: this.#bashPreviewBytes,
     });
+    const hintParts: string[] = [];
+    if (!preview.outputComplete) {
+      hintParts.push(
+        'The output preview is truncated; continue reading with read_output using this operation_id and offset=next_offset until output_complete is true.',
+      );
+    }
+    if (preview.outputGap) {
+      hintParts.push('Some output could not be recovered (output_gap).');
+    }
+    const hint = hintParts.length === 0 ? undefined : hintParts.join(' ');
     return jsonStringify({
       ...base,
       cwd: operation.action.value.cwd,
@@ -1562,6 +1643,7 @@ export class AgentEnvironmentRuntime {
       next_offset: preview.nextOffset.toString(),
       output_complete: preview.outputComplete,
       output_gap: preview.outputGap,
+      ...(hint === undefined ? {} : { hint }),
     });
   }
 }
@@ -1700,6 +1782,26 @@ function outcomeValue(operation: EnvironmentOperationRecord, expected: string): 
     return outcome.value;
   }
   return outcome;
+}
+
+function outcomeCase(operation: EnvironmentOperationRecord): string | undefined {
+  const outcome = operation.outcome;
+  if (typeof outcome === 'object' && outcome !== null && 'case' in outcome) {
+    return String(outcome.case);
+  }
+  return undefined;
+}
+
+function withResultHint(result: ToolExecutionResult, hint: string): ToolExecutionResult {
+  try {
+    const parsed: unknown = JSON.parse(result.content);
+    if (typeof parsed === 'object' && parsed !== null) {
+      return { ...result, content: jsonStringify({ ...parsed, agents_md_hint: hint }) };
+    }
+  } catch {
+    // Non-JSON tool results cannot carry a structured hint.
+  }
+  return result;
 }
 
 function remoteSnapshot(
