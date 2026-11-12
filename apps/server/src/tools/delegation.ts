@@ -26,6 +26,7 @@ const threadCallInputSchema = z
     title: z.string().min(1).max(200).optional(),
     prompt: z.string().min(1).max(100_000),
     mode: z.enum(['steer', 'follow_up']).default('follow_up'),
+    workspace_id: z.string().min(1).max(200).optional(),
     ...optionalEnvironmentPolicySchema.shape,
   })
   .strict();
@@ -73,13 +74,14 @@ export function createThreadDelegationTools(
       concurrent: true,
       validate: (value) => threadListInputSchema.parse(value),
       execute: async (input) => {
-        assertMainSource(options);
+        const scope = assertThreadToolSource(options);
         const limit = input.limit ?? 50;
         const threads = options.store.listThreads(
           options.source.ownerId,
           BigInt(input.cursor ?? '0'),
           limit + 1,
           'task',
+          scope.workspaceId,
         );
         const page = threads.slice(0, limit);
         return jsonResult({
@@ -87,6 +89,7 @@ export function createThreadDelegationTools(
             thread_id: thread.threadId,
             title: thread.title,
             thread_type: thread.threadType,
+            workspace_id: thread.workspaceId ?? null,
             environment_policy: thread.environmentPolicy
               ? {
                   ...environmentPolicyJson(thread.environmentPolicy, options.projectEnvironmentIds),
@@ -131,16 +134,16 @@ export function createThreadDelegationTools(
         const input = threadCallInputSchema.parse(value);
         const creating = input.thread_id === undefined || input.thread_id.length === 0;
         const policy = environmentPolicyInput(input, options.resolveEnvironmentIds);
-        if (!creating && policy) {
+        if (!creating && (policy || input.workspace_id !== undefined)) {
           throw new SessionError(
             'invalid_argument',
-            'An existing Thread call cannot change its environment policy.',
+            'An existing Thread call cannot change its environment policy or workspace.',
           );
         }
         return input;
       },
       execute: async (input, { call }) => {
-        assertMainSource(options);
+        assertThreadToolSource(options);
         if (input.thread_id === options.source.threadId) {
           throw new SessionError('failed_precondition', 'A Thread cannot call itself.');
         }
@@ -154,6 +157,7 @@ export function createThreadDelegationTools(
           targetThreadId: input.thread_id ?? '',
           ...(input.title === undefined ? {} : { title: input.title }),
           ...(environmentPolicy ? { environmentPolicy } : {}),
+          ...(input.workspace_id === undefined ? {} : { workspaceId: input.workspace_id }),
           prompt: input.prompt,
           mode: input.mode,
         });
@@ -175,7 +179,7 @@ export function createThreadDelegationTools(
       concurrent: true,
       validate: (value) => interactionReadInputSchema.parse(value),
       execute: async (input, { signal }) => {
-        assertMainSource(options);
+        assertThreadToolSource(options);
         const interaction = managedInteraction(options, input.tool_call_id, 'thread_call');
         if (input.wait_ms !== undefined && !isTerminal(interaction.status)) {
           await options.waitForInteraction(interaction, input.wait_ms, signal);
@@ -191,7 +195,7 @@ export function createThreadDelegationTools(
       concurrent: true,
       validate: (value) => interactionCancelInputSchema.parse(value),
       execute: async (input) => {
-        assertMainSource(options);
+        assertThreadToolSource(options);
         const interaction = managedInteraction(options, input.tool_call_id, 'thread_call');
         const cancelled = await options.cancelInteraction(
           interaction,
@@ -319,13 +323,17 @@ function interactionResult(
   };
 }
 
-function assertMainSource(options: DelegationToolOptions): void {
+function assertThreadToolSource(options: DelegationToolOptions): { workspaceId: string | null } {
   assertPersistentSource(options);
-  if (
-    options.store.getThread(options.source.ownerId, options.source.threadId).threadType !== 'main'
-  ) {
-    throw new SessionError('permission_denied', 'Thread tools require the main Thread root Agent.');
+  const thread = options.store.getThread(options.source.ownerId, options.source.threadId);
+  if (thread.threadType === 'main') return { workspaceId: null };
+  if (thread.threadType === 'workspace_main' && thread.workspaceId) {
+    return { workspaceId: thread.workspaceId };
   }
+  throw new SessionError(
+    'permission_denied',
+    'Thread tools require a main or workspace main root Agent.',
+  );
 }
 
 function assertPersistentSource(options: DelegationToolOptions): void {
@@ -343,4 +351,34 @@ function isTerminal(status: RunStatus): boolean {
 
 function jsonResult(value: unknown): { content: string } {
   return { content: JSON.stringify(value) };
+}
+
+const workspaceListInputSchema = z.object({}).strict();
+
+export function createWorkspaceListTool(
+  options: DelegationToolOptions,
+): AgentTool<z.infer<typeof workspaceListInputSchema>> {
+  return {
+    name: 'workspace_list',
+    description:
+      'List workspaces available to this tenant. Each workspace pins a device and a working directory as the default execution target for its Threads, and has its own workspace main conversation. Use workspace_id when creating a task Thread in a workspace with thread_call, or main_thread_id to talk to the workspace main.',
+    parameters: { type: 'object', additionalProperties: false, properties: {} },
+    concurrent: true,
+    validate: (value) => workspaceListInputSchema.parse(value),
+    execute: async () => {
+      assertThreadToolSource(options);
+      const workspaces = options.store.listWorkspaces(options.source.ownerId);
+      return jsonResult({
+        workspaces: workspaces.map((workspace) => ({
+          workspace_id: workspace.workspaceId,
+          name: workspace.name,
+          env_id: options.projectEnvironmentIds?.([workspace.envId])[0] ?? workspace.envId,
+          path: workspace.path,
+          main_thread_id:
+            options.store.workspaceMainThreadId(options.source.ownerId, workspace.workspaceId) ??
+            null,
+        })),
+      });
+    },
+  };
 }

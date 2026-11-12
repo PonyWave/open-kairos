@@ -217,9 +217,10 @@ export class AgentEnvironmentStore {
     policy?: EnvironmentPolicyInput | undefined;
     parentRun?: RunRecord | undefined;
     delegation?: DelegationKey | undefined;
+    workspace?: { envId: string; path: string } | undefined;
   }): AgentEnvironmentPolicyState {
     const parent = input.parentRun ? this.captureExecution(input.parentRun) : undefined;
-    const policy = this.#normalizePolicy(input.ownerId, input.policy, parent);
+    const policy = this.#normalizePolicy(input.ownerId, input.policy, parent, input.workspace);
     if (this.getPolicy(input.threadId, input.agentId)) {
       throw new SessionError('action_conflict', 'The Agent environment policy already exists.');
     }
@@ -740,11 +741,14 @@ export class AgentEnvironmentStore {
   #normalizePolicy(
     ownerId: string,
     requested: EnvironmentPolicyInput | undefined,
-    parent: { allowedEnv: readonly string[] | null } | undefined,
+    parent:
+      | { allowedEnv: readonly string[] | null; defaultEnv: string; defaultPwd: string }
+      | undefined,
+    workspace?: { envId: string; path: string } | undefined,
   ): { allowedEnv: readonly string[] | null; defaultEnv: string; defaultPwd: string } {
     ensureMainEnvironment(this.database, ownerId, this.#mainEnvironment, this.#now());
-    const defaultEnv = this.mainEnvironmentIdFor(ownerId);
-    const defaultPwd = this.#mainEnvironment.workspace;
+    const defaultEnv = parent?.defaultEnv ?? workspace?.envId ?? this.mainEnvironmentIdFor(ownerId);
+    const defaultPwd = parent?.defaultPwd ?? workspace?.path ?? this.#mainEnvironment.workspace;
     const requestedScope = requested?.allowedEnv ?? parent?.allowedEnv ?? null;
     if (
       requested !== undefined &&

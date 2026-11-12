@@ -24,6 +24,7 @@ const targetSchema = z.object({
   kind: z.enum(['main', 'existing_thread', 'new_task', 'new_automation_only']),
   threadId: z.string().optional(),
   environmentPolicy: z.object({ allowedEnv: z.array(z.string()).readonly() }).optional(),
+  workspaceId: z.string().optional(),
 });
 const runErrorSchema = z.object({
   code: z.enum([
@@ -98,6 +99,7 @@ const automationRowSchema = z.object({
   run_at: z.string().nullable(),
   target_kind: z.enum(['main', 'existing_thread', 'new_task', 'new_automation_only']),
   target_thread_id: z.string().nullable(),
+  workspace_id: z.string().nullable(),
   environment_policy_json: z.string().nullable(),
   enabled: z.number().int().min(0).max(1),
   version: z.number().int().positive(),
@@ -188,9 +190,9 @@ export class AutomationStore {
           .prepare(
             `INSERT INTO automations(
               schedule_id, owner_id, name, prompt, schedule_kind, cron_expression, time_zone,
-              run_at, target_kind, target_thread_id, environment_policy_json, enabled, version,
+              run_at, target_kind, target_thread_id, workspace_id, environment_policy_json, enabled, version,
               cursor_at, next_fire_at, created_at, updated_at, deleted_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NULL)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NULL)`,
           )
           .run(
             scheduleId,
@@ -203,6 +205,7 @@ export class AutomationStore {
             schedule.kind === 'once' ? schedule.runAt : null,
             target.kind,
             target.threadId ?? null,
+            target.workspaceId ?? null,
             target.environmentPolicy ? JSON.stringify(target.environmentPolicy) : null,
             enabled ? 1 : 0,
             cursorAt,
@@ -628,6 +631,7 @@ export class AutomationStore {
           title: automation.name,
           prompt: automation.prompt,
           environmentPolicy: automation.target.environmentPolicy,
+          workspaceId: automation.target.workspaceId,
           automation: reference,
         },
         targetKind: automation.target.kind,
@@ -635,6 +639,7 @@ export class AutomationStore {
         title: automation.name,
         prompt: automation.prompt,
         environmentPolicy: automation.target.environmentPolicy,
+        workspaceId: automation.target.workspaceId,
         automation: reference,
       });
       this.#sessions.database.exec('RELEASE SAVEPOINT automation_input_acceptance');
@@ -769,10 +774,10 @@ export class AutomationStore {
           'An existing Automation target must be a normal persistent task Thread.',
         );
       }
-      if (target.environmentPolicy !== undefined) {
+      if (target.environmentPolicy !== undefined || target.workspaceId !== undefined) {
         throw new SessionError(
           'invalid_argument',
-          'An existing Thread keeps its own environment policy.',
+          'An existing Thread keeps its own environment policy and workspace.',
         );
       }
       return { kind: target.kind, threadId };
@@ -783,12 +788,16 @@ export class AutomationStore {
         'target.thread_id only belongs to existing_thread.',
       );
     }
-    if (!creates && target.environmentPolicy !== undefined) {
+    if (!creates && (target.environmentPolicy !== undefined || target.workspaceId !== undefined)) {
       throw new SessionError(
         'invalid_argument',
-        'environment_policy only applies to a newly created Automation Thread.',
+        'environment_policy and workspace_id only apply to a newly created Automation Thread.',
       );
     }
+    const workspaceId =
+      target.workspaceId === undefined
+        ? undefined
+        : this.#sessions.getWorkspace(ownerId, target.workspaceId).workspaceId;
     if (target.environmentPolicy) {
       const allowedEnv = target.environmentPolicy.allowedEnv;
       if (
@@ -802,9 +811,13 @@ export class AutomationStore {
         );
       }
       for (const envId of allowedEnv) requireText(envId, 'allowed_env', 200);
-      return { kind: target.kind, environmentPolicy: { allowedEnv: [...allowedEnv] } };
+      return {
+        kind: target.kind,
+        environmentPolicy: { allowedEnv: [...allowedEnv] },
+        ...(workspaceId === undefined ? {} : { workspaceId }),
+      };
     }
-    return { kind: target.kind };
+    return { kind: target.kind, ...(workspaceId === undefined ? {} : { workspaceId }) };
   }
 
   #toAutomation(row: z.infer<typeof automationRowSchema>): AutomationRecord {
@@ -823,6 +836,7 @@ export class AutomationStore {
     const target: AutomationTarget = {
       kind: row.target_kind,
       ...(row.target_thread_id === null ? {} : { threadId: row.target_thread_id }),
+      ...(row.workspace_id === null ? {} : { workspaceId: row.workspace_id }),
       ...(row.environment_policy_json === null
         ? {}
         : {

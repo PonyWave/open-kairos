@@ -923,11 +923,11 @@ const publishedCases: PublishedCase[] = [
     current: false,
     versions: { context: 'periodic8' as const },
   },
-  ...Array.from({ length: 15 }, (_, index) => index + 1).map((version) => ({
+  ...Array.from({ length: 16 }, (_, index) => index + 1).map((version) => ({
     label: `server_runtime/${version}`,
     namespace: 'server_runtime',
-    current: version === 15,
-    versions: { runtime: version },
+    current: version === 16,
+    versions: { runtime: version, context: 25 },
   })),
   { label: 'devices/1', namespace: 'devices', current: true, versions: { devices: 1 } },
   ...[1, 2].map((version) => ({

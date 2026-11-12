@@ -827,5 +827,6 @@ export function migrationTableNames(migrations: readonly Migration[]): Set<strin
     }
   }
   names.delete('schema_migrations');
+  names.delete('threads_next');
   return names;
 }

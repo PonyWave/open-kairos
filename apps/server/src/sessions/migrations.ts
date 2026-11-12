@@ -410,4 +410,51 @@ export const sessionMigrations: readonly Migration[] = [
         ON threads(owner_id) WHERE thread_type = 'main' AND archived_at IS NULL;
     `,
   },
+  {
+    version: 16,
+    name: 'workspaces_and_thread_hierarchy',
+    sql: `
+      PRAGMA defer_foreign_keys = ON;
+      CREATE TABLE workspaces (
+        workspace_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        env_id TEXT NOT NULL,
+        path TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(tenant_id, env_id, path)
+      );
+      CREATE TABLE threads_next (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        thread_id TEXT NOT NULL UNIQUE,
+        owner_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        thread_type TEXT NOT NULL CHECK(thread_type IN ('main', 'workspace_main', 'task')),
+        workspace_id TEXT REFERENCES workspaces(workspace_id),
+        automation_only INTEGER NOT NULL DEFAULT 0 CHECK(automation_only IN (0, 1)),
+        archived_at TEXT,
+        reset_from_thread_id TEXT REFERENCES threads(thread_id),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK(thread_type <> 'workspace_main' OR workspace_id IS NOT NULL)
+      );
+      INSERT INTO threads_next(
+        seq, thread_id, owner_id, title, thread_type, workspace_id, automation_only,
+        archived_at, reset_from_thread_id, created_at, updated_at
+      )
+      SELECT seq, thread_id, owner_id, title, thread_type, NULL, automation_only,
+        archived_at, reset_from_thread_id, created_at, updated_at
+      FROM threads;
+      DROP TABLE threads;
+      ALTER TABLE threads_next RENAME TO threads;
+      CREATE INDEX threads_owner_seq ON threads(owner_id, seq);
+      CREATE UNIQUE INDEX threads_one_main_per_owner
+        ON threads(owner_id) WHERE thread_type = 'main' AND archived_at IS NULL;
+      CREATE UNIQUE INDEX threads_one_workspace_main_per_workspace
+        ON threads(workspace_id) WHERE thread_type = 'workspace_main';
+      ALTER TABLE thread_notifications ADD COLUMN target TEXT NOT NULL DEFAULT 'global'
+        CHECK(target IN ('workspace', 'global'));
+      ALTER TABLE automations ADD COLUMN workspace_id TEXT REFERENCES workspaces(workspace_id);
+    `,
+  },
 ];

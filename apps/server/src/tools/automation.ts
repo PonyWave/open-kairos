@@ -31,6 +31,7 @@ const targetSchema = z
   .object({
     kind: z.enum(['main', 'existing_thread', 'new_task', 'new_automation_only']),
     thread_id: z.string().min(1).max(200).optional(),
+    workspace_id: z.string().min(1).max(200).optional(),
     allowed_env: z.array(z.string().min(1).max(200)).min(1).max(32).optional(),
   })
   .strict();
@@ -128,6 +129,7 @@ const targetParameters = {
       enum: ['main', 'existing_thread', 'new_task', 'new_automation_only'],
     },
     thread_id: { type: 'string', minLength: 1, maxLength: 200 },
+    workspace_id: { type: 'string', minLength: 1, maxLength: 200 },
     allowed_env: {
       type: 'array',
       items: { type: 'string', minLength: 1, maxLength: 200 },
@@ -364,6 +366,7 @@ function readTarget(
   return {
     kind: input.kind,
     ...(input.thread_id === undefined ? {} : { threadId: input.thread_id }),
+    ...(input.workspace_id === undefined ? {} : { workspaceId: input.workspace_id }),
     ...(input.allowed_env === undefined
       ? {}
       : {

@@ -4,6 +4,7 @@ export * from './auth.js';
 export * from './environment.js';
 export * from './error.js';
 export * from './gui.js';
+export * from './workspace.js';
 
 export const PROTOCOL_VERSION = '1.0';
 

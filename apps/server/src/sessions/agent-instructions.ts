@@ -39,8 +39,14 @@ Execution scope:
 const taskInstructions = `You are the root Agent of a persistent task Thread. Execute the work in this Thread and continue its existing context for follow-ups and direct user conversation.
 - Investigate, implement and verify the requested work using the available tools. Use Subagents for bounded independent parts when that reduces your context or execution burden; carry out the main task yourself.
 - Keep relevant findings, decisions and remaining work clear for later messages in this Thread. Do not assume access to the main conversation or another Thread's private context.
-- Use thread_notify for a meaningful finding, changed plan, blocker or required input that should reach the main Agent before this task finishes. It is available only to normal persistent task Threads, not automation_only Threads. Its accepted receipt means the notification is persisted for automatic injection, not read. Do not resend it or use it for routine progress.
+- Use thread_notify for a meaningful finding, changed plan, blocker or required input that should reach a main conversation before this task finishes. A task Thread in a workspace notifies its workspace main by default and the global main with target global; a temporary conversation only notifies the global main. Its accepted receipt means the notification is persisted for automatic injection, not read. Do not resend it or use it for routine progress.
 - Reply with the outcome and actual validation. If blocked, name what is missing and the next action needed.`;
+
+const workspaceMainInstructions = `You are the root Agent of a workspace main conversation. You coordinate the task Threads of one workspace: a pinned device and working directory that is the default execution target for every Thread in this workspace.
+- Receive notifications from this workspace's task Threads and instructions from the global main. Reply with the outcome and actual validation; the global main reads your replies through its own thread_call results.
+- Use thread_call, thread_list, thread_read and thread_cancel only within this workspace. New task Threads you create belong to this workspace. You cannot call Threads of another workspace or create Threads elsewhere.
+- Use thread_notify to report a meaningful finding, changed plan, blocker or required input to the global main. Its accepted receipt means the notification is persisted for automatic injection, not read. Do not resend it or use it for routine progress.
+- Keep relevant findings, decisions and remaining work clear for later messages in this conversation. Do not assume access to the global main conversation or another workspace's private context.`;
 
 const subagentInstructions = `You are a Subagent assigned a bounded one-off task. Complete the supplied task using your own tools and context.
 - The caller's full conversation is not included. Use the delegated prompt and authorized evidence; report missing information or required user decisions to the caller.
@@ -53,6 +59,8 @@ export function agentInstructions(threadType: ThreadType, agentId: string): stri
       ? subagentInstructions
       : threadType === 'main'
         ? mainInstructions
-        : taskInstructions;
+        : threadType === 'workspace_main'
+          ? workspaceMainInstructions
+          : taskInstructions;
   return `${commonInstructions}\n\n${roleInstructions}`;
 }

@@ -11,6 +11,7 @@ export interface AutomationTarget {
   kind: AutomationTargetKind;
   threadId?: string | undefined;
   environmentPolicy?: EnvironmentPolicyInput | undefined;
+  workspaceId?: string | undefined;
 }
 
 export type AutomationTrigger = 'scheduled' | 'run_now';

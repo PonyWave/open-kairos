@@ -721,6 +721,7 @@ it('gives all Agents execution tools and loads main and task resources from the 
     'thread_read',
     'web_fetch',
     'web_search',
+    'workspace_list',
     'write',
   ]);
   expect(toolNames(taskRequest)).toEqual(

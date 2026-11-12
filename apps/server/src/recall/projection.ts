@@ -37,7 +37,8 @@ const recapRowSchema = z.object({
 });
 const threadRowSchema = z.object({
   thread_id: z.string(),
-  thread_type: z.enum(['main', 'task']),
+  thread_type: z.enum(['main', 'workspace_main', 'task']),
+  workspace_id: z.string().nullable(),
   title: z.string(),
   created_at: z.string(),
 });
@@ -300,7 +301,7 @@ function projectThreads(
       .parse(
         database
           .prepare(
-            'SELECT thread_id, thread_type, title, created_at FROM threads WHERE thread_id = ?',
+            'SELECT thread_id, thread_type, workspace_id, title, created_at FROM threads WHERE thread_id = ?',
           )
           .get(scope.threadId),
       );
@@ -318,6 +319,7 @@ function projectThreads(
     rows.push([
       record.thread_id,
       record.thread_type,
+      record.workspace_id,
       record.title,
       latestRecap?.row.content ?? null,
       record.created_at,

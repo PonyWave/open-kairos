@@ -128,9 +128,15 @@ export function toThread(record: ThreadRecord) {
   return {
     threadId: record.threadId,
     title: record.title,
-    threadType: record.threadType === 'main' ? ThreadType.MAIN : ThreadType.TASK,
+    threadType:
+      record.threadType === 'main'
+        ? ThreadType.MAIN
+        : record.threadType === 'workspace_main'
+          ? ThreadType.WORKSPACE_MAIN
+          : ThreadType.TASK,
     automationOnly: record.automationOnly,
     ...(record.newConversation === true ? { newConversation: true } : {}),
+    ...(record.workspaceId ? { workspaceId: record.workspaceId } : {}),
     seq: BigInt(record.seq),
     ...(record.environmentPolicy
       ? { environmentPolicy: toEnvironmentPolicy(record.environmentPolicy) }

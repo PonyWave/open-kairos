@@ -17,7 +17,7 @@ import type { SessionErrorCode } from './errors.js';
 
 export type { MessageSource } from '../context/types.js';
 
-export type ThreadType = 'main' | 'task';
+export type ThreadType = 'main' | 'workspace_main' | 'task';
 export type RunExecutionMode = 'foreground' | 'background';
 
 export interface ThreadRecord {
@@ -25,6 +25,7 @@ export interface ThreadRecord {
   ownerId: string;
   title: string;
   threadType: ThreadType;
+  workspaceId?: string | null | undefined;
   automationOnly: boolean;
   seq: number;
   environmentPolicy?: ExplicitAgentEnvironmentPolicy | undefined;
@@ -33,6 +34,15 @@ export interface ThreadRecord {
   archivedAt?: string | null | undefined;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WorkspaceRecord {
+  workspaceId: string;
+  tenantId: string;
+  name: string;
+  envId: string;
+  path: string;
+  createdAt: string;
 }
 
 export type InputMode = 'follow_up' | 'steer';
@@ -142,6 +152,7 @@ export interface ThreadNotificationRecord extends DelegationKey {
   ownerId: string;
   sourceRunId: string;
   replyThreadId: string;
+  target: 'workspace' | 'global';
   content: string;
   deliveryContent: string;
   contextMessageSeq: number | null;

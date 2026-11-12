@@ -413,9 +413,23 @@ it('migrates schema 20 without changing user identities or deployment model defa
     ALTER TABLE input_attachments DROP COLUMN path;
     ALTER TABLE input_attachments DROP COLUMN operation_id;
     DROP INDEX threads_one_main_per_owner;
-    ALTER TABLE threads DROP COLUMN automation_only;
-    ALTER TABLE threads DROP COLUMN archived_at;
-    ALTER TABLE threads DROP COLUMN reset_from_thread_id;
+    DROP INDEX threads_one_workspace_main_per_workspace;
+    CREATE TABLE threads_legacy (
+      seq INTEGER PRIMARY KEY AUTOINCREMENT,
+      thread_id TEXT NOT NULL UNIQUE,
+      owner_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      thread_type TEXT NOT NULL CHECK(thread_type IN ('main', 'task')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    INSERT INTO threads_legacy(
+      seq, thread_id, owner_id, title, thread_type, created_at, updated_at
+    )
+    SELECT seq, thread_id, owner_id, title, thread_type, created_at, updated_at FROM threads;
+    DROP TABLE threads;
+    ALTER TABLE threads_legacy RENAME TO threads;
+    CREATE INDEX threads_owner_seq ON threads(owner_id, seq);
     ALTER TABLE inputs DROP COLUMN automation_schedule_id;
     ALTER TABLE inputs DROP COLUMN automation_fire_id;
     ALTER TABLE inputs DROP COLUMN automation_trigger;

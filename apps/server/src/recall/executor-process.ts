@@ -133,6 +133,7 @@ function populateSnapshot(database: DatabaseSync, snapshot: RecallSnapshot): voi
     CREATE TABLE thread (
       thread_id TEXT PRIMARY KEY,
       thread_type TEXT NOT NULL,
+      workspace_id TEXT,
       title TEXT NOT NULL,
       summary TEXT,
       created_at TEXT NOT NULL,
@@ -163,7 +164,7 @@ function populateSnapshot(database: DatabaseSync, snapshot: RecallSnapshot): voi
   `);
   database.exec('BEGIN');
   try {
-    insertRows(database, 'thread', 6, snapshot.thread);
+    insertRows(database, 'thread', 7, snapshot.thread);
     insertRows(database, 'context', 10, snapshot.context);
     insertRows(database, 'recap', 8, snapshot.recap);
     database.exec('COMMIT');

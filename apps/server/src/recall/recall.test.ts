@@ -170,7 +170,7 @@ describe('SQL recall projection', () => {
       const snapshot = projectRecallSnapshot(database, authorization);
       expect(snapshot.context.map((row) => row[0])).not.toContain(BigInt(other.seq));
       expect(snapshot.recap.map((row) => row[0])).not.toContain('recap-different-agent');
-      expect(snapshot.thread[0]?.[3]).toBe('latest summary');
+      expect(snapshot.thread[0]?.[4]).toBe('latest summary');
     } finally {
       database.close();
     }
@@ -226,6 +226,7 @@ describe('SQL recall projection', () => {
         [
           'thread-main',
           'main',
+          null,
           '主对话',
           'latest summary',
           '2026-11-02T00:00:00.000Z',
@@ -291,7 +292,7 @@ describe('SQL recall projection', () => {
       let snapshot = projectRecallSnapshot(database, authorization);
       expect(snapshot.context[0]?.[4]).toBe('revised current content');
       expect(snapshot.recap).toEqual([]);
-      expect(snapshot.thread[0]?.[3]).toBeNull();
+      expect(snapshot.thread[0]?.[4]).toBeNull();
       expect(
         JSON.stringify(snapshot, (_, value: unknown) =>
           typeof value === 'bigint' ? value.toString() : value,
@@ -311,7 +312,7 @@ describe('SQL recall projection', () => {
       snapshot = projectRecallSnapshot(database, authorization);
       expect(snapshot.context.map((row) => row[0])).not.toContain(BigInt(assistant.seq));
       expect(snapshot.recap).toEqual([]);
-      expect(snapshot.thread[0]?.[3]).toBeNull();
+      expect(snapshot.thread[0]?.[4]).toBeNull();
     } finally {
       database.close();
     }
@@ -322,7 +323,7 @@ describe('SQL recall projection', () => {
     try {
       recaps.invalidate('thread-main', 'thread', 'recap-new', 'test');
       const snapshot = projectRecallSnapshot(database, authorization);
-      expect(snapshot.thread[0]?.[3]).toBe('old summary');
+      expect(snapshot.thread[0]?.[4]).toBe('old summary');
       expect(snapshot.recap.map((row) => row[0])).toEqual(['recap-old']);
     } finally {
       database.close();

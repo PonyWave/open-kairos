@@ -3,7 +3,15 @@ import { z } from 'zod';
 export const ROOT_AGENT_ID = 'thread';
 
 export const RECALL_TABLE_COLUMNS = {
-  thread: ['thread_id', 'thread_type', 'title', 'summary', 'created_at', 'last_message_at'],
+  thread: [
+    'thread_id',
+    'thread_type',
+    'workspace_id',
+    'title',
+    'summary',
+    'created_at',
+    'last_message_at',
+  ],
   context: [
     'seq',
     'thread_id',

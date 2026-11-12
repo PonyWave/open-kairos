@@ -15,6 +15,7 @@ enum ThreadType {
   THREAD_TYPE_UNSPECIFIED = 0;
   THREAD_TYPE_MAIN = 1;
   THREAD_TYPE_TASK = 2;
+  THREAD_TYPE_WORKSPACE_MAIN = 3;
 }
 
 enum MessageSource {
@@ -128,6 +129,7 @@ message Thread {
   optional AgentEnvironmentBinding current_binding = 8;
   optional bool automation_only = 9;
   optional bool new_conversation = 10;
+  optional string workspace_id = 11;
 }
 
 message ToolCall {
@@ -403,6 +405,7 @@ message CreateThreadRequest {
   bool auto_summarize_title = 6;
   optional EnvironmentPolicy environment_policy = 7;
   repeated string initial_clipboard_attachment_ids = 8;
+  optional string workspace_id = 9;
 }
 
 message CreateThreadResponse {

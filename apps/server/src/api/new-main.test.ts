@@ -139,8 +139,8 @@ it('starts an empty main conversation and excludes archived content from recall 
     expect(recall.context).toEqual([]);
     expect(recall.recap).toEqual([]);
     expect(recall.thread[0]?.[0]).toBe(newThreadId);
-    expect(recall.thread[0]?.[3]).toBeNull();
-    expect(recall.thread[0]?.[5]).toBeNull();
+    expect(recall.thread[0]?.[4]).toBeNull();
+    expect(recall.thread[0]?.[6]).toBeNull();
 
     const emptySnapshot = await current.threads.getThread({ threadId: newThreadId, limit: 100 });
     expect(emptySnapshot.snapshot?.thread?.newConversation).toBe(true);

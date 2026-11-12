@@ -54,6 +54,7 @@ import type {
   ThreadEventRecord,
   ThreadNotificationRecord,
   ThreadRecord,
+  WorkspaceRecord,
 } from './records.js';
 import { threadNotificationDeliveryText } from './thread-notifications.js';
 
@@ -112,12 +113,21 @@ const threadRowSchema = z.object({
   thread_id: z.string(),
   owner_id: z.string(),
   title: z.string(),
-  thread_type: z.enum(['main', 'task']),
+  thread_type: z.enum(['main', 'workspace_main', 'task']),
+  workspace_id: z.string().nullable(),
   automation_only: z.number().int().min(0).max(1),
   archived_at: z.string().nullable(),
   reset_from_thread_id: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
+});
+const workspaceRowSchema = z.object({
+  workspace_id: z.string(),
+  tenant_id: z.string(),
+  name: z.string(),
+  env_id: z.string(),
+  path: z.string(),
+  created_at: z.string(),
 });
 const inputRowSchema = z.object({
   input_id: z.string(),
@@ -214,6 +224,7 @@ const threadNotificationRowSchema = z.object({
   owner_id: z.string(),
   source_run_id: z.string(),
   reply_thread_id: z.string(),
+  target: z.enum(['workspace', 'global']),
   content: z.string(),
   delivery_content: z.string(),
   context_message_seq: z.number().int().positive().nullable(),
@@ -312,7 +323,8 @@ const threadResponseSchema = z.object({
   threadId: z.string(),
   ownerId: z.string(),
   title: z.string(),
-  threadType: z.enum(['main', 'task']),
+  threadType: z.enum(['main', 'workspace_main', 'task']),
+  workspaceId: z.string().nullable().optional(),
   automationOnly: z.boolean(),
   seq: z.number().int().positive(),
   environmentPolicy: environmentPolicyResponseSchema.optional(),
@@ -413,6 +425,7 @@ export interface AcceptThreadCallInput {
   targetThreadId?: string | undefined;
   title?: string | undefined;
   environmentPolicy?: EnvironmentPolicyInput | undefined;
+  workspaceId?: string | undefined;
   prompt: string;
   mode: InputMode;
 }
@@ -430,6 +443,7 @@ export interface AcceptThreadNotificationInput {
   sourceRunId: string;
   sourceToolCallId: string;
   content: string;
+  target?: 'workspace' | 'global' | undefined;
 }
 
 export interface AcceptedThreadNotification {
@@ -629,6 +643,7 @@ export class SessionStore {
       attachmentIds?: undefined;
       clipboardAttachmentIds?: undefined;
       environmentPolicy?: EnvironmentPolicyInput | undefined;
+      workspaceId?: string | undefined;
     },
   ): ThreadRecord;
   createThread(
@@ -639,6 +654,7 @@ export class SessionStore {
       attachmentIds?: readonly string[] | undefined;
       clipboardAttachmentIds?: readonly string[] | undefined;
       environmentPolicy?: EnvironmentPolicyInput | undefined;
+      workspaceId?: string | undefined;
     },
   ): ThreadRecord | { thread: ThreadRecord; input: InputRecord; runId: string };
   createThread(
@@ -649,6 +665,7 @@ export class SessionStore {
       attachmentIds?: readonly string[] | undefined;
       clipboardAttachmentIds?: readonly string[] | undefined;
       environmentPolicy?: EnvironmentPolicyInput | undefined;
+      workspaceId?: string | undefined;
     },
   ): ThreadRecord | { thread: ThreadRecord; input: InputRecord; runId: string } {
     const title = requireText(action.title, 'title', 200);
@@ -682,7 +699,17 @@ export class SessionStore {
       runId: z.string(),
     });
     return this.#action(action, z.union([threadResponseSchema, withInput]), () => {
-      const thread = this.#insertThread(action.ownerId, 'task', title, action.environmentPolicy);
+      const thread = this.#insertThread(
+        action.ownerId,
+        'task',
+        title,
+        action.environmentPolicy,
+        undefined,
+        undefined,
+        false,
+        undefined,
+        action.workspaceId,
+      );
       if (!hasInitialInput) return thread;
       if (initialText === undefined || action.initialMode === undefined) {
         throw new SessionError('invalid_argument', 'Initial input mode is not supported.');
@@ -703,6 +730,127 @@ export class SessionStore {
       );
       return { thread, input, runId: run.runId };
     });
+  }
+
+  createWorkspace(input: { ownerId: string; name: string; envId: string; path: string }): {
+    workspace: WorkspaceRecord;
+    mainThread: ThreadRecord;
+  } {
+    const name = requireText(input.name, 'name', 200);
+    const envId = requireText(input.envId, 'envId', 200);
+    const path = requireText(input.path, 'path', 4096);
+    if (!path.startsWith('/')) {
+      throw new SessionError('invalid_argument', 'The workspace path must be absolute.');
+    }
+    return this.transaction(() => {
+      const duplicate = this.database
+        .prepare(
+          'SELECT workspace_id FROM workspaces WHERE tenant_id = ? AND env_id = ? AND path = ?',
+        )
+        .get(input.ownerId, envId, path);
+      if (duplicate !== undefined) {
+        throw new SessionError(
+          'action_conflict',
+          'A workspace already exists for this device and directory.',
+        );
+      }
+      const workspaceId = this.#createId();
+      const now = isoTime(undefined, this.#clock);
+      this.database
+        .prepare(
+          `INSERT INTO workspaces(workspace_id, tenant_id, name, env_id, path, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(workspaceId, input.ownerId, name, envId, path, now);
+      const mainThread = this.#insertThread(
+        input.ownerId,
+        'workspace_main',
+        name,
+        undefined,
+        undefined,
+        undefined,
+        false,
+        undefined,
+        workspaceId,
+      );
+      return { workspace: this.getWorkspace(input.ownerId, workspaceId), mainThread };
+    });
+  }
+
+  getWorkspace(ownerId: string, workspaceId: string): WorkspaceRecord {
+    return this.#toWorkspace(this.#ownedWorkspace(ownerId, workspaceId));
+  }
+
+  listWorkspaces(ownerId: string): WorkspaceRecord[] {
+    return this.database
+      .prepare('SELECT * FROM workspaces WHERE tenant_id = ? ORDER BY created_at, workspace_id')
+      .all(ownerId)
+      .map((row) => this.#toWorkspace(workspaceRowSchema.parse(row)));
+  }
+
+  workspaceMainThreadId(ownerId: string, workspaceId: string): string | undefined {
+    this.#ownedWorkspace(ownerId, workspaceId);
+    const row = this.database
+      .prepare(
+        "SELECT thread_id FROM threads WHERE workspace_id = ? AND thread_type = 'workspace_main' AND archived_at IS NULL",
+      )
+      .get(workspaceId);
+    return row === undefined ? undefined : z.object({ thread_id: z.string() }).parse(row).thread_id;
+  }
+
+  renameWorkspace(input: { ownerId: string; workspaceId: string; name: string }): WorkspaceRecord {
+    const name = requireText(input.name, 'name', 200);
+    return this.transaction(() => {
+      this.#ownedWorkspace(input.ownerId, input.workspaceId);
+      this.database
+        .prepare('UPDATE workspaces SET name = ? WHERE workspace_id = ?')
+        .run(name, input.workspaceId);
+      return this.getWorkspace(input.ownerId, input.workspaceId);
+    });
+  }
+
+  #workspaceMainThread(ownerId: string, sourceThreadId: string): ThreadRecord {
+    const source = this.getThread(ownerId, sourceThreadId);
+    if (source.workspaceId === null || source.workspaceId === undefined) {
+      throw new SessionError(
+        'failed_precondition',
+        'A temporary conversation has no workspace main; notify the global main instead.',
+      );
+    }
+    const row = this.database
+      .prepare(
+        "SELECT * FROM threads WHERE workspace_id = ? AND thread_type = 'workspace_main' AND archived_at IS NULL",
+      )
+      .get(source.workspaceId);
+    if (row === undefined) {
+      throw new SessionError('internal', 'The workspace main conversation is missing.');
+    }
+    return this.#toThread(threadRowSchema.parse(row));
+  }
+
+  #ownedWorkspace(ownerId: string, workspaceId: string): z.infer<typeof workspaceRowSchema> {
+    const row = this.database
+      .prepare('SELECT * FROM workspaces WHERE workspace_id = ?')
+      .get(workspaceId);
+    if (row === undefined) {
+      throw new SessionError('not_found', 'The workspace was not found.');
+    }
+    const workspace = workspaceRowSchema.parse(row);
+    if (workspace.tenant_id !== ownerId) {
+      throw new SessionError('permission_denied', 'The workspace belongs to another tenant.');
+    }
+    return workspace;
+  }
+
+  #toWorkspace(row: z.infer<typeof workspaceRowSchema>): WorkspaceRecord {
+    return {
+      workspaceId: row.workspace_id,
+      tenantId: row.tenant_id,
+      name: row.name,
+      envId: row.env_id,
+      path: row.path,
+      createdAt: row.created_at,
+    };
   }
 
   getOrCreateMainThread(ownerId: string): ThreadRecord {
@@ -798,20 +946,25 @@ export class SessionStore {
     afterSeq: bigint,
     limit: number,
     threadType?: ThreadRecord['threadType'],
+    workspaceId?: string | null,
   ): ThreadRecord[] {
     if (afterSeq > BigInt(Number.MAX_SAFE_INTEGER)) return [];
-    const rows =
-      threadType === undefined
-        ? this.database
-            .prepare(
-              'SELECT * FROM threads WHERE owner_id = ? AND seq > ? AND automation_only = 0 AND archived_at IS NULL ORDER BY seq LIMIT ?',
-            )
-            .all(ownerId, Number(afterSeq), limit)
-        : this.database
-            .prepare(
-              'SELECT * FROM threads WHERE owner_id = ? AND seq > ? AND thread_type = ? AND automation_only = 0 AND archived_at IS NULL ORDER BY seq LIMIT ?',
-            )
-            .all(ownerId, Number(afterSeq), threadType, limit);
+    const conditions = ['owner_id = ?', 'seq > ?', 'automation_only = 0', 'archived_at IS NULL'];
+    const parameters: Array<string | number> = [ownerId, Number(afterSeq)];
+    if (threadType !== undefined) {
+      conditions.push('thread_type = ?');
+      parameters.push(threadType);
+    }
+    if (workspaceId === null) {
+      conditions.push('workspace_id IS NULL');
+    } else if (workspaceId !== undefined) {
+      conditions.push('workspace_id = ?');
+      parameters.push(workspaceId);
+    }
+    parameters.push(limit);
+    const rows = this.database
+      .prepare(`SELECT * FROM threads WHERE ${conditions.join(' AND ')} ORDER BY seq LIMIT ?`)
+      .all(...parameters);
     return rows.map((row) => this.#toThread(threadRowSchema.parse(row)));
   }
 
@@ -1144,6 +1297,7 @@ export class SessionStore {
       title?: string | undefined;
       prompt: string;
       environmentPolicy?: EnvironmentPolicyInput | undefined;
+      workspaceId?: string | undefined;
       automation: AutomationReference;
     },
   ): { thread: ThreadRecord; input: InputRecord; runId: string } {
@@ -1171,6 +1325,8 @@ export class SessionStore {
           undefined,
           undefined,
           action.targetKind === 'new_automation_only',
+          undefined,
+          action.workspaceId,
         );
       }
       this.agentEnvironments.requirePolicy(thread.threadId, 'thread');
@@ -2276,7 +2432,10 @@ export class SessionStore {
       throw new SessionError('invalid_argument', 'Input mode is not supported.');
     }
     const requestedTargetThreadId = input.targetThreadId ?? '';
-    if (requestedTargetThreadId !== '' && (input.title !== undefined || input.environmentPolicy)) {
+    if (
+      requestedTargetThreadId !== '' &&
+      (input.title !== undefined || input.environmentPolicy || input.workspaceId !== undefined)
+    ) {
       throw new SessionError(
         'invalid_argument',
         'An existing Thread call accepts only thread_id, prompt and mode.',
@@ -2292,6 +2451,7 @@ export class SessionStore {
       targetThreadId: requestedTargetThreadId,
       ...(title === undefined ? {} : { title }),
       ...(input.environmentPolicy ? { environmentPolicy: input.environmentPolicy } : {}),
+      ...(input.workspaceId === undefined ? {} : { workspaceId: input.workspaceId }),
       prompt,
       mode: input.mode,
     });
@@ -2313,7 +2473,26 @@ export class SessionStore {
           runId: existing.acceptedRunId,
         };
       }
-      this.#assertInteractionSource(input, 'main');
+      this.#assertInteractionSource(input);
+      const sourceThread = this.getThread(input.ownerId, input.sourceThreadId);
+      if (sourceThread.threadType !== 'main' && sourceThread.threadType !== 'workspace_main') {
+        throw new SessionError(
+          'permission_denied',
+          'Thread calls require a main or workspace main root Agent.',
+        );
+      }
+      const sourceWorkspaceId =
+        sourceThread.threadType === 'workspace_main' ? sourceThread.workspaceId : null;
+      if (
+        sourceWorkspaceId !== null &&
+        input.workspaceId !== undefined &&
+        input.workspaceId !== sourceWorkspaceId
+      ) {
+        throw new SessionError(
+          'permission_denied',
+          'A workspace main can only create Threads in its own workspace.',
+        );
+      }
       const delegation = {
         sourceThreadId: input.sourceThreadId,
         sourceAgentId: input.sourceAgentId,
@@ -2328,12 +2507,24 @@ export class SessionStore {
               input.environmentPolicy,
               delegation,
               this.getRunById(input.sourceRunId),
+              false,
+              undefined,
+              sourceWorkspaceId ?? input.workspaceId,
             )
           : this.getThread(input.ownerId, requestedTargetThreadId);
-      if (target.threadType !== 'task' || target.automationOnly) {
+      if (
+        (target.threadType !== 'task' && target.threadType !== 'workspace_main') ||
+        target.automationOnly
+      ) {
         throw new SessionError(
           'failed_precondition',
-          'Thread calls require a normal persistent task Thread.',
+          'Thread calls require a normal persistent task Thread or a workspace main.',
+        );
+      }
+      if (sourceWorkspaceId !== null && target.workspaceId !== sourceWorkspaceId) {
+        throw new SessionError(
+          'permission_denied',
+          'A workspace main can only call Threads in its own workspace.',
         );
       }
       this.agentEnvironments.requirePolicy(target.threadId, 'thread');
@@ -2634,14 +2825,18 @@ export class SessionStore {
         return { notification: existing, runId: existing.runId };
       }
       this.#assertThreadNotificationSource(input);
-      const main = this.getOrCreateMainThread(input.ownerId);
+      const target = input.target ?? 'global';
+      const replyThread =
+        target === 'workspace'
+          ? this.#workspaceMainThread(input.ownerId, input.sourceThreadId)
+          : this.getOrCreateMainThread(input.ownerId);
       const now = isoTime(undefined, this.#clock);
       this.database
         .prepare(
           `INSERT INTO thread_notifications(
             source_thread_id, source_agent_id, source_tool_call_id, owner_id, source_run_id,
-            reply_thread_id, content, delivery_content, status, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+            reply_thread_id, target, content, delivery_content, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
         )
         .run(
           key.sourceThreadId,
@@ -2649,7 +2844,8 @@ export class SessionStore {
           key.sourceToolCallId,
           input.ownerId,
           input.sourceRunId,
-          main.threadId,
+          replyThread.threadId,
+          target,
           content,
           threadNotificationDeliveryText(key, content),
           now,
@@ -2780,10 +2976,10 @@ export class SessionStore {
         return { notification: current, runId: current.runId };
       }
       const replyThread = this.getThread(input.ownerId, current.replyThreadId);
-      if (replyThread.threadType !== 'main') {
+      if (replyThread.threadType !== 'main' && replyThread.threadType !== 'workspace_main') {
         throw new SessionError(
           'internal',
-          'The thread notification target is not the main Thread.',
+          'The thread notification target is not a main conversation.',
         );
       }
       const run =
@@ -2918,10 +3114,13 @@ export class SessionStore {
       );
     }
     const sourceThread = this.getThread(input.ownerId, input.sourceThreadId);
-    if (sourceThread.threadType !== 'task' || sourceThread.automationOnly) {
+    const allowedSource =
+      (sourceThread.threadType === 'task' && !sourceThread.automationOnly) ||
+      sourceThread.threadType === 'workspace_main';
+    if (!allowedSource) {
       throw new SessionError(
         'permission_denied',
-        'thread_notify requires a normal persistent task Thread root Agent.',
+        'thread_notify requires a normal persistent task Thread or workspace main root Agent.',
       );
     }
     const sourceRun = this.getRunById(input.sourceRunId);
@@ -3523,21 +3722,25 @@ export class SessionStore {
     parentRun?: RunRecord,
     automationOnly = false,
     resetFromThreadId?: string,
+    workspaceId?: string,
   ): ThreadRecord {
     const now = isoTime(undefined, this.#clock);
     const threadId = this.#createId();
+    const workspace =
+      workspaceId === undefined ? undefined : this.#ownedWorkspace(ownerId, workspaceId);
     this.database
       .prepare(
         `INSERT INTO threads(
-          thread_id, owner_id, title, thread_type, automation_only, reset_from_thread_id,
+          thread_id, owner_id, title, thread_type, workspace_id, automation_only, reset_from_thread_id,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         threadId,
         ownerId,
         title,
         threadType,
+        workspaceId ?? null,
         automationOnly ? 1 : 0,
         resetFromThreadId ?? null,
         now,
@@ -3558,6 +3761,7 @@ export class SessionStore {
       ...(environmentPolicy ? { policy: environmentPolicy } : {}),
       ...(parentRun ? { parentRun } : {}),
       ...(delegation ? { delegation } : {}),
+      ...(workspace ? { workspace: { envId: workspace.env_id, path: workspace.path } } : {}),
     });
     const thread = this.getThread(ownerId, threadId);
     this.#insertEvent(threadId, { case: 'threadCreated', value: { thread } });
@@ -3906,6 +4110,7 @@ export class SessionStore {
       ownerId: row.owner_id,
       title: row.title,
       threadType: row.thread_type,
+      workspaceId: row.workspace_id,
       automationOnly: row.automation_only === 1,
       newConversation: row.reset_from_thread_id !== null,
       archivedAt: row.archived_at,
@@ -4074,6 +4279,7 @@ export class SessionStore {
       ownerId: row.owner_id,
       sourceRunId: row.source_run_id,
       replyThreadId: row.reply_thread_id,
+      target: row.target,
       content: row.content,
       deliveryContent: row.delivery_content,
       contextMessageSeq: row.context_message_seq,

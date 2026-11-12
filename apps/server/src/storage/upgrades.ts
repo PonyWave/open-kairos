@@ -106,6 +106,7 @@ const tableIntroductions: Record<ServerNamespace, Readonly<Record<string, number
     automations: 13,
     automation_fires: 13,
     thread_notifications: 14,
+    workspaces: 16,
   },
   devices: {},
   device_bash: {},
@@ -347,7 +348,10 @@ function expectedColumns(
       if (version < 7) remove(['thread_type']);
       if (version < 13) remove(['automation_only']);
       if (version < 15) remove(['archived_at', 'reset_from_thread_id']);
+      if (version < 16) remove(['workspace_id']);
     }
+    if (table === 'thread_notifications' && version < 16) remove(['target']);
+    if (table === 'automations' && version < 16) remove(['workspace_id']);
     if (table === 'inputs') {
       if (version < 13) {
         remove([

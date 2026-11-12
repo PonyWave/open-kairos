@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package kairos.gui.v1;
+
+import "google/protobuf/timestamp.proto";
+
+message Workspace {
+  string workspace_id = 1;
+  string name = 2;
+  string env_id = 3;
+  string path = 4;
+  google.protobuf.Timestamp created_at = 5;
+  string main_thread_id = 6;
+}
+
+message ListWorkspacesRequest {}
+
+message ListWorkspacesResponse {
+  repeated Workspace workspaces = 1;
+}
+
+message CreateWorkspaceRequest {
+  string client_action_id = 1;
+  string name = 2;
+  string env_id = 3;
+  string path = 4;
+}
+
+message CreateWorkspaceResponse {
+  string client_action_id = 1;
+  Workspace workspace = 2;
+  string main_thread_id = 3;
+}
+
+message RenameWorkspaceRequest {
+  string client_action_id = 1;
+  string workspace_id = 2;
+  string name = 3;
+}
+
+message RenameWorkspaceResponse {
+  string client_action_id = 1;
+  Workspace workspace = 2;
+}
+
+service WorkspacesService {
+  rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResponse);
+  rpc CreateWorkspace(CreateWorkspaceRequest) returns (CreateWorkspaceResponse);
+  rpc RenameWorkspace(RenameWorkspaceRequest) returns (RenameWorkspaceResponse);
+}

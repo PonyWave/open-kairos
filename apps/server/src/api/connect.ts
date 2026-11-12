@@ -61,6 +61,7 @@ import { asConnectError } from './errors.js';
 import type { BashLogReader } from './logs.js';
 import { registerSettingsRoutes } from './settings.js';
 import { getThreadSnapshot } from './snapshot.js';
+import { registerWorkspacesRoutes } from './workspaces.js';
 
 function readThreadCardSort(value: ThreadCardSort): PreviewSort {
   switch (value) {
@@ -153,6 +154,10 @@ export function registerGuiRoutes(router: ConnectRouter, options: GuiApiOptions)
       mainEnvironment: options.mainEnvironment,
     });
   }
+  registerWorkspacesRoutes(router, {
+    store: options.store,
+    authentication: options.authentication,
+  });
   const action = <T extends Record<string, unknown>>(
     ownerId: string,
     method: string,
@@ -245,6 +250,7 @@ export function registerGuiRoutes(router: ConnectRouter, options: GuiApiOptions)
                 }),
             attachmentIds: [...request.initialAttachmentIds],
             clipboardAttachmentIds: [...request.initialClipboardAttachmentIds],
+            ...(request.workspaceId === undefined ? {} : { workspaceId: request.workspaceId }),
             ...(environmentPolicy
               ? {
                   environmentPolicy: {
