@@ -11,8 +11,13 @@ const envTargetParameters = {
     minLength: 1,
     maxLength: 200,
     description:
-      'Optional authorized target for this call; omission uses the main environment workspace, whose explicit env_id is main.',
+      'Authorized target environment for this call only. Omit to use the main environment (env_id main); the choice does not affect later calls or loaded instructions.',
   },
+};
+const pathParameter = {
+  type: 'string',
+  maxLength: 4096,
+  description: 'Absolute path, or a path relative to the workspace of the selected environment.',
 };
 const pathSchema = z.string().min(1).max(4096);
 const readSchema = z
@@ -96,7 +101,7 @@ export function createEnvironmentTools(
     {
       name: 'env_list',
       description:
-        'List authorized environments and their connection and lifecycle states, including the main environment; listing does not start an environment.',
+        'List authorized environments with their connection and lifecycle states, including the main environment. Listing does not start an environment.',
       parameters: { type: 'object', additionalProperties: false, properties: {} },
       concurrent: true,
       validate: (value) => envListSchema.parse(value),
@@ -104,16 +109,26 @@ export function createEnvironmentTools(
     },
     {
       name: 'read',
-      description: 'Read bounded UTF-8 text from the selected remote environment.',
+      description:
+        'Read a UTF-8 text file from the selected environment. offset is the 1-based first line (default 1) and limit caps the returned lines (default and maximum 2000). The result carries the returned line range, has_more with next_offset for continuation, a truncated flag and file_version. Pass file_version to edit as expected_file_version. Files above the inspection size limit are rejected; use bash tools such as sed or rg for targeted views of very large files.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         required: ['path'],
         properties: {
           ...envTargetParameters,
-          path: { type: 'string', maxLength: 4096 },
-          offset: { type: 'integer', minimum: 1 },
-          limit: { type: 'integer', minimum: 1, maximum: 2000 },
+          path: pathParameter,
+          offset: {
+            type: 'integer',
+            minimum: 1,
+            description: '1-based first line to return; defaults to 1.',
+          },
+          limit: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 2000,
+            description: 'Maximum number of lines to return; defaults to 2000.',
+          },
         },
       },
       concurrent: true,
@@ -141,12 +156,12 @@ export function createEnvironmentTools(
     {
       name: 'read_image',
       description:
-        'Read a PNG or JPEG file from the selected remote environment and return it as image input for the model. Files are limited to 700000 bytes.',
+        'Read a PNG or JPEG file from the selected environment and return it as image input for the model. Files are limited to 700000 bytes.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         required: ['path'],
-        properties: { ...envTargetParameters, path: { type: 'string', maxLength: 4096 } },
+        properties: { ...envTargetParameters, path: pathParameter },
       },
       concurrent: true,
       validate: (value) => readImageSchema.parse(value),
@@ -171,16 +186,24 @@ export function createEnvironmentTools(
     {
       name: 'write',
       description:
-        'Atomically write a UTF-8 file in the selected remote environment; overwrite defaults to false.',
+        'Atomically write a UTF-8 file in the selected environment and return its file_version. overwrite defaults to false and the write fails if the file already exists; set overwrite true to replace it. Prefer edit for targeted changes to existing files.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         required: ['path', 'content'],
         properties: {
           ...envTargetParameters,
-          path: { type: 'string', maxLength: 4096 },
-          content: { type: 'string', maxLength: 1_000_000 },
-          overwrite: { type: 'boolean', default: false },
+          path: pathParameter,
+          content: {
+            type: 'string',
+            maxLength: 1_000_000,
+            description: 'Complete UTF-8 file content to write.',
+          },
+          overwrite: {
+            type: 'boolean',
+            default: false,
+            description: 'Replace an existing file; defaults to false.',
+          },
         },
       },
       validate: (value) => writeSchema.parse(value),
@@ -207,18 +230,38 @@ export function createEnvironmentTools(
     {
       name: 'edit',
       description:
-        'Replace exact text in the selected remote environment using the file version returned by read.',
+        'Replace exact text in a file in the selected environment. Read the file first and pass its file_version as expected_file_version; the edit fails when the file changed since that read. oldText must match the file content exactly; expectedOccurrences asserts the expected number of replacements and the edit fails when the actual count differs.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         required: ['path', 'oldText', 'newText', 'expected_file_version'],
         properties: {
           ...envTargetParameters,
-          path: { type: 'string', maxLength: 4096 },
-          oldText: { type: 'string', minLength: 1, maxLength: 1_000_000 },
-          newText: { type: 'string', maxLength: 1_000_000 },
-          expectedOccurrences: { type: 'integer', minimum: 1, maximum: 1000 },
-          expected_file_version: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+          path: pathParameter,
+          oldText: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 1_000_000,
+            description: 'Exact text to replace, matching the file content byte for byte.',
+          },
+          newText: {
+            type: 'string',
+            maxLength: 1_000_000,
+            description: 'Replacement text; must differ from oldText.',
+          },
+          expectedOccurrences: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 1000,
+            description:
+              'Expected number of replacements; the edit fails when the actual count differs.',
+          },
+          expected_file_version: {
+            type: 'string',
+            pattern: '^[a-f0-9]{64}$',
+            description:
+              'file_version returned by the most recent read of this file; the edit fails when the file changed since.',
+          },
         },
       },
       validate: (value) => editSchema.parse(value),
@@ -249,16 +292,30 @@ export function createEnvironmentTools(
     {
       name: 'bash',
       description:
-        'Execute /bin/bash in the selected remote environment. A cwd override applies only to this call.',
+        'Execute a /bin/bash command in the selected environment and return the exit code with a bounded output preview. Each call runs in a fresh shell: variables, cd and shell history do not persist, so pass cwd or use absolute paths. The default working directory is the workspace of the selected environment. Do not run interactive commands or commands that never exit; give long-running commands a realistic timeoutSeconds and prefer delegating lengthy builds or watchers. When the preview is truncated, the full log stays on the Server: continue reading it with read_output using the returned operation_id.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         required: ['command'],
         properties: {
           ...envTargetParameters,
-          command: { type: 'string', minLength: 1, maxLength: 1_000_000 },
-          cwd: { type: 'string', maxLength: 4096 },
-          timeoutSeconds: { type: 'integer', minimum: 1, maximum: 3600 },
+          command: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 1_000_000,
+            description: 'The bash command line to execute.',
+          },
+          cwd: {
+            type: 'string',
+            maxLength: 4096,
+            description: 'Working directory override for this call only.',
+          },
+          timeoutSeconds: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 3600,
+            description: 'Timeout in seconds; a server default applies when omitted.',
+          },
         },
       },
       validate: (value) => bashSchema.parse(value),
@@ -283,15 +340,31 @@ export function createEnvironmentTools(
     },
     {
       name: 'read_output',
-      description: 'Read an authorized operation output log stored on the Server by byte offset.',
+      description:
+        'Read a Server-stored operation output log by byte offset. Use it to continue reading bash output that was truncated in the tool result: pass the operation_id and follow next_offset until output_complete is true. output_gap marks output that could not be recovered.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         required: ['operation_id'],
         properties: {
-          operation_id: { type: 'string', maxLength: 200 },
-          offset: { type: 'integer', minimum: 0, default: 0 },
-          limit: { type: 'integer', minimum: 1, maximum: 65536, default: 16384 },
+          operation_id: {
+            type: 'string',
+            maxLength: 200,
+            description: 'The operation_id returned by the bash call.',
+          },
+          offset: {
+            type: 'integer',
+            minimum: 0,
+            default: 0,
+            description: 'Byte offset to start reading from; defaults to 0.',
+          },
+          limit: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 65536,
+            default: 16384,
+            description: 'Maximum bytes to return; defaults to 16384.',
+          },
         },
       },
       concurrent: true,

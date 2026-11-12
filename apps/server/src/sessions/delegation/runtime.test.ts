@@ -216,17 +216,16 @@ it('exposes main Agent delegation choices and delivery guidance in actual model 
     expect(system).toContain('Choose whether a task needs a persistent Thread before choosing');
     expect(system).toContain('Their SKILL.md contents are already included');
     expect(system).toContain('completion checks');
-    expect(system).toContain('Check the actual result before reporting completion');
+    expect(system).toContain('Verify before reporting completion');
     expect(system).not.toContain('You are the root Agent of a persistent task Thread');
     expect(system).not.toContain('You are a Subagent assigned');
 
     const threadCall = request.tools.find((tool) => tool.name === 'thread_call');
-    expect(threadCall?.description).toContain('The accepted status is not completion');
+    expect(threadCall?.description).toContain('the accepted receipt is not completion');
     expect(threadCall?.description).toContain('continued user conversation');
     expect(threadCall?.description).toContain('remains in the task list');
-    expect(threadCall?.description).toContain('Reuse an existing Thread');
     expect(threadCall?.description).toContain('bounded one-off deliverable');
-    expect(threadCall?.description).toContain('finish this turn');
+    expect(threadCall?.description).toContain('run in the background only');
     expect(threadCall?.description).toContain('Do not use thread_read or wait_ms');
     const subagent = request.tools.find((tool) => tool.name === 'subagent');
     expect(subagent?.description).toContain('bounded one-off task');
@@ -241,14 +240,9 @@ it('exposes main Agent delegation choices and delivery guidance in actual model 
 
     for (const name of ['thread_read', 'subagent_status']) {
       const tool = request.tools.find((candidate) => candidate.name === name);
+      expect(tool?.description).toContain('an explicit status check');
       expect(tool?.description).toContain(
-        'cancellation, recovery, or reporting requires verification',
-      );
-      expect(tool?.description).toContain(
-        'Automatic delivery makes routine reads, polling, and waits unnecessary',
-      );
-      expect(tool?.description).toContain(
-        'do not query again for an automatically delivered result',
+        'Automatic delivery makes routine reads and polling unnecessary',
       );
       expect(tool?.parameters).toMatchObject({
         properties: {

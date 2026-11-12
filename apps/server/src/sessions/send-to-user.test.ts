@@ -290,10 +290,10 @@ it('keeps the tool and user communication instructions exclusive to the main roo
     expect(instructions[3]).not.toContain('Use send_to_user for every user-facing');
     expect(
       provider.requests[0]?.tools.find((tool) => tool.name === 'send_to_user')?.description,
-    ).toContain('the full view is diagnostic only');
+    ).toContain('ordinary assistant text is private execution content, never a reply');
     expect(
       provider.requests[0]?.tools.find((tool) => tool.name === 'send_to_user')?.description,
-    ).toContain('the first and only action');
+    ).toContain('the only tool call in that response');
   } finally {
     await close(current);
   }

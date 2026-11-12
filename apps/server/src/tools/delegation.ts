@@ -62,13 +62,22 @@ export function createThreadDelegationTools(
     {
       name: 'thread_list',
       description:
-        'List persistent task Threads available to the main Agent with an optional cursor. Reuse a relevant existing Thread for ongoing work and follow-ups before creating another.',
+        'List persistent task Threads in scope with an optional cursor: the global main sees every workspace, a workspace main sees only its own workspace. Reuse a relevant existing Thread for ongoing work and follow-ups before creating another.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          cursor: { type: 'string', pattern: '^(0|[1-9][0-9]*)$' },
-          limit: { type: 'integer', minimum: 1, maximum: 100 },
+          cursor: {
+            type: 'string',
+            pattern: '^(0|[1-9][0-9]*)$',
+            description: 'Pagination cursor from a previous next_cursor.',
+          },
+          limit: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 100,
+            description: 'Maximum Threads to return; defaults to 50.',
+          },
         },
       },
       concurrent: true,
@@ -116,17 +125,52 @@ export function createThreadDelegationTools(
     {
       name: 'thread_call',
       description:
-        'Delegate ongoing work that needs later follow-ups, repeated changes or continued user conversation to a persistent task Thread. It keeps context and remains in the task list where the user can talk to it. Reuse an existing Thread for the same ongoing work. Use Subagent for a bounded one-off deliverable, even if it takes a long time. Create a task Thread with its first prompt when thread_id is omitted or empty, or submit a prompt to an existing task Thread. All Agents use the main environment workspace. Optional allowed_env narrows inherited environment authorization; tools select other environments per call using env_id. Include relevant context, constraints, exact paths, environment needs, deliverable and completion checks. Thread calls are background only. The accepted status is not completion. After a terminal result is persisted, it is injected automatically and a root Run is scheduled if needed. Continue other work, or finish this turn after stating that the task is still running. Do not use thread_read or wait_ms to keep a Run alive or collect the result.',
+        'Create a persistent task Thread with its first prompt, or submit a prompt to an existing task Thread. A task Thread keeps its context, remains in the task list where the user can talk to it, and suits ongoing work that needs later follow-ups, repeated changes or continued user conversation; use a Subagent for a bounded one-off deliverable, even if it takes a long time. Thread calls run in the background only: the accepted receipt is not completion, the terminal result is delivered automatically, and no read or wait is needed to collect it. Do not use thread_read or wait_ms to keep a Run alive or collect the result. An existing Thread call accepts only thread_id, prompt and mode.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         required: ['prompt'],
         properties: {
-          thread_id: { type: 'string', maxLength: 200 },
-          title: { type: 'string', minLength: 1, maxLength: 200 },
-          prompt: { type: 'string', minLength: 1, maxLength: 100_000 },
-          mode: { type: 'string', enum: ['steer', 'follow_up'], default: 'follow_up' },
-          allowed_env: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 32 },
+          thread_id: {
+            type: 'string',
+            maxLength: 200,
+            description:
+              'Existing task Thread to submit to; omit or pass an empty string to create a new Thread.',
+          },
+          title: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 200,
+            description: 'Title for the new Thread; only valid when creating.',
+          },
+          prompt: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 100_000,
+            description:
+              'Self-contained task prompt: goal, relevant context, constraints, exact paths, environment needs, deliverable and completion checks.',
+          },
+          mode: {
+            type: 'string',
+            enum: ['steer', 'follow_up'],
+            default: 'follow_up',
+            description:
+              'follow_up queues after the current work; steer redirects work in progress.',
+          },
+          workspace_id: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 200,
+            description:
+              'Workspace for the new Thread; only valid when creating. The global main may target any workspace, a workspace main only its own.',
+          },
+          allowed_env: {
+            type: 'array',
+            items: { type: 'string' },
+            minItems: 1,
+            maxItems: 32,
+            description: 'Narrows the inherited environment authorization for the new Thread.',
+          },
         },
       },
       concurrent: true,
@@ -174,7 +218,7 @@ export function createThreadDelegationTools(
     {
       name: 'thread_read',
       description:
-        'Read one Thread interaction now, or wait briefly only for an explicit status check. Use this only when the user requests status or cancellation, recovery, or reporting requires verification. Automatic delivery makes routine reads, polling, and waits unnecessary; do not query again for an automatically delivered result. Do not use this tool to keep a Run alive.',
+        'Read one Thread interaction by tool_call_id. Automatic delivery makes routine reads and polling unnecessary; use this only for an explicit status check, cancellation follow-up, recovery or reporting verification.',
       parameters: readParameters,
       concurrent: true,
       validate: (value) => interactionReadInputSchema.parse(value),
@@ -190,7 +234,8 @@ export function createThreadDelegationTools(
     },
     {
       name: 'thread_cancel',
-      description: 'Request cancellation of one exact Thread interaction.',
+      description:
+        'Request cancellation of one Thread interaction by tool_call_id. Cancellation is requested, not confirmed; the terminal state arrives with automatic delivery.',
       parameters: cancelParameters,
       concurrent: true,
       validate: (value) => interactionCancelInputSchema.parse(value),
@@ -220,7 +265,7 @@ export function createSubagentDelegationTools(
     {
       name: 'subagent_status',
       description:
-        'Read one background Subagent now, or wait briefly only for an explicit status check. Use this only when the user requests status or cancellation, recovery, or reporting requires verification. Automatic delivery makes routine reads, polling, and waits unnecessary; do not query again for an automatically delivered result. Do not use this tool to keep a Run alive.',
+        'Read one background Subagent interaction by tool_call_id. Automatic delivery makes routine reads and polling unnecessary; use this only for an explicit status check, cancellation follow-up, recovery or reporting verification.',
       parameters: readParameters,
       concurrent: true,
       validate: (value) => interactionReadInputSchema.parse(value),
@@ -236,7 +281,8 @@ export function createSubagentDelegationTools(
     },
     {
       name: 'subagent_cancel',
-      description: 'Request cancellation of one exact background Subagent interaction.',
+      description:
+        'Request cancellation of one background Subagent interaction by tool_call_id. Cancellation is requested, not confirmed; the terminal state arrives with automatic delivery.',
       parameters: cancelParameters,
       concurrent: true,
       validate: (value) => interactionCancelInputSchema.parse(value),

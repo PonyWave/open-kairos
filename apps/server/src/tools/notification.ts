@@ -23,7 +23,7 @@ export function createThreadNotificationTool(
   return {
     name: 'thread_notify',
     description:
-      'Send a concise user-facing message from this persistent Thread to a main conversation. A task Thread in a workspace notifies its workspace main by default, or the global main with target global. A workspace main or a temporary conversation notifies the global main. Use it for a meaningful finding, changed plan, blocker or required input that should reach the main Agent before this task finishes. The Server persists the exact source Thread, root Agent and tool call. Accepted means the notification was saved for automatic injection, not that the main Agent or user has read it. Do not use this tool for routine progress or duplicate a final response.',
+      'Send a message from this persistent Thread to a main conversation. A task Thread in a workspace notifies its workspace main by default, or the global main with target global; a workspace main or a temporary conversation notifies the global main. Use it for a meaningful finding, changed plan, blocker or required input that should reach the main Agent before this task finishes. The accepted receipt means the notification is persisted for automatic injection, not that it was read; do not resend it or use it for routine progress.',
     parameters: {
       type: 'object',
       additionalProperties: false,
