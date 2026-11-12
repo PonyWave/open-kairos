@@ -77,9 +77,9 @@ export class DeviceInstaller {
     if (!/^[0-9A-Za-z._:-]{1,200}$/.test(envId))
       throw new SessionError('internal', 'Environment identifier is invalid for Daemon commands.');
     return {
-      startCommand: `~/.local/bin/kairos-daemon start ${envId}`,
-      statusCommand: `~/.local/bin/kairos-daemon status ${envId}`,
-      stopCommand: `~/.local/bin/kairos-daemon stop ${envId}`,
+      startCommand: '~/.local/bin/kairos-daemon start',
+      statusCommand: '~/.local/bin/kairos-daemon status',
+      stopCommand: '~/.local/bin/kairos-daemon stop',
     };
   }
 

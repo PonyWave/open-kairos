@@ -117,11 +117,21 @@ pnpm start
 
 ### 连接其他设备
 
-网页「连接设备」页生成一次性配对命令，在目标设备（Linux/macOS）上执行后，设备通过 WSS 主动接入。配对安装包默认从 `dist/releases` 提供，用以下命令构建：
+网页「连接设备」页生成一次性配对命令，在目标设备（Linux/macOS）上执行后，设备通过 WSS 主动接入。安装结束会打印 GUI 访问地址（与 Server 同源，使用 `kairos start` 打印的带令牌地址登录）和本机管理命令。配对安装包默认从 `dist/releases` 提供，用以下命令构建：
 
 ```bash
 node scripts/build-daemon-release.mjs --version <版本> [--platform linux|darwin] [--arch x64|arm64]
 ```
+
+设备上的 Daemon 通过系统服务常驻（Linux systemd 开机自启，macOS launchd 登录自启），日常管理命令：
+
+```bash
+kairos-daemon status   # 进程、WSS 连接与进行中操作
+kairos-daemon stop     # 停止服务，保留配对身份
+kairos-daemon start    # 重新启动
+```
+
+一台设备只绑定一个环境时省略参数即可；绑定多个环境（macOS）时可以追加环境 ID 或设备名（如 `kairos-daemon stop my-mac`），不带参数且终端可交互时会列出候选环境供选择。
 
 ### 定时任务
 

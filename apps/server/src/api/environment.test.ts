@@ -22,15 +22,15 @@ import { type EnvironmentApiOptions, registerEnvironmentRoutes } from './environ
 
 const databases: DatabaseSync[] = [];
 const now = '2026-11-05T12:00:00.000Z';
-const daemonCommands = (envId: string) => ({
-  startCommand: `~/.local/bin/kairos-daemon start ${envId}`,
-  statusCommand: `~/.local/bin/kairos-daemon status ${envId}`,
-  stopCommand: `~/.local/bin/kairos-daemon stop ${envId}`,
+const daemonCommands = () => ({
+  startCommand: '~/.local/bin/kairos-daemon start',
+  statusCommand: '~/.local/bin/kairos-daemon status',
+  stopCommand: '~/.local/bin/kairos-daemon stop',
 });
 const installer = {
   assertAvailable() {},
   command: () => 'fixture-install-command',
-  daemonCommands: (envId: string) => daemonCommands(envId),
+  daemonCommands: () => daemonCommands(),
 };
 
 function seedTenant(database: DatabaseSync, tenantId: string): void {
@@ -215,8 +215,8 @@ describe('connected device management API', () => {
     const actionsBefore = database.prepare('SELECT * FROM client_actions').all();
     const testCommands = await first.getEnvironmentDaemonCommands({ envId: testEnvId });
     const prodCommands = await first.getEnvironmentDaemonCommands({ envId: prodEnvId });
-    expect(testCommands).toMatchObject(daemonCommands(testEnvId));
-    expect(prodCommands).toMatchObject(daemonCommands(prodEnvId));
+    expect(testCommands).toMatchObject(daemonCommands());
+    expect(prodCommands).toMatchObject(daemonCommands());
     for (const commands of [testCommands, prodCommands]) {
       expect(commands).not.toHaveProperty('pairingCredential');
       expect(commands).not.toHaveProperty('installCommand');

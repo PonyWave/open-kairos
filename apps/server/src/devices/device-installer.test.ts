@@ -104,18 +104,15 @@ async function fixture() {
 }
 
 describe('device installation download and bootstrap', () => {
-  it('selects the requested environment in every Daemon command', () => {
+  it('returns simple Daemon commands that work without an explicit environment', () => {
     const installer = new DeviceInstaller('/unused', 'https://example.test');
-    expect(installer.daemonCommands('env-test')).toEqual({
-      startCommand: '~/.local/bin/kairos-daemon start env-test',
-      statusCommand: '~/.local/bin/kairos-daemon status env-test',
-      stopCommand: '~/.local/bin/kairos-daemon stop env-test',
-    });
-    expect(installer.daemonCommands('env-prod')).toEqual({
-      startCommand: '~/.local/bin/kairos-daemon start env-prod',
-      statusCommand: '~/.local/bin/kairos-daemon status env-prod',
-      stopCommand: '~/.local/bin/kairos-daemon stop env-prod',
-    });
+    const expected = {
+      startCommand: '~/.local/bin/kairos-daemon start',
+      statusCommand: '~/.local/bin/kairos-daemon status',
+      stopCommand: '~/.local/bin/kairos-daemon stop',
+    };
+    expect(installer.daemonCommands('env-test')).toEqual(expected);
+    expect(installer.daemonCommands('env-prod')).toEqual(expected);
     expect(() => installer.daemonCommands('env-test; env-prod')).toThrow(
       'Environment identifier is invalid',
     );

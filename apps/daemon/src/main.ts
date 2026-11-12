@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdir, readFile, realpath, rmdir, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, realpath, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { createConnection } from 'node:net';
 import { homedir, hostname } from 'node:os';
 import { join, resolve } from 'node:path';
+import { createInterface } from 'node:readline/promises';
 import { DaemonClient, DaemonReadinessError } from './connection/client.js';
 import { DaemonIdentityStore } from './identity.js';
 import { runPlatformForeground, writePlatformBootstrap } from './platform.js';
@@ -736,14 +737,118 @@ interface ControlTarget {
   paired: boolean;
 }
 
-function controlTarget(args: string[]): ControlTarget {
+interface MacBinding {
+  identityPath: string;
+  envId: string;
+  deviceName: string;
+}
+
+async function listMacBindings(): Promise<MacBinding[]> {
+  const base = join(
+    homedir(),
+    'Library',
+    'Application Support',
+    'Kairos',
+    'daemon',
+    'environments',
+  );
+  let entries: string[];
+  try {
+    entries = await readdir(base);
+  } catch {
+    return [];
+  }
+  const bindings: MacBinding[] = [];
+  for (const entry of entries) {
+    const identityPath = join(base, entry, 'identity.json');
+    const identity = new DaemonIdentityStore(identityPath).load();
+    if (identity !== undefined) {
+      bindings.push({ identityPath, envId: identity.envId, deviceName: identity.deviceName });
+    }
+  }
+  return bindings.sort((a, b) => a.envId.localeCompare(b.envId));
+}
+
+async function chooseMacBinding(bindings: MacBinding[]): Promise<MacBinding> {
+  process.stdout.write('Multiple environments are paired on this Mac:\n');
+  for (const [index, binding] of bindings.entries()) {
+    process.stdout.write(`  ${index + 1}) ${binding.deviceName} (${binding.envId})\n`);
+  }
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await prompt.question(`Select 1-${bindings.length} (or type a name): `)).trim();
+    const index = Number(answer);
+    const byIndex =
+      Number.isInteger(index) && index >= 1 && index <= bindings.length
+        ? bindings[index - 1]
+        : undefined;
+    if (byIndex !== undefined) return byIndex;
+    const matched = bindings.filter(
+      (binding) =>
+        binding.envId === answer || binding.deviceName.toLowerCase() === answer.toLowerCase(),
+    );
+    if (matched.length === 1 && matched[0] !== undefined) return matched[0];
+    throw new Error('No paired environment matches the selection.');
+  } finally {
+    prompt.close();
+  }
+}
+
+async function macControlTarget(selector: string | undefined): Promise<ControlTarget> {
+  const bindings = await listMacBindings();
+  if (selector !== undefined) {
+    const byEnv = bindings.filter((binding) => binding.envId === selector);
+    if (byEnv.length === 1 && byEnv[0] !== undefined) return { ...byEnv[0], paired: true };
+    const byName = bindings.filter(
+      (binding) => binding.deviceName.toLowerCase() === selector.toLowerCase(),
+    );
+    if (byName.length === 1 && byName[0] !== undefined) return { ...byName[0], paired: true };
+    if (byName.length > 1) {
+      throw new Error(
+        `Multiple environments share the device name ${selector}; pass the env-id instead.`,
+      );
+    }
+    const envId = validateEnvironmentId(selector);
+    const identityPath = defaultControlIdentityPath(envId);
+    const identity = new DaemonIdentityStore(identityPath).load();
+    if (identity !== undefined && identity.envId !== envId) {
+      throw new Error('The command env-id does not match the paired identity.');
+    }
+    return { identityPath, envId, paired: identity !== undefined };
+  }
+  if (bindings.length === 0) {
+    throw new Error('No paired environment exists on this Mac; run the install command first.');
+  }
+  if (bindings.length === 1 && bindings[0] !== undefined) return { ...bindings[0], paired: true };
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      `Multiple environments are paired; pass one of: ${bindings.map((binding) => binding.envId).join(', ')}.`,
+    );
+  }
+  return { ...(await chooseMacBinding(bindings)), paired: true };
+}
+
+async function controlTarget(args: string[]): Promise<ControlTarget> {
   const positional = args[0] !== undefined && !args[0].startsWith('--') ? args[0] : undefined;
   const options = positional === undefined ? args : args.slice(1);
   assertKnownOptions(options, ['--identity-path']);
-  const envArgument = positional === undefined ? undefined : validateEnvironmentId(positional);
-  const identityPath =
-    optionValue(options, '--identity-path') ?? defaultControlIdentityPath(envArgument);
+  const explicitIdentityPath = optionValue(options, '--identity-path');
+  if (explicitIdentityPath !== undefined) {
+    const envArgument = positional === undefined ? undefined : validateEnvironmentId(positional);
+    const identity = new DaemonIdentityStore(explicitIdentityPath).load();
+    if (envArgument !== undefined && identity !== undefined && identity.envId !== envArgument) {
+      throw new Error('The command env-id does not match the paired identity.');
+    }
+    const envId = envArgument ?? identity?.envId;
+    if (envId === undefined) {
+      throw new Error('An env-id is required when no paired identity is available.');
+    }
+    return { identityPath: explicitIdentityPath, envId, paired: identity !== undefined };
+  }
+  if (process.platform === 'darwin') return macControlTarget(positional);
+  const identityPath = defaultControlIdentityPath(undefined);
   const identity = new DaemonIdentityStore(identityPath).load();
+  const envArgument = positional === undefined ? undefined : validateEnvironmentId(positional);
   if (envArgument !== undefined && identity !== undefined && identity.envId !== envArgument) {
     throw new Error('The command env-id does not match the paired identity.');
   }
@@ -755,7 +860,7 @@ function controlTarget(args: string[]): ControlTarget {
 }
 
 async function startCommand(args: string[]): Promise<void> {
-  const target = controlTarget(args);
+  const target = await controlTarget(args);
   if (!target.paired) {
     throw new Error('No paired identity exists; start does not pair or replace an identity.');
   }
@@ -765,14 +870,14 @@ async function startCommand(args: string[]): Promise<void> {
 }
 
 async function stopCommand(args: string[]): Promise<void> {
-  const target = controlTarget(args);
+  const target = await controlTarget(args);
   if (process.platform === 'darwin') await stopMacService(target.identityPath, target.envId);
   else if (process.platform === 'linux') await stopLinuxService();
   else throw new Error('Daemon service control supports only macOS and Linux.');
 }
 
 async function statusCommand(args: string[]): Promise<void> {
-  const target = controlTarget(args);
+  const target = await controlTarget(args);
   let current: ServiceProcess;
   if (process.platform === 'darwin') current = await queryMacService(target.envId);
   else if (process.platform === 'linux') current = await queryLinuxService();

@@ -320,6 +320,132 @@ afterEach(async () => {
   for (const clean of cleanup.splice(0).reverse()) await clean();
 });
 
+describe.skipIf(process.platform !== 'darwin')('Daemon environment resolution', () => {
+  function saveBindingIdentity(directory: string, envId: string, deviceName: string): void {
+    const envDirectory = join(
+      directory,
+      'Library',
+      'Application Support',
+      'Kairos',
+      'daemon',
+      'environments',
+      envId,
+    );
+    mkdirSync(envDirectory, { recursive: true });
+    new DaemonIdentityStore(join(envDirectory, 'identity.json')).save({
+      version: 2,
+      envId,
+      deviceId: `device-${envId}`,
+      deviceBindingId: `binding-${envId}`,
+      deviceCredential: `kd2_${envId}_credential`,
+      serverUrl: 'ws://127.0.0.1:9/devices/wss',
+      deviceName,
+      grantedCapabilities: ['bash', 'directory_check'],
+      daemonVersion: 'resolution-test',
+    });
+  }
+
+  function resolutionFixture(bindings: Array<{ envId: string; deviceName: string }>): {
+    directory: string;
+    log: string;
+    environment: NodeJS.ProcessEnv;
+  } {
+    const directory = temporaryDirectory();
+    const bin = join(directory, 'bin');
+    mkdirSync(bin);
+    const log = join(directory, 'launchctl.log');
+    writeFileSync(
+      join(bin, 'launchctl'),
+      `#!${process.execPath}
+import { appendFileSync } from 'node:fs';
+appendFileSync(${JSON.stringify(log)}, process.argv.slice(2).join(' ') + '\\n');
+process.exit(1);
+`,
+      { mode: 0o700 },
+    );
+    for (const binding of bindings)
+      saveBindingIdentity(directory, binding.envId, binding.deviceName);
+    return {
+      directory,
+      log,
+      environment: { HOME: directory, PATH: `${bin}:${process.env.PATH ?? ''}` },
+    };
+  }
+
+  function runDaemon(
+    environment: NodeJS.ProcessEnv,
+    args: string[],
+  ): Promise<{ code: number | null; stdout: string; stderr: string }> {
+    return new Promise((resolvePromise, reject) => {
+      const child = spawn(process.execPath, ['--import', 'tsx', main, ...args], {
+        env: { ...process.env, ...environment },
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (chunk: string) => {
+        stdout += chunk;
+      });
+      child.stderr.on('data', (chunk: string) => {
+        stderr += chunk;
+      });
+      child.once('error', reject);
+      child.once('close', (code) => resolvePromise({ code, stdout, stderr }));
+    });
+  }
+
+  function serviceLabel(envId: string): string {
+    return `team.kairos.daemon.${createHash('sha256').update(envId).digest('hex').slice(0, 32)}`;
+  }
+
+  it('uses the only paired environment when no selector is given', async () => {
+    const test = resolutionFixture([{ envId: 'env-alpha', deviceName: 'alpha-mac' }]);
+    const result = await runDaemon(test.environment, ['status']);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('Process: stopped');
+    expect(readFileSync(test.log, 'utf8')).toContain(serviceLabel('env-alpha'));
+  });
+
+  it('requires a selector for multiple environments when input is not a terminal', async () => {
+    const test = resolutionFixture([
+      { envId: 'env-alpha', deviceName: 'alpha-mac' },
+      { envId: 'env-beta', deviceName: 'beta-mac' },
+    ]);
+    const result = await runDaemon(test.environment, ['status']);
+    expect(result.code).toBe(78);
+    expect(result.stderr).toContain('Multiple environments are paired; pass one of:');
+    expect(result.stderr).toContain('env-alpha');
+    expect(result.stderr).toContain('env-beta');
+  });
+
+  it('resolves a selector by device name', async () => {
+    const test = resolutionFixture([
+      { envId: 'env-alpha', deviceName: 'alpha-mac' },
+      { envId: 'env-beta', deviceName: 'beta-mac' },
+    ]);
+    const result = await runDaemon(test.environment, ['status', 'beta-mac']);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('Process: stopped');
+    expect(readFileSync(test.log, 'utf8')).toContain(serviceLabel('env-beta'));
+  });
+
+  it('rejects a device name shared by multiple environments', async () => {
+    const test = resolutionFixture([
+      { envId: 'env-alpha', deviceName: 'shared-name' },
+      { envId: 'env-beta', deviceName: 'shared-name' },
+    ]);
+    const result = await runDaemon(test.environment, ['status', 'shared-name']);
+    expect(result.code).toBe(78);
+    expect(result.stderr).toContain('Multiple environments share the device name');
+  });
+
+  it('reports when no environment is paired', async () => {
+    const test = resolutionFixture([]);
+    const result = await runDaemon(test.environment, ['status']);
+    expect(result.code).toBe(78);
+    expect(result.stderr).toContain('No paired environment exists on this Mac');
+  });
+});
+
 describe.skipIf(process.platform !== 'darwin')('macOS Daemon service lifecycle', () => {
   it('waits for launchd and process exit before stop and immediate start', async () => {
     const test = fixture({ transitionPrints: 2, processChecks: 2 });

@@ -139,10 +139,16 @@ if ! kairos_service_uid; then
   kairos_fail 'service enablement, activity, or non-root UID verification failed.'
 fi
 [[ $(stat -c %a "$IDENTITY_PATH") == 600 ]] || kairos_fail 'identity verification failed.'
-printf 'Manage environment %s:\n  %s status %s\n  %s stop %s\n  %s start %s\n' "$ENV_ID" "$CONTROL_LINK" "$ENV_ID" "$CONTROL_LINK" "$ENV_ID" "$CONTROL_LINK" "$ENV_ID"
+GUI_URL=${SERVER_URL%/devices/wss}
+case $GUI_URL in
+  wss://*) GUI_URL="https://${GUI_URL#wss://}" ;;
+  ws://*) GUI_URL="http://${GUI_URL#ws://}" ;;
+esac
+printf 'Manage the environment:\n  %s status\n  %s stop\n  %s start\n' "$CONTROL_LINK" "$CONTROL_LINK" "$CONTROL_LINK"
 printf 'stop retains the paired identity; start only starts that existing identity. Ctrl+C exits status without stopping the Daemon.\n'
 if [[ $PAIR_STATUS -eq 69 ]]; then
   printf 'kairos-daemon: installed and bound; directory or capability readiness is not confirmed.\n' >&2
   exit 69
 fi
-printf 'kairos-daemon: installed, paired, and ready; systemd service is active as kairos.\n'
+printf 'kairos-daemon: installed, paired, and started as a systemd service; you can close this terminal.\n'
+printf 'Conversation page on this machine: %s (sign in with the token URL printed by kairos start).\n' "$GUI_URL"

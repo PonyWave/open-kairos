@@ -76,7 +76,17 @@ const xml = (value) => value.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','
 fs.writeFileSync(file, `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>${xml(label)}</string><key>ProgramArguments</key><array><string>${xml(binary)}</string></array><key>EnvironmentVariables</key><dict><key>KAIROS_DEVICE_IDENTITY_PATH</key><string>${xml(identity)}</string></dict><key>RunAtLoad</key><true/><key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict><key>ThrottleInterval</key><integer>10</integer><key>StandardOutPath</key><string>/dev/null</string><key>StandardErrorPath</key><string>/dev/null</string></dict></plist>`, {mode:0o600});
 JS
 kairos_macos_start
-printf 'kairos-daemon: launchd service is active as the login user and starts at user login.\n'
-printf 'Manage environment %s:\n  %s status %s\n  %s stop %s\n  %s start %s\n' "$ENV_ID" "$CONTROL_LINK" "$ENV_ID" "$CONTROL_LINK" "$ENV_ID" "$CONTROL_LINK" "$ENV_ID"
+GUI_URL=${SERVER_URL%/devices/wss}
+case $GUI_URL in
+  wss://*) GUI_URL="https://${GUI_URL#wss://}" ;;
+  ws://*) GUI_URL="http://${GUI_URL#ws://}" ;;
+esac
+printf 'Manage the environment:\n  %s status\n  %s stop\n  %s start\n' "$CONTROL_LINK" "$CONTROL_LINK" "$CONTROL_LINK"
 printf 'stop retains the paired identity; start only starts that existing identity. Ctrl+C exits status without stopping the Daemon.\n'
-exit "$PAIR_STATUS"
+if [[ $PAIR_STATUS -eq 69 ]]; then
+  printf 'kairos-daemon: installed and bound; directory or capability readiness is not confirmed.\n' >&2
+  exit 69
+fi
+printf 'kairos-daemon: installed, paired, and started as a launchd service (starts at user login); you can close this terminal.\n'
+printf 'Conversation page on this machine: %s (sign in with the token URL printed by kairos start).\n' "$GUI_URL"
+exit 0
