@@ -12,6 +12,7 @@ export interface ComposerSubmissionContext {
   busy: boolean;
   isTaskDraft: boolean;
   isMainThread?: boolean | undefined;
+  workspaceId?: string | null | undefined;
   selectedThreadId: string | null;
   snapshotReady: boolean;
 }
@@ -103,6 +104,7 @@ export function planComposerSubmission(context: ComposerSubmissionContext): Comp
         autoSummarizeTitle: true,
         initialText: text,
         initialMode: context.mode,
+        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
         ...(context.attachments === undefined ? {} : { initialAttachmentIds: attachmentIds }),
         ...(context.attachments === undefined
           ? {}

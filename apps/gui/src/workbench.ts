@@ -6,12 +6,14 @@ export interface WorkbenchState {
     | 'directory'
     | 'draft'
     | 'devices'
+    | 'workspaces'
     | 'settings'
     | 'automations'
     | 'automationThread';
   selectedThreadId: string | null;
   automationScheduleId: string | null;
   automationThreadId: string | null;
+  draftWorkspaceId: string | null;
   mainThreadId: string;
   mainThread: Thread | null;
   threads: readonly Thread[];
@@ -62,9 +64,19 @@ export class ThreadDirectory {
     });
   }
 
-  openDraft(): void {
+  openDraft(workspaceId: string | null = null): void {
     this.patch({
       page: 'draft',
+      selectedThreadId: null,
+      automationScheduleId: null,
+      automationThreadId: null,
+      draftWorkspaceId: workspaceId,
+    });
+  }
+
+  openWorkspaces(): void {
+    this.patch({
+      page: 'workspaces',
       selectedThreadId: null,
       automationScheduleId: null,
       automationThreadId: null,
@@ -146,6 +158,7 @@ function initialState(mainThreadId: string): WorkbenchState {
     selectedThreadId: null,
     automationScheduleId: null,
     automationThreadId: null,
+    draftWorkspaceId: null,
     mainThreadId,
     mainThread: null,
     threads: [],
@@ -155,7 +168,9 @@ function initialState(mainThreadId: string): WorkbenchState {
 function isListedThread(thread: Thread): boolean {
   return (
     !thread.automationOnly &&
-    (thread.threadType === ThreadType.MAIN || thread.threadType === ThreadType.TASK)
+    (thread.threadType === ThreadType.MAIN ||
+      thread.threadType === ThreadType.TASK ||
+      thread.threadType === ThreadType.WORKSPACE_MAIN)
   );
 }
 

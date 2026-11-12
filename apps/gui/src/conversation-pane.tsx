@@ -72,6 +72,7 @@ export function ConversationPane({
   thread,
   mainThreadId,
   draftOwner,
+  draftWorkspaceId = null,
   actions,
   drafts,
   topicCards,
@@ -100,6 +101,7 @@ export function ConversationPane({
   thread: Thread | null;
   mainThreadId: string | null;
   draftOwner: string;
+  draftWorkspaceId?: string | null;
   actions: SharedActions;
   drafts: DraftStore;
   topicCards: readonly TopicCardView[];
@@ -392,6 +394,7 @@ export function ConversationPane({
       busy: actions.busy,
       isTaskDraft: isDraft,
       isMainThread: variant === 'main',
+      workspaceId: draftWorkspaceId,
       selectedThreadId: activeThreadId,
       snapshotReady: snapshot !== null,
     });

@@ -36,6 +36,7 @@ export function createActionHandlers(clients: KairosClients): ActionHandlers {
           initialMode: inputMode(body.initialMode),
           initialAttachmentIds: stringArray(body.initialAttachmentIds ?? []),
           initialClipboardAttachmentIds: stringArray(body.initialClipboardAttachmentIds ?? []),
+          ...(body.workspaceId === undefined ? {} : { workspaceId: text(body, 'workspaceId') }),
         },
         callOptions(signal),
       );

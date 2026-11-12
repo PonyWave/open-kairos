@@ -14,6 +14,7 @@ export function ThreadListPage({
   loading,
   error,
   hasMore,
+  workspaceNames,
   onOpen,
   onSort,
   onLoadMore,
@@ -25,11 +26,34 @@ export function ThreadListPage({
   loading: boolean;
   error: string | null;
   hasMore: boolean;
+  workspaceNames?: ReadonlyMap<string, string> | undefined;
   onOpen: (card: TopicCardView) => void;
   onSort: (sort: TopicSort) => void;
   onLoadMore: () => Promise<void>;
   onReload: () => Promise<void>;
 }) {
+  const sections: Array<{ key: string; title: string; cards: TopicCardView[] }> = [];
+  if (workspaceNames && workspaceNames.size > 0) {
+    const byWorkspace = new Map<string, TopicCardView[]>();
+    for (const card of cards) {
+      const workspaceId = card.thread.workspaceId ?? '';
+      const list = byWorkspace.get(workspaceId) ?? [];
+      list.push(card);
+      byWorkspace.set(workspaceId, list);
+    }
+    for (const [workspaceId, name] of workspaceNames) {
+      const sectionCards = byWorkspace.get(workspaceId);
+      if (sectionCards && sectionCards.length > 0) {
+        sections.push({ key: workspaceId, title: name, cards: sectionCards });
+      }
+    }
+    const temporary = byWorkspace.get('') ?? [];
+    if (temporary.length > 0) {
+      sections.push({ key: 'temporary', title: '临时对话', cards: temporary });
+    }
+  } else {
+    sections.push({ key: 'all', title: '', cards: [...cards] });
+  }
   return (
     <section
       className="thread-directory conversation-list-page"
@@ -72,17 +96,24 @@ export function ThreadListPage({
       ) : cards.length === 0 && !error ? (
         <p className="empty">当前没有话题。</p>
       ) : (
-        <section className="conversation-list" aria-label="全部话题">
-          {cards.map((card) => (
-            <TopicCard
-              key={card.thread.threadId}
-              card={card}
-              sort={sort}
-              mainThreadId={mainThreadId}
-              onOpen={onOpen}
-            />
-          ))}
-        </section>
+        sections.map((section) => (
+          <section
+            className="conversation-list"
+            aria-label={section.title || '全部话题'}
+            key={section.key}
+          >
+            {section.title && <h2 className="conversation-section-title">{section.title}</h2>}
+            {section.cards.map((card) => (
+              <TopicCard
+                key={card.thread.threadId}
+                card={card}
+                sort={sort}
+                mainThreadId={mainThreadId}
+                onOpen={onOpen}
+              />
+            ))}
+          </section>
+        ))
       )}
       {hasMore && (
         <button

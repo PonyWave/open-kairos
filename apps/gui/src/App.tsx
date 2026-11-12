@@ -56,6 +56,7 @@ import { useAuth } from './use-auth.js';
 import { useDrafts } from './use-drafts.js';
 import { useTopicPreviews } from './use-topic-previews.js';
 import { useWorkbench } from './use-workbench.js';
+import { useWorkspaceDirectory } from './use-workspaces.js';
 import { UserAvatar, UserProfileProvider } from './user-avatar.js';
 import {
   automationRouteFromLocation,
@@ -64,6 +65,7 @@ import {
   shouldRefreshConversationPreviews,
   workbenchLocation,
 } from './workbench-navigation.js';
+import { WorkspacesPage } from './workspaces-page.js';
 
 const wordmark = new URL('./assets/kairos-wordmark.svg', import.meta.url).href;
 
@@ -145,6 +147,7 @@ export function AccountWorkbench({
   const workbench = useWorkbench(identity.mainThreadId);
   const threadSyncManager = useMemo(() => new ThreadSyncManager(clients), [clients]);
   const topics = useTopicPreviews(clients, true);
+  const workspaceDirectory = useWorkspaceDirectory(clients, true);
   const drafts = useDrafts(storage);
   const directory = workbench.state;
   const mainThread = directory.mainThread;
@@ -243,16 +246,19 @@ export function AccountWorkbench({
     [navigate, topics.closeDirectory, workbench.openThread],
   );
 
-  const openDraft = useCallback(() => {
-    navigate(() => {
-      setNavigationOpen(false);
-      setActiveTopic(null);
-      setActiveSubagent(null);
-      setHighlightedCallId(null);
-      topics.closeDirectory();
-      workbench.openDraft();
-    });
-  }, [navigate, topics.closeDirectory, workbench.openDraft]);
+  const openDraft = useCallback(
+    (workspaceId: string | null = null) => {
+      navigate(() => {
+        setNavigationOpen(false);
+        setActiveTopic(null);
+        setActiveSubagent(null);
+        setHighlightedCallId(null);
+        topics.closeDirectory();
+        workbench.openDraft(workspaceId);
+      });
+    },
+    [navigate, topics.closeDirectory, workbench.openDraft],
+  );
 
   const openDevices = useCallback(() => {
     navigate(() => {
@@ -264,6 +270,17 @@ export function AccountWorkbench({
       workbench.openDevices();
     });
   }, [navigate, topics.closeDirectory, workbench.openDevices]);
+
+  const openWorkspaces = useCallback(() => {
+    navigate(() => {
+      setNavigationOpen(false);
+      setActiveTopic(null);
+      setActiveSubagent(null);
+      setHighlightedCallId(null);
+      topics.closeDirectory();
+      workbench.openWorkspaces();
+    });
+  }, [navigate, topics.closeDirectory, workbench.openWorkspaces]);
 
   const openSettings = useCallback(() => {
     navigate(() => {
@@ -680,47 +697,113 @@ export function AccountWorkbench({
               <span className="nav-label">看板</span>
             </button>
           </nav>
-          <section className="sidebar-section" aria-label="最近话题">
+          <section className="sidebar-section" aria-label="工作空间">
             <div className="sidebar-label">
-              <span>最近话题</span>
+              <span>工作空间</span>
               <button
                 type="button"
                 className="icon-button"
-                aria-label="新建话题"
-                onClick={openDraft}
+                aria-label="管理工作空间"
+                title="管理工作空间"
+                onClick={openWorkspaces}
               >
-                <Icon name="plus" className="i-sm" />
+                <Icon name="settings" className="i-sm" />
               </button>
             </div>
-            {topics.state.recentLoading && topics.state.recent.length === 0 && (
-              <p className="muted">正在加载最近话题</p>
+            {workspaceDirectory.loading && workspaceDirectory.groups.length === 0 && (
+              <p className="muted">正在加载工作空间</p>
             )}
-            {topics.state.recentError && (
+            {workspaceDirectory.error && (
               <p className="sidebar-error" role="alert">
-                {topics.state.recentError}
+                {workspaceDirectory.error}
               </p>
             )}
-            {topics.state.recent.map((card) => (
-              <RecentTopicItem
-                key={card.thread.threadId}
-                thread={card.thread}
-                current={selectedThreadId === card.thread.threadId}
-                busy={actions.busy}
-                onOpen={() =>
-                  openFullThread(
-                    card.thread.threadId,
-                    card.origin,
-                    card.origin?.delegation.sourceToolCallId ?? null,
-                  )
-                }
-                onRename={async (title) =>
-                  (await actions.execute(`rename-thread:${card.thread.threadId}`, 'renameThread', {
-                    threadId: card.thread.threadId,
-                    title,
-                  })) !== undefined
-                }
-              />
+            {workspaceDirectory.groups.map((group) => (
+              <div className="workspace-group" key={group.workspace?.workspaceId ?? 'unknown'}>
+                <div
+                  className="workspace-header"
+                  title={
+                    group.workspace
+                      ? `${group.workspace.envId} · ${group.workspace.path}`
+                      : undefined
+                  }
+                >
+                  <span className="workspace-name">{group.workspace?.name ?? '工作空间'}</span>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`在 ${group.workspace?.name ?? '工作空间'} 新建话题`}
+                    title="新建话题"
+                    onClick={() => openDraft(group.workspace?.workspaceId ?? null)}
+                  >
+                    <Icon name="plus" className="i-sm" />
+                  </button>
+                </div>
+                {group.mainThread ? (
+                  <RecentTopicItem
+                    thread={group.mainThread}
+                    current={selectedThreadId === group.mainThread.threadId}
+                    busy={actions.busy}
+                    onOpen={() => openFullThread(group.mainThread?.threadId ?? '', null, null)}
+                    onRename={async (title) =>
+                      (await actions.execute(
+                        `rename-thread:${group.mainThread?.threadId ?? ''}`,
+                        'renameThread',
+                        { threadId: group.mainThread?.threadId ?? '', title },
+                      )) !== undefined
+                    }
+                  />
+                ) : (
+                  <p className="muted">工作空间主对话缺失</p>
+                )}
+                {group.tasks.map((thread) => (
+                  <RecentTopicItem
+                    key={thread.threadId}
+                    thread={thread}
+                    current={selectedThreadId === thread.threadId}
+                    busy={actions.busy}
+                    onOpen={() => openFullThread(thread.threadId, null, null)}
+                    onRename={async (title) =>
+                      (await actions.execute(`rename-thread:${thread.threadId}`, 'renameThread', {
+                        threadId: thread.threadId,
+                        title,
+                      })) !== undefined
+                    }
+                  />
+                ))}
+              </div>
             ))}
+            {workspaceDirectory.temporary.length > 0 && (
+              <div className="workspace-group">
+                <div className="workspace-header">
+                  <span className="workspace-name">临时对话</span>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="新建临时对话"
+                    title="新建临时对话"
+                    onClick={() => openDraft(null)}
+                  >
+                    <Icon name="plus" className="i-sm" />
+                  </button>
+                </div>
+                {workspaceDirectory.temporary.map((thread) => (
+                  <RecentTopicItem
+                    key={thread.threadId}
+                    thread={thread}
+                    current={selectedThreadId === thread.threadId}
+                    busy={actions.busy}
+                    onOpen={() => openFullThread(thread.threadId, null, null)}
+                    onRename={async (title) =>
+                      (await actions.execute(`rename-thread:${thread.threadId}`, 'renameThread', {
+                        threadId: thread.threadId,
+                        title,
+                      })) !== undefined
+                    }
+                  />
+                ))}
+              </div>
+            )}
             <button
               type="button"
               className={`recent-view-all${directory.page === 'directory' ? ' current' : ''}`}
@@ -976,6 +1059,15 @@ export function AccountWorkbench({
               />
             ) : directory.page === 'devices' ? (
               <ConnectedDevicesPage clients={clients} />
+            ) : directory.page === 'workspaces' ? (
+              <WorkspacesPage
+                clients={clients}
+                groups={workspaceDirectory.groups}
+                loading={workspaceDirectory.loading}
+                error={workspaceDirectory.error}
+                onChanged={workspaceDirectory.refresh}
+                onOpenThread={(threadId) => openFullThread(threadId, null, null)}
+              />
             ) : directory.page === 'directory' ? (
               <ThreadListPage
                 cards={topics.state.cards}
@@ -984,6 +1076,16 @@ export function AccountWorkbench({
                 loading={topics.state.loading}
                 error={topics.state.error}
                 hasMore={topics.state.hasMore}
+                workspaceNames={
+                  new Map(
+                    workspaceDirectory.groups
+                      .filter((group) => group.workspace !== null)
+                      .map((group) => [
+                        group.workspace?.workspaceId ?? '',
+                        group.workspace?.name ?? '',
+                      ]),
+                  )
+                }
                 onOpen={(card) =>
                   openFullThread(
                     card.thread.threadId,
@@ -1005,6 +1107,7 @@ export function AccountWorkbench({
                 thread={null}
                 mainThreadId={mainThreadId}
                 draftOwner={localTaskDraftId}
+                draftWorkspaceId={directory.draftWorkspaceId}
                 actions={actions}
                 drafts={drafts}
                 topicCards={allCards}

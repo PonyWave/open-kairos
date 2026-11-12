@@ -17,8 +17,9 @@ export function useWorkbench(mainThreadId: string) {
     () => ({
       showMain: () => directory.showMain(),
       openDirectory: () => directory.openDirectory(),
-      openDraft: () => directory.openDraft(),
+      openDraft: (workspaceId?: string | null) => directory.openDraft(workspaceId ?? null),
       openDevices: () => directory.openDevices(),
+      openWorkspaces: () => directory.openWorkspaces(),
       openSettings: () => directory.openSettings(),
       openAutomations: (scheduleId: string | null = null) => directory.openAutomations(scheduleId),
       openAutomationThread: (scheduleId: string, threadId: string) =>

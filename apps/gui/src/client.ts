@@ -19,6 +19,7 @@ import {
   SettingsService,
   ThreadService,
   WorkspaceService,
+  WorkspacesService,
 } from '@kairos/contracts';
 
 export interface KairosClients {
@@ -34,6 +35,7 @@ export interface KairosClients {
   context: ReturnType<typeof createClient<typeof ContextService>>;
   events: ReturnType<typeof createClient<typeof EventService>>;
   workspace: ReturnType<typeof createClient<typeof WorkspaceService>>;
+  workspaces: ReturnType<typeof createClient<typeof WorkspacesService>>;
 }
 
 export interface KairosClientOptions {
@@ -102,6 +104,7 @@ export function createKairosClients(options: KairosClientOptions = {}): KairosCl
     context: createClient(ContextService, transport),
     events: createClient(EventService, transport),
     workspace: createClient(WorkspaceService, transport),
+    workspaces: createClient(WorkspacesService, transport),
   };
 }
 
