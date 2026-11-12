@@ -90,9 +90,10 @@ describe('Daemon packaging static checks', () => {
     expect(install).not.toContain('LEGACY_IDENTITY');
     expect(upgrade).not.toContain('PREFIX=$BASE_PREFIX\n');
     expect(uninstall).not.toContain('PREFIX=$BASE_PREFIX\n');
-    expect(install).toContain('%s status %s');
-    expect(install).toContain('%s stop %s');
-    expect(install).toContain('%s start %s');
+    expect(install).toContain('%s status');
+    expect(install).toContain('%s stop');
+    expect(install).toContain('%s start');
+    expect(install).toContain('Conversation page on this machine:');
     expect(common).toContain('CONTROL_LINK=$CONTROL_DIRECTORY/kairos-daemon');
     expect(common).toContain('shasum -a 256');
     expect(common).toContain('kairos_macos_verify_pid');
