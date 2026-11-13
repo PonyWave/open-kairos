@@ -53,6 +53,7 @@ import {
   createTaskTools,
   createThreadDelegationTools,
   createThreadNotificationTool,
+  createWorkspaceCreateTool,
   createWorkspaceListTool,
   threadNotificationAcceptance,
 } from '../tools/index.js';
@@ -2028,6 +2029,7 @@ export class RunCoordinator {
         );
         tools.push(...createThreadDelegationTools(delegation));
         tools.push(createWorkspaceListTool(delegation));
+        tools.push(createWorkspaceCreateTool(delegation));
         if (this.#options.automations) {
           tools.push(
             ...createAutomationTools({

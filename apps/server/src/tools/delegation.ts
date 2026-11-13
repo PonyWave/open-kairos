@@ -384,6 +384,83 @@ function jsonResult(value: unknown): { content: string } {
 
 const workspaceListInputSchema = z.object({}).strict();
 
+const workspaceCreateInputSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    env_id: z.string().min(1).max(200),
+    path: z.string().min(1).max(4096),
+    description: z.string().max(2000).optional(),
+  })
+  .strict();
+
+export function createWorkspaceCreateTool(
+  options: DelegationToolOptions,
+): AgentTool<z.infer<typeof workspaceCreateInputSchema>> {
+  return {
+    name: 'workspace_create',
+    description:
+      'Create a persistent workspace that pins a device and a working directory as the default execution target for its Threads, creating its workspace main conversation in the same step. Call workspace_list first and reuse an existing workspace for the same device and directory; discover device ids with env_list and pass an absolute directory on that device. Only the global main Agent can create workspaces.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['name', 'env_id', 'path'],
+      properties: {
+        name: { type: 'string', minLength: 1, maxLength: 200 },
+        env_id: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 200,
+          description: 'Device id from env_list; use main for the primary environment.',
+        },
+        path: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 4096,
+          description: 'Absolute working directory on that device.',
+        },
+        description: { type: 'string', maxLength: 2000 },
+      },
+    },
+    concurrent: false,
+    validate: (value) => {
+      const input = workspaceCreateInputSchema.parse(value);
+      if (!input.path.startsWith('/')) {
+        throw new Error('The workspace path must be absolute.');
+      }
+      return input;
+    },
+    execute: async (input) => {
+      const source = assertThreadToolSource(options);
+      if (source.workspaceId !== null) {
+        throw new SessionError(
+          'permission_denied',
+          'Only the global main Agent can create workspaces.',
+        );
+      }
+      const envId = options.resolveEnvironmentIds?.([input.env_id])[0] ?? input.env_id;
+      const created = options.store.createWorkspace({
+        ownerId: options.source.ownerId,
+        name: input.name,
+        envId,
+        path: input.path,
+        ...(input.description === undefined ? {} : { description: input.description }),
+      });
+      return jsonResult({
+        workspace_id: created.workspace.workspaceId,
+        name: created.workspace.name,
+        env_id:
+          options.projectEnvironmentIds?.([created.workspace.envId])[0] ?? created.workspace.envId,
+        path: created.workspace.path,
+        main_thread_id:
+          options.store.workspaceMainThreadId(
+            options.source.ownerId,
+            created.workspace.workspaceId,
+          ) ?? null,
+      });
+    },
+  };
+}
+
 export function createWorkspaceListTool(
   options: DelegationToolOptions,
 ): AgentTool<z.infer<typeof workspaceListInputSchema>> {
