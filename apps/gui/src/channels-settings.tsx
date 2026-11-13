@@ -97,6 +97,10 @@ function WechatSection({
   onError: (error: string | null) => void;
 }) {
   const [qrImage, setQrImage] = useState<string | null>(null);
+  const [loginSessionId, setLoginSessionId] = useState<string | null>(null);
+  const [awaitingPin, setAwaitingPin] = useState(false);
+  const [pin, setPin] = useState('');
+  const [loginHint, setLoginHint] = useState('');
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -117,18 +121,26 @@ function WechatSection({
         channel: ChannelId.WECHAT,
       });
       setQrImage(await QRCode.toDataURL(response.qrContent, { width: 220 }));
+      setLoginSessionId(response.loginSessionId);
+      setAwaitingPin(false);
+      setPin('');
+      setLoginHint('');
       stopPolling();
       pollTimer.current = setInterval(() => {
         void clients.channels
           .pollChannelLogin({ loginSessionId: response.loginSessionId })
           .then(async (status) => {
+            setAwaitingPin(status.awaitingPin);
+            setLoginHint(status.statusReason);
             if (status.loginState === ChannelLoginState.ACTIVE) {
               stopPolling();
               setQrImage(null);
+              setAwaitingPin(false);
               await reload();
             } else if (status.loginState === ChannelLoginState.ERROR) {
               stopPolling();
               setQrImage(null);
+              setAwaitingPin(false);
               onError(status.statusReason || '微信登录失败，请重新生成二维码。');
               await reload();
             }
@@ -142,12 +154,33 @@ function WechatSection({
     }
   };
 
+  const submitPin = async () => {
+    if (loginSessionId === null) return;
+    setBusy(true);
+    onError(null);
+    try {
+      const status = await clients.channels.submitChannelLoginPin({
+        loginSessionId,
+        pin: pin.trim(),
+      });
+      setAwaitingPin(status.awaitingPin);
+      setLoginHint(status.statusReason);
+      setPin('');
+    } catch (cause) {
+      onError(formatClientError(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const unbind = async () => {
     setBusy(true);
     onError(null);
     try {
       stopPolling();
       setQrImage(null);
+      setLoginSessionId(null);
+      setAwaitingPin(false);
       await clients.channels.unbindChannel({
         clientActionId: crypto.randomUUID(),
         channel: ChannelId.WECHAT,
@@ -178,6 +211,31 @@ function WechatSection({
           <img src={qrImage} alt="微信登录二维码" width={220} height={220} />
           <p className="settings-help">请用微信扫描二维码并确认授权。</p>
         </div>
+      ) : null}
+      {loginHint && qrImage ? <p className="settings-help">{loginHint}</p> : null}
+      {awaitingPin && qrImage ? (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitPin();
+          }}
+        >
+          <label>
+            手机上的数字验证码
+            <input
+              value={pin}
+              onChange={(event) => setPin(event.target.value)}
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="输入微信显示的数字"
+            />
+          </label>
+          <div className="button-row">
+            <button type="submit" disabled={busy || !/^\d{1,12}$/.test(pin.trim())}>
+              提交验证码
+            </button>
+          </div>
+        </form>
       ) : null}
       <div className="button-row">
         {state?.loginState === ChannelLoginState.ACTIVE ? (

@@ -3,6 +3,7 @@ import type { ConnectRouter, HandlerContext } from '@connectrpc/connect';
 import { ChannelId, ChannelLoginState, ChannelService } from '@kairos/contracts';
 import type { ChannelManager } from '../channels/manager.js';
 import type { ChannelStateRecord } from '../channels/store.js';
+import { ChannelDeliveryError } from '../channels/store.js';
 import { requireText, SessionError } from '../sessions/errors.js';
 import type { GuiAuthentication } from './auth.js';
 import { requireOwner } from './auth.js';
@@ -90,7 +91,33 @@ export function registerChannelRoutes(
                 ? ChannelLoginState.ERROR
                 : ChannelLoginState.PENDING,
           statusReason: session.reason,
+          awaitingPin: session.awaitingPin,
         };
+      }),
+    submitChannelLoginPin: (request, context) =>
+      handle(() => {
+        owner(context);
+        try {
+          const session = channels.wechat.submitLoginPin(
+            request.loginSessionId,
+            request.pin.trim(),
+          );
+          return {
+            loginState:
+              session.status === 'confirmed'
+                ? ChannelLoginState.ACTIVE
+                : session.status === 'failed'
+                  ? ChannelLoginState.ERROR
+                  : ChannelLoginState.PENDING,
+            statusReason: session.reason,
+            awaitingPin: session.awaitingPin,
+          };
+        } catch (error) {
+          if (error instanceof ChannelDeliveryError) {
+            throw new SessionError('invalid_argument', error.message);
+          }
+          throw error;
+        }
       }),
     saveFeishuCredentials: (request, context) =>
       handle(() => {

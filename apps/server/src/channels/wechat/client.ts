@@ -77,7 +77,30 @@ const sendMessageResponseSchema = z.object({
   errmsg: z.string().optional(),
 });
 
-export class WechatClient {
+export interface WechatClientApi {
+  baseUrl: string;
+  getBotQrcode(signal?: AbortSignal): Promise<z.infer<typeof qrCodeResponseSchema>>;
+  pollQrcodeStatus(
+    qrcode: string,
+    verifyCode?: string,
+    signal?: AbortSignal,
+  ): Promise<z.infer<typeof qrStatusResponseSchema>>;
+  getUpdates(
+    botToken: string,
+    cursor: string,
+    signal: AbortSignal,
+  ): Promise<z.infer<typeof getUpdatesResponseSchema>>;
+  sendText(
+    botToken: string,
+    toUserId: string,
+    contextToken: string | null,
+    text: string,
+    signal: AbortSignal,
+  ): Promise<void>;
+  notifyLifecycle(botToken: string, action: 'start' | 'stop'): Promise<void>;
+}
+
+export class WechatClient implements WechatClientApi {
   readonly #fetch: typeof globalThis.fetch;
   #baseUrl: string;
 
@@ -162,10 +185,12 @@ export class WechatClient {
 
   async pollQrcodeStatus(
     qrcode: string,
+    verifyCode?: string,
     signal?: AbortSignal,
   ): Promise<z.infer<typeof qrStatusResponseSchema>> {
     const url = new URL('/ilink/bot/get_qrcode_status', this.#baseUrl);
     url.searchParams.set('qrcode', qrcode);
+    if (verifyCode !== undefined) url.searchParams.set('verify_code', verifyCode);
     let response: Response;
     try {
       response = await this.#fetch(url, {

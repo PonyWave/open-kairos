@@ -47,6 +47,18 @@ message PollChannelLoginRequest {
 message PollChannelLoginResponse {
   ChannelLoginState login_state = 1;
   string status_reason = 2;
+  bool awaiting_pin = 3;
+}
+
+message SubmitChannelLoginPinRequest {
+  string login_session_id = 1;
+  string pin = 2;
+}
+
+message SubmitChannelLoginPinResponse {
+  ChannelLoginState login_state = 1;
+  string status_reason = 2;
+  bool awaiting_pin = 3;
 }
 
 message SaveFeishuCredentialsRequest {
@@ -74,6 +86,7 @@ service ChannelService {
   rpc GetChannelStates(GetChannelStatesRequest) returns (GetChannelStatesResponse);
   rpc StartChannelLogin(StartChannelLoginRequest) returns (StartChannelLoginResponse);
   rpc PollChannelLogin(PollChannelLoginRequest) returns (PollChannelLoginResponse);
+  rpc SubmitChannelLoginPin(SubmitChannelLoginPinRequest) returns (SubmitChannelLoginPinResponse);
   rpc SaveFeishuCredentials(SaveFeishuCredentialsRequest) returns (SaveFeishuCredentialsResponse);
   rpc UnbindChannel(UnbindChannelRequest) returns (UnbindChannelResponse);
 }

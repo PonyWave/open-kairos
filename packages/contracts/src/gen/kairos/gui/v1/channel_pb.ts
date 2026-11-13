@@ -14,7 +14,7 @@ import { file_kairos_gui_v1_gui } from './gui_pb.js';
 export const file_kairos_gui_v1_channel: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChtrYWlyb3MvZ3VpL3YxL2NoYW5uZWwucHJvdG8SDWthaXJvcy5ndWkudjEi/gEKDENoYW5uZWxTdGF0ZRIpCgdjaGFubmVsGAEgASgOMhgua2Fpcm9zLmd1aS52MS5DaGFubmVsSWQSNQoLbG9naW5fc3RhdGUYAiABKA4yIC5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxMb2dpblN0YXRlEhIKCmNvbmZpZ3VyZWQYAyABKAgSFQoNYWNjb3VudF9sYWJlbBgEIAEoCRIeChZib3VuZF9leHRlcm5hbF91c2VyX2lkGAUgASgJEhUKDXN0YXR1c19yZWFzb24YBiABKAkSGQoMcGFpcmluZ19jb2RlGAcgASgJSACIAQFCDwoNX3BhaXJpbmdfY29kZSIZChdHZXRDaGFubmVsU3RhdGVzUmVxdWVzdCJHChhHZXRDaGFubmVsU3RhdGVzUmVzcG9uc2USKwoGc3RhdGVzGAEgAygLMhsua2Fpcm9zLmd1aS52MS5DaGFubmVsU3RhdGUiXwoYU3RhcnRDaGFubmVsTG9naW5SZXF1ZXN0EhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSKQoHY2hhbm5lbBgCIAEoDjIYLmthaXJvcy5ndWkudjEuQ2hhbm5lbElkIo8BChlTdGFydENoYW5uZWxMb2dpblJlc3BvbnNlEhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSKgoFc3RhdGUYAiABKAsyGy5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxTdGF0ZRISCgpxcl9jb250ZW50GAMgASgJEhgKEGxvZ2luX3Nlc3Npb25faWQYBCABKAkiMwoXUG9sbENoYW5uZWxMb2dpblJlcXVlc3QSGAoQbG9naW5fc2Vzc2lvbl9pZBgBIAEoCSJoChhQb2xsQ2hhbm5lbExvZ2luUmVzcG9uc2USNQoLbG9naW5fc3RhdGUYASABKA4yIC5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxMb2dpblN0YXRlEhUKDXN0YXR1c19yZWFzb24YAiABKAkiXAocU2F2ZUZlaXNodUNyZWRlbnRpYWxzUmVxdWVzdBIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEg4KBmFwcF9pZBgCIAEoCRISCgphcHBfc2VjcmV0GAMgASgJImUKHVNhdmVGZWlzaHVDcmVkZW50aWFsc1Jlc3BvbnNlEhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSKgoFc3RhdGUYAiABKAsyGy5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxTdGF0ZSJbChRVbmJpbmRDaGFubmVsUmVxdWVzdBIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEikKB2NoYW5uZWwYAiABKA4yGC5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxJZCJdChVVbmJpbmRDaGFubmVsUmVzcG9uc2USGAoQY2xpZW50X2FjdGlvbl9pZBgBIAEoCRIqCgVzdGF0ZRgCIAEoCzIbLmthaXJvcy5ndWkudjEuQ2hhbm5lbFN0YXRlKr4BChFDaGFubmVsTG9naW5TdGF0ZRIjCh9DSEFOTkVMX0xPR0lOX1NUQVRFX1VOU1BFQ0lGSUVEEAASJAogQ0hBTk5FTF9MT0dJTl9TVEFURV9VTkNPTkZJR1VSRUQQARIfChtDSEFOTkVMX0xPR0lOX1NUQVRFX1BFTkRJTkcQAhIeChpDSEFOTkVMX0xPR0lOX1NUQVRFX0FDVElWRRADEh0KGUNIQU5ORUxfTE9HSU5fU1RBVEVfRVJST1IQBDKSBAoOQ2hhbm5lbFNlcnZpY2USYwoQR2V0Q2hhbm5lbFN0YXRlcxImLmthaXJvcy5ndWkudjEuR2V0Q2hhbm5lbFN0YXRlc1JlcXVlc3QaJy5rYWlyb3MuZ3VpLnYxLkdldENoYW5uZWxTdGF0ZXNSZXNwb25zZRJmChFTdGFydENoYW5uZWxMb2dpbhInLmthaXJvcy5ndWkudjEuU3RhcnRDaGFubmVsTG9naW5SZXF1ZXN0Gigua2Fpcm9zLmd1aS52MS5TdGFydENoYW5uZWxMb2dpblJlc3BvbnNlEmMKEFBvbGxDaGFubmVsTG9naW4SJi5rYWlyb3MuZ3VpLnYxLlBvbGxDaGFubmVsTG9naW5SZXF1ZXN0Gicua2Fpcm9zLmd1aS52MS5Qb2xsQ2hhbm5lbExvZ2luUmVzcG9uc2UScgoVU2F2ZUZlaXNodUNyZWRlbnRpYWxzEisua2Fpcm9zLmd1aS52MS5TYXZlRmVpc2h1Q3JlZGVudGlhbHNSZXF1ZXN0Giwua2Fpcm9zLmd1aS52MS5TYXZlRmVpc2h1Q3JlZGVudGlhbHNSZXNwb25zZRJaCg1VbmJpbmRDaGFubmVsEiMua2Fpcm9zLmd1aS52MS5VbmJpbmRDaGFubmVsUmVxdWVzdBokLmthaXJvcy5ndWkudjEuVW5iaW5kQ2hhbm5lbFJlc3BvbnNlYgZwcm90bzM',
+    'ChtrYWlyb3MvZ3VpL3YxL2NoYW5uZWwucHJvdG8SDWthaXJvcy5ndWkudjEi/gEKDENoYW5uZWxTdGF0ZRIpCgdjaGFubmVsGAEgASgOMhgua2Fpcm9zLmd1aS52MS5DaGFubmVsSWQSNQoLbG9naW5fc3RhdGUYAiABKA4yIC5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxMb2dpblN0YXRlEhIKCmNvbmZpZ3VyZWQYAyABKAgSFQoNYWNjb3VudF9sYWJlbBgEIAEoCRIeChZib3VuZF9leHRlcm5hbF91c2VyX2lkGAUgASgJEhUKDXN0YXR1c19yZWFzb24YBiABKAkSGQoMcGFpcmluZ19jb2RlGAcgASgJSACIAQFCDwoNX3BhaXJpbmdfY29kZSIZChdHZXRDaGFubmVsU3RhdGVzUmVxdWVzdCJHChhHZXRDaGFubmVsU3RhdGVzUmVzcG9uc2USKwoGc3RhdGVzGAEgAygLMhsua2Fpcm9zLmd1aS52MS5DaGFubmVsU3RhdGUiXwoYU3RhcnRDaGFubmVsTG9naW5SZXF1ZXN0EhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSKQoHY2hhbm5lbBgCIAEoDjIYLmthaXJvcy5ndWkudjEuQ2hhbm5lbElkIo8BChlTdGFydENoYW5uZWxMb2dpblJlc3BvbnNlEhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSKgoFc3RhdGUYAiABKAsyGy5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxTdGF0ZRISCgpxcl9jb250ZW50GAMgASgJEhgKEGxvZ2luX3Nlc3Npb25faWQYBCABKAkiMwoXUG9sbENoYW5uZWxMb2dpblJlcXVlc3QSGAoQbG9naW5fc2Vzc2lvbl9pZBgBIAEoCSJ+ChhQb2xsQ2hhbm5lbExvZ2luUmVzcG9uc2USNQoLbG9naW5fc3RhdGUYASABKA4yIC5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxMb2dpblN0YXRlEhUKDXN0YXR1c19yZWFzb24YAiABKAkSFAoMYXdhaXRpbmdfcGluGAMgASgIIkUKHFN1Ym1pdENoYW5uZWxMb2dpblBpblJlcXVlc3QSGAoQbG9naW5fc2Vzc2lvbl9pZBgBIAEoCRILCgNwaW4YAiABKAkigwEKHVN1Ym1pdENoYW5uZWxMb2dpblBpblJlc3BvbnNlEjUKC2xvZ2luX3N0YXRlGAEgASgOMiAua2Fpcm9zLmd1aS52MS5DaGFubmVsTG9naW5TdGF0ZRIVCg1zdGF0dXNfcmVhc29uGAIgASgJEhQKDGF3YWl0aW5nX3BpbhgDIAEoCCJcChxTYXZlRmVpc2h1Q3JlZGVudGlhbHNSZXF1ZXN0EhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSDgoGYXBwX2lkGAIgASgJEhIKCmFwcF9zZWNyZXQYAyABKAkiZQodU2F2ZUZlaXNodUNyZWRlbnRpYWxzUmVzcG9uc2USGAoQY2xpZW50X2FjdGlvbl9pZBgBIAEoCRIqCgVzdGF0ZRgCIAEoCzIbLmthaXJvcy5ndWkudjEuQ2hhbm5lbFN0YXRlIlsKFFVuYmluZENoYW5uZWxSZXF1ZXN0EhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSKQoHY2hhbm5lbBgCIAEoDjIYLmthaXJvcy5ndWkudjEuQ2hhbm5lbElkIl0KFVVuYmluZENoYW5uZWxSZXNwb25zZRIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEioKBXN0YXRlGAIgASgLMhsua2Fpcm9zLmd1aS52MS5DaGFubmVsU3RhdGUqvgEKEUNoYW5uZWxMb2dpblN0YXRlEiMKH0NIQU5ORUxfTE9HSU5fU1RBVEVfVU5TUEVDSUZJRUQQABIkCiBDSEFOTkVMX0xPR0lOX1NUQVRFX1VOQ09ORklHVVJFRBABEh8KG0NIQU5ORUxfTE9HSU5fU1RBVEVfUEVORElORxACEh4KGkNIQU5ORUxfTE9HSU5fU1RBVEVfQUNUSVZFEAMSHQoZQ0hBTk5FTF9MT0dJTl9TVEFURV9FUlJPUhAEMoYFCg5DaGFubmVsU2VydmljZRJjChBHZXRDaGFubmVsU3RhdGVzEiYua2Fpcm9zLmd1aS52MS5HZXRDaGFubmVsU3RhdGVzUmVxdWVzdBonLmthaXJvcy5ndWkudjEuR2V0Q2hhbm5lbFN0YXRlc1Jlc3BvbnNlEmYKEVN0YXJ0Q2hhbm5lbExvZ2luEicua2Fpcm9zLmd1aS52MS5TdGFydENoYW5uZWxMb2dpblJlcXVlc3QaKC5rYWlyb3MuZ3VpLnYxLlN0YXJ0Q2hhbm5lbExvZ2luUmVzcG9uc2USYwoQUG9sbENoYW5uZWxMb2dpbhImLmthaXJvcy5ndWkudjEuUG9sbENoYW5uZWxMb2dpblJlcXVlc3QaJy5rYWlyb3MuZ3VpLnYxLlBvbGxDaGFubmVsTG9naW5SZXNwb25zZRJyChVTdWJtaXRDaGFubmVsTG9naW5QaW4SKy5rYWlyb3MuZ3VpLnYxLlN1Ym1pdENoYW5uZWxMb2dpblBpblJlcXVlc3QaLC5rYWlyb3MuZ3VpLnYxLlN1Ym1pdENoYW5uZWxMb2dpblBpblJlc3BvbnNlEnIKFVNhdmVGZWlzaHVDcmVkZW50aWFscxIrLmthaXJvcy5ndWkudjEuU2F2ZUZlaXNodUNyZWRlbnRpYWxzUmVxdWVzdBosLmthaXJvcy5ndWkudjEuU2F2ZUZlaXNodUNyZWRlbnRpYWxzUmVzcG9uc2USWgoNVW5iaW5kQ2hhbm5lbBIjLmthaXJvcy5ndWkudjEuVW5iaW5kQ2hhbm5lbFJlcXVlc3QaJC5rYWlyb3MuZ3VpLnYxLlVuYmluZENoYW5uZWxSZXNwb25zZWIGcHJvdG8z',
     [file_kairos_gui_v1_gui],
   );
 
@@ -184,6 +184,11 @@ export type PollChannelLoginResponse = Message<'kairos.gui.v1.PollChannelLoginRe
    * @generated from field: string status_reason = 2;
    */
   statusReason: string;
+
+  /**
+   * @generated from field: bool awaiting_pin = 3;
+   */
+  awaitingPin: boolean;
 };
 
 /**
@@ -193,6 +198,58 @@ export type PollChannelLoginResponse = Message<'kairos.gui.v1.PollChannelLoginRe
 export const PollChannelLoginResponseSchema: GenMessage<PollChannelLoginResponse> =
   /*@__PURE__*/
   messageDesc(file_kairos_gui_v1_channel, 6);
+
+/**
+ * @generated from message kairos.gui.v1.SubmitChannelLoginPinRequest
+ */
+export type SubmitChannelLoginPinRequest = Message<'kairos.gui.v1.SubmitChannelLoginPinRequest'> & {
+  /**
+   * @generated from field: string login_session_id = 1;
+   */
+  loginSessionId: string;
+
+  /**
+   * @generated from field: string pin = 2;
+   */
+  pin: string;
+};
+
+/**
+ * Describes the message kairos.gui.v1.SubmitChannelLoginPinRequest.
+ * Use `create(SubmitChannelLoginPinRequestSchema)` to create a new message.
+ */
+export const SubmitChannelLoginPinRequestSchema: GenMessage<SubmitChannelLoginPinRequest> =
+  /*@__PURE__*/
+  messageDesc(file_kairos_gui_v1_channel, 7);
+
+/**
+ * @generated from message kairos.gui.v1.SubmitChannelLoginPinResponse
+ */
+export type SubmitChannelLoginPinResponse =
+  Message<'kairos.gui.v1.SubmitChannelLoginPinResponse'> & {
+    /**
+     * @generated from field: kairos.gui.v1.ChannelLoginState login_state = 1;
+     */
+    loginState: ChannelLoginState;
+
+    /**
+     * @generated from field: string status_reason = 2;
+     */
+    statusReason: string;
+
+    /**
+     * @generated from field: bool awaiting_pin = 3;
+     */
+    awaitingPin: boolean;
+  };
+
+/**
+ * Describes the message kairos.gui.v1.SubmitChannelLoginPinResponse.
+ * Use `create(SubmitChannelLoginPinResponseSchema)` to create a new message.
+ */
+export const SubmitChannelLoginPinResponseSchema: GenMessage<SubmitChannelLoginPinResponse> =
+  /*@__PURE__*/
+  messageDesc(file_kairos_gui_v1_channel, 8);
 
 /**
  * @generated from message kairos.gui.v1.SaveFeishuCredentialsRequest
@@ -220,7 +277,7 @@ export type SaveFeishuCredentialsRequest = Message<'kairos.gui.v1.SaveFeishuCred
  */
 export const SaveFeishuCredentialsRequestSchema: GenMessage<SaveFeishuCredentialsRequest> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 7);
+  messageDesc(file_kairos_gui_v1_channel, 9);
 
 /**
  * @generated from message kairos.gui.v1.SaveFeishuCredentialsResponse
@@ -244,7 +301,7 @@ export type SaveFeishuCredentialsResponse =
  */
 export const SaveFeishuCredentialsResponseSchema: GenMessage<SaveFeishuCredentialsResponse> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 8);
+  messageDesc(file_kairos_gui_v1_channel, 10);
 
 /**
  * @generated from message kairos.gui.v1.UnbindChannelRequest
@@ -267,7 +324,7 @@ export type UnbindChannelRequest = Message<'kairos.gui.v1.UnbindChannelRequest'>
  */
 export const UnbindChannelRequestSchema: GenMessage<UnbindChannelRequest> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 9);
+  messageDesc(file_kairos_gui_v1_channel, 11);
 
 /**
  * @generated from message kairos.gui.v1.UnbindChannelResponse
@@ -290,7 +347,7 @@ export type UnbindChannelResponse = Message<'kairos.gui.v1.UnbindChannelResponse
  */
 export const UnbindChannelResponseSchema: GenMessage<UnbindChannelResponse> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 10);
+  messageDesc(file_kairos_gui_v1_channel, 12);
 
 /**
  * @generated from enum kairos.gui.v1.ChannelLoginState
@@ -356,6 +413,14 @@ export const ChannelService: GenService<{
     methodKind: 'unary';
     input: typeof PollChannelLoginRequestSchema;
     output: typeof PollChannelLoginResponseSchema;
+  };
+  /**
+   * @generated from rpc kairos.gui.v1.ChannelService.SubmitChannelLoginPin
+   */
+  submitChannelLoginPin: {
+    methodKind: 'unary';
+    input: typeof SubmitChannelLoginPinRequestSchema;
+    output: typeof SubmitChannelLoginPinResponseSchema;
   };
   /**
    * @generated from rpc kairos.gui.v1.ChannelService.SaveFeishuCredentials

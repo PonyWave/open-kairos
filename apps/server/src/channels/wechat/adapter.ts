@@ -3,7 +3,7 @@ import type { OutboundChannel } from '../delivery-worker.js';
 import { renderWechatSegments } from '../render-wechat.js';
 import type { ChannelStore } from '../store.js';
 import { ChannelDeliveryError } from '../store.js';
-import { inboundMessageText, WechatClient } from './client.js';
+import { inboundMessageText, WechatClient, type WechatClientApi } from './client.js';
 
 export interface InboundChannelMessage {
   channel: 'wechat' | 'feishu';
@@ -18,21 +18,26 @@ export interface WechatLoginSession {
   id: string;
   status: 'pending' | 'confirmed' | 'failed';
   reason: string;
+  awaitingPin: boolean;
 }
+
+const pinWaitTimeoutMs = 300_000;
 
 export class WechatChannel implements OutboundChannel {
   readonly #ownerId: () => string;
   readonly #store: ChannelStore;
   readonly #onInbound: InboundHandler;
-  readonly #client: WechatClient;
+  readonly #client: WechatClientApi;
   #monitorAbort: AbortController | undefined;
   readonly #loginSessions = new Map<string, WechatLoginSession>();
+  readonly #pendingPins = new Map<string, string>();
+  readonly #pinWaiters = new Map<string, () => void>();
 
   constructor(options: {
     ownerId: () => string;
     store: ChannelStore;
     onInbound: InboundHandler;
-    client?: WechatClient;
+    client?: WechatClientApi;
   }) {
     this.#ownerId = options.ownerId;
     this.#store = options.store;
@@ -56,7 +61,12 @@ export class WechatChannel implements OutboundChannel {
   async startLogin(): Promise<{ sessionId: string; qrContent: string }> {
     this.#store.beginWechatLogin(this.#ownerId());
     const qr = await this.#client.getBotQrcode();
-    const session: WechatLoginSession = { id: randomUUID(), status: 'pending', reason: '' };
+    const session: WechatLoginSession = {
+      id: randomUUID(),
+      status: 'pending',
+      reason: '',
+      awaitingPin: false,
+    };
     this.#loginSessions.set(session.id, session);
     void this.#pollLoginLoop(session, qr.qrcode).catch(() => {
       session.status = 'failed';
@@ -68,9 +78,54 @@ export class WechatChannel implements OutboundChannel {
   pollLogin(sessionId: string): WechatLoginSession {
     const session = this.#loginSessions.get(sessionId);
     if (session === undefined) {
-      return { id: sessionId, status: 'failed', reason: '登录会话不存在或已过期。' };
+      return {
+        id: sessionId,
+        status: 'failed',
+        reason: '登录会话不存在或已过期。',
+        awaitingPin: false,
+      };
     }
     return session;
+  }
+
+  submitLoginPin(sessionId: string, pin: string): WechatLoginSession {
+    const session = this.#loginSessions.get(sessionId);
+    if (session === undefined) {
+      throw new ChannelDeliveryError(false, 'login_session_not_found', '登录会话不存在或已过期。');
+    }
+    if (session.status !== 'pending' || !session.awaitingPin) {
+      throw new ChannelDeliveryError(false, 'pin_not_expected', '当前登录会话不需要数字验证码。');
+    }
+    if (!/^\d{1,12}$/.test(pin)) {
+      throw new ChannelDeliveryError(false, 'invalid_pin', '数字验证码格式无效。');
+    }
+    this.#pendingPins.set(sessionId, pin);
+    session.awaitingPin = false;
+    session.reason = '已提交数字验证码，等待微信确认。';
+    const waiter = this.#pinWaiters.get(sessionId);
+    if (waiter !== undefined) {
+      this.#pinWaiters.delete(sessionId);
+      waiter();
+    }
+    return session;
+  }
+
+  #waitForPin(session: WechatLoginSession): Promise<boolean> {
+    if (this.#pendingPins.has(session.id)) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.#pinWaiters.delete(session.id);
+        session.status = 'failed';
+        session.reason = '等待数字验证码超时，请重新登录。';
+        this.#store.setStatus(this.#ownerId(), 'wechat', 'pending_login', session.reason);
+        resolve(false);
+      }, pinWaitTimeoutMs);
+      timer.unref();
+      this.#pinWaiters.set(session.id, () => {
+        clearTimeout(timer);
+        resolve(true);
+      });
+    });
   }
 
   async #pollLoginLoop(session: WechatLoginSession, qrcode: string): Promise<void> {
@@ -78,12 +133,25 @@ export class WechatChannel implements OutboundChannel {
     let refreshCount = 0;
     let currentQrcode = qrcode;
     while (session.status === 'pending') {
-      const status = await this.#client.pollQrcodeStatus(currentQrcode);
+      if (session.awaitingPin) {
+        const submitted = await this.#waitForPin(session);
+        if (!submitted) return;
+      }
+      const verifyCode = this.#pendingPins.get(session.id);
+      const status = await this.#client.pollQrcodeStatus(currentQrcode, verifyCode);
       if (status.status.includes('need_verifycode')) {
-        session.reason = '微信要求输入手机上的数字验证码，当前版本暂不支持，请重新登录。';
-        session.status = 'failed';
-        this.#store.setStatus(ownerId, 'wechat', 'pending_login', session.reason);
-        return;
+        this.#pendingPins.delete(session.id);
+        session.awaitingPin = true;
+        session.reason =
+          verifyCode === undefined
+            ? '微信要求输入手机上的数字验证码。'
+            : '数字验证码不正确，请重新输入手机上的数字。';
+        continue;
+      }
+      if (verifyCode !== undefined) {
+        this.#pendingPins.delete(session.id);
+        session.awaitingPin = false;
+        session.reason = '';
       }
       switch (status.status) {
         case 'confirmed': {
@@ -104,11 +172,14 @@ export class WechatChannel implements OutboundChannel {
             ilinkUserId: status.ilink_user_id,
           });
           session.status = 'confirmed';
+          session.awaitingPin = false;
           this.sync();
           return;
         }
         case 'expired':
         case 'verify_code_blocked': {
+          this.#pendingPins.delete(session.id);
+          session.awaitingPin = false;
           refreshCount += 1;
           if (refreshCount > 3) {
             session.status = 'failed';
