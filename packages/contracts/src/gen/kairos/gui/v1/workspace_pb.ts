@@ -14,7 +14,7 @@ import { file_google_protobuf_timestamp } from '@bufbuild/protobuf/wkt';
 export const file_kairos_gui_v1_workspace: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'Ch1rYWlyb3MvZ3VpL3YxL3dvcmtzcGFjZS5wcm90bxINa2Fpcm9zLmd1aS52MSKVAQoJV29ya3NwYWNlEhQKDHdvcmtzcGFjZV9pZBgBIAEoCRIMCgRuYW1lGAIgASgJEg4KBmVudl9pZBgDIAEoCRIMCgRwYXRoGAQgASgJEi4KCmNyZWF0ZWRfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhYKDm1haW5fdGhyZWFkX2lkGAYgASgJIhcKFUxpc3RXb3Jrc3BhY2VzUmVxdWVzdCJGChZMaXN0V29ya3NwYWNlc1Jlc3BvbnNlEiwKCndvcmtzcGFjZXMYASADKAsyGC5rYWlyb3MuZ3VpLnYxLldvcmtzcGFjZSJeChZDcmVhdGVXb3Jrc3BhY2VSZXF1ZXN0EhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSDAoEbmFtZRgCIAEoCRIOCgZlbnZfaWQYAyABKAkSDAoEcGF0aBgEIAEoCSJ4ChdDcmVhdGVXb3Jrc3BhY2VSZXNwb25zZRIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEisKCXdvcmtzcGFjZRgCIAEoCzIYLmthaXJvcy5ndWkudjEuV29ya3NwYWNlEhYKDm1haW5fdGhyZWFkX2lkGAMgASgJIlYKFlJlbmFtZVdvcmtzcGFjZVJlcXVlc3QSGAoQY2xpZW50X2FjdGlvbl9pZBgBIAEoCRIUCgx3b3Jrc3BhY2VfaWQYAiABKAkSDAoEbmFtZRgDIAEoCSJgChdSZW5hbWVXb3Jrc3BhY2VSZXNwb25zZRIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEisKCXdvcmtzcGFjZRgCIAEoCzIYLmthaXJvcy5ndWkudjEuV29ya3NwYWNlMrYCChFXb3Jrc3BhY2VzU2VydmljZRJdCg5MaXN0V29ya3NwYWNlcxIkLmthaXJvcy5ndWkudjEuTGlzdFdvcmtzcGFjZXNSZXF1ZXN0GiUua2Fpcm9zLmd1aS52MS5MaXN0V29ya3NwYWNlc1Jlc3BvbnNlEmAKD0NyZWF0ZVdvcmtzcGFjZRIlLmthaXJvcy5ndWkudjEuQ3JlYXRlV29ya3NwYWNlUmVxdWVzdBomLmthaXJvcy5ndWkudjEuQ3JlYXRlV29ya3NwYWNlUmVzcG9uc2USYAoPUmVuYW1lV29ya3NwYWNlEiUua2Fpcm9zLmd1aS52MS5SZW5hbWVXb3Jrc3BhY2VSZXF1ZXN0GiYua2Fpcm9zLmd1aS52MS5SZW5hbWVXb3Jrc3BhY2VSZXNwb25zZWIGcHJvdG8z',
+    'Ch1rYWlyb3MvZ3VpL3YxL3dvcmtzcGFjZS5wcm90bxINa2Fpcm9zLmd1aS52MSK6AQoJV29ya3NwYWNlEhQKDHdvcmtzcGFjZV9pZBgBIAEoCRIMCgRuYW1lGAIgASgJEg4KBmVudl9pZBgDIAEoCRIMCgRwYXRoGAQgASgJEi4KCmNyZWF0ZWRfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhYKDm1haW5fdGhyZWFkX2lkGAYgASgJEhMKC2Rlc2NyaXB0aW9uGAcgASgJEg4KBmhpZGRlbhgIIAEoCCIXChVMaXN0V29ya3NwYWNlc1JlcXVlc3QiRgoWTGlzdFdvcmtzcGFjZXNSZXNwb25zZRIsCgp3b3Jrc3BhY2VzGAEgAygLMhgua2Fpcm9zLmd1aS52MS5Xb3Jrc3BhY2UicwoWQ3JlYXRlV29ya3NwYWNlUmVxdWVzdBIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEgwKBG5hbWUYAiABKAkSDgoGZW52X2lkGAMgASgJEgwKBHBhdGgYBCABKAkSEwoLZGVzY3JpcHRpb24YBSABKAkieAoXQ3JlYXRlV29ya3NwYWNlUmVzcG9uc2USGAoQY2xpZW50X2FjdGlvbl9pZBgBIAEoCRIrCgl3b3Jrc3BhY2UYAiABKAsyGC5rYWlyb3MuZ3VpLnYxLldvcmtzcGFjZRIWCg5tYWluX3RocmVhZF9pZBgDIAEoCSJWChZSZW5hbWVXb3Jrc3BhY2VSZXF1ZXN0EhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSFAoMd29ya3NwYWNlX2lkGAIgASgJEgwKBG5hbWUYAyABKAkiYAoXUmVuYW1lV29ya3NwYWNlUmVzcG9uc2USGAoQY2xpZW50X2FjdGlvbl9pZBgBIAEoCRIrCgl3b3Jrc3BhY2UYAiABKAsyGC5rYWlyb3MuZ3VpLnYxLldvcmtzcGFjZSKuAQoWVXBkYXRlV29ya3NwYWNlUmVxdWVzdBIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEhQKDHdvcmtzcGFjZV9pZBgCIAEoCRIRCgRuYW1lGAMgASgJSACIAQESGAoLZGVzY3JpcHRpb24YBCABKAlIAYgBARITCgZoaWRkZW4YBSABKAhIAogBAUIHCgVfbmFtZUIOCgxfZGVzY3JpcHRpb25CCQoHX2hpZGRlbiJGChdVcGRhdGVXb3Jrc3BhY2VSZXNwb25zZRIrCgl3b3Jrc3BhY2UYASABKAsyGC5rYWlyb3MuZ3VpLnYxLldvcmtzcGFjZSJIChZEZWxldGVXb3Jrc3BhY2VSZXF1ZXN0EhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSFAoMd29ya3NwYWNlX2lkGAIgASgJIi8KF0RlbGV0ZVdvcmtzcGFjZVJlc3BvbnNlEhQKDHdvcmtzcGFjZV9pZBgBIAEoCTL6AwoRV29ya3NwYWNlc1NlcnZpY2USXQoOTGlzdFdvcmtzcGFjZXMSJC5rYWlyb3MuZ3VpLnYxLkxpc3RXb3Jrc3BhY2VzUmVxdWVzdBolLmthaXJvcy5ndWkudjEuTGlzdFdvcmtzcGFjZXNSZXNwb25zZRJgCg9DcmVhdGVXb3Jrc3BhY2USJS5rYWlyb3MuZ3VpLnYxLkNyZWF0ZVdvcmtzcGFjZVJlcXVlc3QaJi5rYWlyb3MuZ3VpLnYxLkNyZWF0ZVdvcmtzcGFjZVJlc3BvbnNlEmAKD1VwZGF0ZVdvcmtzcGFjZRIlLmthaXJvcy5ndWkudjEuVXBkYXRlV29ya3NwYWNlUmVxdWVzdBomLmthaXJvcy5ndWkudjEuVXBkYXRlV29ya3NwYWNlUmVzcG9uc2USYAoPRGVsZXRlV29ya3NwYWNlEiUua2Fpcm9zLmd1aS52MS5EZWxldGVXb3Jrc3BhY2VSZXF1ZXN0GiYua2Fpcm9zLmd1aS52MS5EZWxldGVXb3Jrc3BhY2VSZXNwb25zZRJgCg9SZW5hbWVXb3Jrc3BhY2USJS5rYWlyb3MuZ3VpLnYxLlJlbmFtZVdvcmtzcGFjZVJlcXVlc3QaJi5rYWlyb3MuZ3VpLnYxLlJlbmFtZVdvcmtzcGFjZVJlc3BvbnNlYgZwcm90bzM',
     [file_google_protobuf_timestamp],
   );
 
@@ -51,6 +51,16 @@ export type Workspace = Message<'kairos.gui.v1.Workspace'> & {
    * @generated from field: string main_thread_id = 6;
    */
   mainThreadId: string;
+
+  /**
+   * @generated from field: string description = 7;
+   */
+  description: string;
+
+  /**
+   * @generated from field: bool hidden = 8;
+   */
+  hidden: boolean;
 };
 
 /**
@@ -115,6 +125,11 @@ export type CreateWorkspaceRequest = Message<'kairos.gui.v1.CreateWorkspaceReque
    * @generated from field: string path = 4;
    */
   path: string;
+
+  /**
+   * @generated from field: string description = 5;
+   */
+  description: string;
 };
 
 /**
@@ -205,6 +220,103 @@ export const RenameWorkspaceResponseSchema: GenMessage<RenameWorkspaceResponse> 
   messageDesc(file_kairos_gui_v1_workspace, 6);
 
 /**
+ * @generated from message kairos.gui.v1.UpdateWorkspaceRequest
+ */
+export type UpdateWorkspaceRequest = Message<'kairos.gui.v1.UpdateWorkspaceRequest'> & {
+  /**
+   * @generated from field: string client_action_id = 1;
+   */
+  clientActionId: string;
+
+  /**
+   * @generated from field: string workspace_id = 2;
+   */
+  workspaceId: string;
+
+  /**
+   * @generated from field: optional string name = 3;
+   */
+  name?: string | undefined;
+
+  /**
+   * @generated from field: optional string description = 4;
+   */
+  description?: string | undefined;
+
+  /**
+   * @generated from field: optional bool hidden = 5;
+   */
+  hidden?: boolean | undefined;
+};
+
+/**
+ * Describes the message kairos.gui.v1.UpdateWorkspaceRequest.
+ * Use `create(UpdateWorkspaceRequestSchema)` to create a new message.
+ */
+export const UpdateWorkspaceRequestSchema: GenMessage<UpdateWorkspaceRequest> =
+  /*@__PURE__*/
+  messageDesc(file_kairos_gui_v1_workspace, 7);
+
+/**
+ * @generated from message kairos.gui.v1.UpdateWorkspaceResponse
+ */
+export type UpdateWorkspaceResponse = Message<'kairos.gui.v1.UpdateWorkspaceResponse'> & {
+  /**
+   * @generated from field: kairos.gui.v1.Workspace workspace = 1;
+   */
+  workspace?: Workspace | undefined;
+};
+
+/**
+ * Describes the message kairos.gui.v1.UpdateWorkspaceResponse.
+ * Use `create(UpdateWorkspaceResponseSchema)` to create a new message.
+ */
+export const UpdateWorkspaceResponseSchema: GenMessage<UpdateWorkspaceResponse> =
+  /*@__PURE__*/
+  messageDesc(file_kairos_gui_v1_workspace, 8);
+
+/**
+ * @generated from message kairos.gui.v1.DeleteWorkspaceRequest
+ */
+export type DeleteWorkspaceRequest = Message<'kairos.gui.v1.DeleteWorkspaceRequest'> & {
+  /**
+   * @generated from field: string client_action_id = 1;
+   */
+  clientActionId: string;
+
+  /**
+   * @generated from field: string workspace_id = 2;
+   */
+  workspaceId: string;
+};
+
+/**
+ * Describes the message kairos.gui.v1.DeleteWorkspaceRequest.
+ * Use `create(DeleteWorkspaceRequestSchema)` to create a new message.
+ */
+export const DeleteWorkspaceRequestSchema: GenMessage<DeleteWorkspaceRequest> =
+  /*@__PURE__*/
+  messageDesc(file_kairos_gui_v1_workspace, 9);
+
+/**
+ * @generated from message kairos.gui.v1.DeleteWorkspaceResponse
+ */
+export type DeleteWorkspaceResponse = Message<'kairos.gui.v1.DeleteWorkspaceResponse'> & {
+  /**
+   * @generated from field: string workspace_id = 1;
+   */
+  workspaceId: string;
+};
+
+/**
+ * Describes the message kairos.gui.v1.DeleteWorkspaceResponse.
+ * Use `create(DeleteWorkspaceResponseSchema)` to create a new message.
+ */
+export const DeleteWorkspaceResponseSchema: GenMessage<DeleteWorkspaceResponse> =
+  /*@__PURE__*/
+  messageDesc(file_kairos_gui_v1_workspace, 10);
+
+/**
  * @generated from service kairos.gui.v1.WorkspacesService
  */
 export const WorkspacesService: GenService<{
@@ -223,6 +335,22 @@ export const WorkspacesService: GenService<{
     methodKind: 'unary';
     input: typeof CreateWorkspaceRequestSchema;
     output: typeof CreateWorkspaceResponseSchema;
+  };
+  /**
+   * @generated from rpc kairos.gui.v1.WorkspacesService.UpdateWorkspace
+   */
+  updateWorkspace: {
+    methodKind: 'unary';
+    input: typeof UpdateWorkspaceRequestSchema;
+    output: typeof UpdateWorkspaceResponseSchema;
+  };
+  /**
+   * @generated from rpc kairos.gui.v1.WorkspacesService.DeleteWorkspace
+   */
+  deleteWorkspace: {
+    methodKind: 'unary';
+    input: typeof DeleteWorkspaceRequestSchema;
+    output: typeof DeleteWorkspaceResponseSchema;
   };
   /**
    * @generated from rpc kairos.gui.v1.WorkspacesService.RenameWorkspace

@@ -16,6 +16,8 @@ function group(workspaceId: string, name: string, path: string, tasks: number): 
       path,
       createdAt: undefined,
       mainThreadId: `${workspaceId}-main`,
+      description: '空间用途',
+      hidden: false,
     },
     mainThread: {
       $typeName: 'kairos.gui.v1.Thread',
@@ -61,7 +63,12 @@ describe('WorkspacesPage', () => {
   it('renders the create form and existing workspace groups', () => {
     const markup = renderToStaticMarkup(
       createElement(WorkspacesPage, {
-        clients: {} as never,
+        temporary: [],
+        onCreate: vi.fn(),
+        onEdit: vi.fn(),
+        onVisibility: vi.fn(),
+        onDelete: vi.fn(),
+        onNewTopic: vi.fn(),
         groups: [group('ws-1', 'Kairos 项目', '/srv/kairos', 2)],
         loading: false,
         error: null,
@@ -70,18 +77,29 @@ describe('WorkspacesPage', () => {
       }),
     );
 
-    expect(markup).toContain('新建工作空间');
-    expect(markup).toContain('工作目录');
+    expect(markup).toContain('添加工作空间');
+    expect(markup).toContain('2 个话题');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).not.toContain('任务 0');
+    expect(markup).toContain('/srv/kairos');
     expect(markup).toContain('Kairos 项目');
-    expect(markup).toContain('main · /srv/kairos');
-    expect(markup).toContain('打开主对话');
-    expect(markup).toContain('重命名');
+    expect(markup).not.toContain('空间用途');
+    expect(markup).not.toContain('个主对话');
+    expect(markup).toContain('编辑 Kairos 项目');
+    expect(markup).toContain('隐藏 Kairos 项目');
+    expect(markup).toContain('删除 Kairos 项目');
+    expect(markup).not.toContain('隐藏 临时对话');
   });
 
   it('renders the empty state without workspaces', () => {
     const markup = renderToStaticMarkup(
       createElement(WorkspacesPage, {
-        clients: {} as never,
+        temporary: [],
+        onCreate: vi.fn(),
+        onEdit: vi.fn(),
+        onVisibility: vi.fn(),
+        onDelete: vi.fn(),
+        onNewTopic: vi.fn(),
         groups: [],
         loading: false,
         error: null,
@@ -89,7 +107,7 @@ describe('WorkspacesPage', () => {
         onOpenThread: vi.fn(),
       }),
     );
-    expect(markup).toContain('还没有工作空间。');
+    expect(markup).toContain('还没有工作空间');
   });
 });
 

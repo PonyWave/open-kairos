@@ -43,7 +43,8 @@ export function completeGuiAction(
         text(response, 'inputId');
         text(response, 'runId');
         effects.completeDraft({
-          threadId: localTaskDraftId,
+          threadId:
+            payload.draftOwner === undefined ? localTaskDraftId : text(payload, 'draftOwner'),
           draftId: text(payload, 'draftId'),
           text: content(payload, 'initialText'),
           attachmentIds: optionalStringArray(payload, 'initialAttachmentIds'),

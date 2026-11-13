@@ -133,6 +133,7 @@ describe('ConversationPane StrictMode attachment lifecycle', () => {
       completeDraft: () => {},
       removeAttachment: () => {},
       restoreQueueDraft: () => {},
+      discardDrafts: () => {},
     };
     let uploader: AttachmentUploader | undefined;
     const activate = AttachmentUploader.prototype.activate;

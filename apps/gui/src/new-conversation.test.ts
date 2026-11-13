@@ -153,6 +153,7 @@ function view() {
     completeDraft: () => {},
     removeAttachment: () => {},
     restoreQueueDraft: () => {},
+    discardDrafts: () => {},
   };
   return {
     props: {

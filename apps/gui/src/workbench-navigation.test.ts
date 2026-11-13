@@ -13,6 +13,7 @@ import {
   pageFromLocation,
   shouldInvalidateTopicCards,
   shouldRefreshConversationPreviews,
+  workbenchLocation,
 } from './workbench-navigation.js';
 
 describe('workbench navigation', () => {
@@ -70,4 +71,12 @@ describe('workbench navigation', () => {
     expect(shouldRefreshConversationPreviews(previous, { ...previous, runs: [] })).toBe(true);
     expect(shouldRefreshConversationPreviews(undefined, previous)).toBe(true);
   });
+});
+
+it('preserves workspace directory and draft ownership in navigation URLs', () => {
+  expect(pageFromLocation('?view=workspaces')).toBe('workspaces');
+  expect(workbenchLocation('workspaces', null, 'main', 'account')).toBe('?view=workspaces');
+  expect(workbenchLocation('draft', null, 'main', 'account', null, null, 'space-a')).toBe(
+    '?view=draft&workspace=space-a',
+  );
 });

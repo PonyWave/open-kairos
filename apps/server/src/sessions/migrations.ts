@@ -474,4 +474,12 @@ CREATE INDEX channel_deliveries_due ON channel_deliveries(status, next_attempt_a
 CREATE INDEX channel_deliveries_owner ON channel_deliveries(owner_id, created_at, delivery_id);
     `,
   },
+  {
+    version: 3,
+    name: 'workspace_details_and_sidebar_visibility',
+    sql: `
+ALTER TABLE workspaces ADD COLUMN description TEXT NOT NULL DEFAULT '';
+ALTER TABLE workspaces ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0 CHECK(hidden IN (0,1));
+    `,
+  },
 ];

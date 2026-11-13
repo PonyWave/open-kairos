@@ -24,6 +24,7 @@ it('renders a full draft page with a colored mark and a fixed default title', ()
     completeDraft: () => {},
     removeAttachment: () => {},
     restoreQueueDraft: () => {},
+    discardDrafts: () => {},
   };
   const html = renderToStaticMarkup(
     createElement(ConversationPane, {

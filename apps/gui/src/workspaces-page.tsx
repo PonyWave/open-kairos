@@ -1,141 +1,47 @@
-import {
-  type Environment,
-  EnvironmentConnectionStatus,
-  type EnvironmentDirectoryEntry,
-} from '@kairos/contracts';
-import { useEffect, useState } from 'react';
-import type { KairosClients } from './client.js';
+import type { Thread, Workspace } from '@kairos/contracts';
+import { type ReactNode, useState } from 'react';
+import { EntityMark, ThreadBadge } from './entity-mark.js';
 import { FailureNotice } from './failure-notice.js';
 import { Icon } from './icon.js';
 import type { WorkspaceGroup } from './use-workspaces.js';
 
-function pickDefaultEnvironment(environments: readonly Environment[]): string {
-  const main = environments.find((environment) => environment.envId === 'main');
-  if (main) return main.envId;
-  const online = environments.find(
-    (environment) => environment.connectionStatus === EnvironmentConnectionStatus.ONLINE,
-  );
-  return online?.envId ?? environments[0]?.envId ?? '';
-}
-
 export function WorkspacesPage({
-  clients,
   groups,
+  temporary,
   loading,
   error,
+  busy = false,
   onChanged,
   onOpenThread,
+  onCreate,
+  onEdit,
+  onVisibility,
+  onDelete,
+  onNewTopic,
 }: {
-  clients: KairosClients;
   groups: readonly WorkspaceGroup[];
+  temporary: readonly Thread[];
   loading: boolean;
   error: string | null;
+  busy?: boolean;
   onChanged: () => void;
   onOpenThread: (threadId: string) => void;
+  onCreate: () => void;
+  onEdit: (workspace: Workspace) => void;
+  onVisibility: (workspace: Workspace) => void;
+  onDelete: (group: WorkspaceGroup) => void;
+  onNewTopic: (workspaceId: string | null) => void;
 }) {
-  const [environments, setEnvironments] = useState<readonly Environment[]>([]);
-  const [name, setName] = useState('');
-  const [envId, setEnvId] = useState('');
-  const [path, setPath] = useState('/');
-  const [browsePath, setBrowsePath] = useState('/');
-  const [entries, setEntries] = useState<readonly EnvironmentDirectoryEntry[]>([]);
-  const [browsing, setBrowsing] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [renaming, setRenaming] = useState<{ workspaceId: string; name: string } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void clients.environments
-      .listEnvironments({})
-      .then((result) => {
-        if (cancelled) return;
-        setEnvironments(result.environments);
-        setEnvId((current) => current || pickDefaultEnvironment(result.environments));
-      })
-      .catch(() => {
-        if (!cancelled) setFormError('设备列表加载失败。');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [clients]);
-
-  async function browse(target: string) {
-    if (!envId) {
-      setFormError('请先选择设备。');
-      return;
-    }
-    setBrowsing(true);
-    setFormError(null);
-    try {
-      const result = await clients.environments.listEnvironmentDirectories({
-        envId,
-        path: target,
-        offset: 0,
-        limit: 200,
-      });
-      setBrowsePath(result.path);
-      setPath(result.path);
-      setEntries(result.entries);
-    } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setBrowsing(false);
-    }
-  }
-
-  async function create() {
-    if (!name.trim() || !envId || !path.trim()) {
-      setFormError('请填写名称、设备和工作目录。');
-      return;
-    }
-    setBusy(true);
-    setFormError(null);
-    try {
-      await clients.workspaces.createWorkspace({
-        clientActionId: crypto.randomUUID(),
-        name: name.trim(),
-        envId,
-        path: path.trim(),
-      });
-      setName('');
-      onChanged();
-    } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function rename() {
-    if (!renaming || !renaming.name.trim()) return;
-    setBusy(true);
-    setFormError(null);
-    try {
-      await clients.workspaces.renameWorkspace({
-        clientActionId: crypto.randomUUID(),
-        workspaceId: renaming.workspaceId,
-        name: renaming.name.trim(),
-      });
-      setRenaming(null);
-      onChanged();
-    } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
-    <section
-      className="workspaces-page conversation-list-page"
-      aria-labelledby="workspaces-heading"
-    >
+    <section className="workspaces-page" aria-labelledby="workspaces-heading">
       <header className="page-heading">
         <div>
-          <h1 id="workspaces-heading">工作空间</h1>
+          <h1 id="workspaces-heading">全部工作空间</h1>
         </div>
+        <button type="button" className="device-primary" onClick={onCreate}>
+          <Icon name="plus" className="i-sm" />
+          添加工作空间
+        </button>
       </header>
       {error && (
         <FailureNotice
@@ -145,176 +51,184 @@ export function WorkspacesPage({
           onRetry={onChanged}
         />
       )}
-      <section className="workspace-create" aria-label="新建工作空间">
-        <h2>新建工作空间</h2>
-        <div className="workspace-create-form">
-          <label>
-            名称
-            <input
-              value={name}
-              maxLength={200}
-              disabled={busy}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="例如：Kairos 项目"
-            />
-          </label>
-          <label>
-            设备
-            <select
-              value={envId}
-              disabled={busy}
-              onChange={(event) => {
-                setEnvId(event.target.value);
-                setEntries([]);
-              }}
-            >
-              {environments.map((environment) => (
-                <option key={environment.envId} value={environment.envId}>
-                  {environment.name || environment.envId}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            工作目录
-            <span className="workspace-path-row">
-              <input
-                value={path}
-                disabled={busy}
-                autoCapitalize="off"
-                spellCheck={false}
-                onChange={(event) => setPath(event.target.value)}
-                placeholder="/absolute/path"
-              />
-              <button
-                type="button"
-                className="device-secondary"
-                disabled={busy || browsing || !envId}
-                onClick={() => void browse(path)}
-              >
-                {browsing ? '正在读取' : '浏览'}
-              </button>
-            </span>
-          </label>
-          {entries.length > 0 && (
-            <div className="workspace-browse">
-              <button
-                type="button"
-                className="device-secondary"
-                disabled={busy || browsePath === '/'}
-                onClick={() => {
-                  const parent = browsePath.split('/').slice(0, -1).join('/') || '/';
-                  void browse(parent);
-                }}
-              >
-                上级目录
-              </button>
-              <ul>
-                {entries.map((entry) => (
-                  <li key={entry.path}>
+      {loading && groups.length === 0 ? <p role="status">正在加载工作空间…</p> : null}
+      {!loading && !error && groups.length === 0 ? (
+        <div className="workspace-empty">
+          <Icon name="folder" />
+          <h2>还没有工作空间</h2>
+          <p>选择一台设备和一个工作目录，将相关对话保存在一起。</p>
+        </div>
+      ) : null}
+      <div className="workspace-overview">
+        {groups.map(
+          (group) =>
+            group.workspace && (
+              <WorkspaceOverviewGroup
+                key={group.workspace.workspaceId}
+                workspace={group.workspace}
+                deviceName={group.deviceName}
+                mainThread={group.mainThread}
+                tasks={group.tasks}
+                busy={busy}
+                onOpenThread={onOpenThread}
+                onNewTopic={() => onNewTopic(group.workspace?.workspaceId ?? null)}
+                actions={
+                  <>
                     <button
                       type="button"
-                      className="workspace-browse-entry"
+                      className="icon-button"
+                      aria-label={`编辑 ${group.workspace.name}`}
+                      title="编辑名称和描述"
                       disabled={busy}
-                      onClick={() => void browse(entry.path)}
+                      onClick={() => group.workspace && onEdit(group.workspace)}
                     >
-                      <Icon name="folder" className="i-sm" />
-                      {entry.name}
+                      <Icon name="edit" />
                     </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {formError && (
-            <p className="sidebar-error" role="alert">
-              {formError}
-            </p>
-          )}
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={`${group.workspace.hidden ? '显示' : '隐藏'} ${group.workspace.name}`}
+                      title={group.workspace.hidden ? '显示在侧边栏' : '从侧边栏隐藏'}
+                      aria-pressed={group.workspace.hidden}
+                      disabled={busy}
+                      onClick={() => group.workspace && onVisibility(group.workspace)}
+                    >
+                      <Icon name={group.workspace.hidden ? 'eyeOff' : 'eye'} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button workspace-delete"
+                      aria-label={`删除 ${group.workspace.name}`}
+                      title="删除空间及对话"
+                      disabled={busy}
+                      onClick={() => onDelete(group)}
+                    >
+                      <Icon name="trash" />
+                    </button>
+                  </>
+                }
+              />
+            ),
+        )}
+        <WorkspaceOverviewGroup
+          workspace={null}
+          mainThread={null}
+          tasks={temporary}
+          onOpenThread={onOpenThread}
+          onNewTopic={() => onNewTopic(null)}
+          busy={busy}
+        />
+      </div>
+    </section>
+  );
+}
+
+function WorkspaceOverviewGroup({
+  workspace,
+  mainThread,
+  deviceName,
+  tasks,
+  actions,
+  busy,
+  onOpenThread,
+  onNewTopic,
+}: {
+  workspace: Workspace | null;
+  mainThread: Thread | null;
+  deviceName?: string | undefined;
+  tasks: readonly Thread[];
+  actions?: ReactNode;
+  busy: boolean;
+  onOpenThread: (threadId: string) => void;
+  onNewTopic: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const name = workspace?.name ?? '临时对话';
+  return (
+    <section className="workspace-overview-group" aria-label={name}>
+      <div className="workspace-overview-row">
+        {workspace && (
+          <div
+            className="workspace-breadcrumb"
+            title={`${deviceName || workspace.envId} · ${workspace.path}`}
+          >
+            <Icon name="monitor" className="i-xs" />
+            <span>{deviceName || (workspace.envId === 'main' ? '主环境' : workspace.envId)}</span>
+            <Icon name="chevron" className="i-xs" />
+            <code>
+              {workspace.path.split('/').filter(Boolean).length > 2
+                ? `…/${workspace.path.split('/').filter(Boolean).slice(-2).join('/')}`
+                : workspace.path}
+            </code>
+            {workspace.hidden && (
+              <span className="workspace-hidden-label">
+                <Icon name="eyeOff" className="i-xs" />
+                已隐藏
+              </span>
+            )}
+          </div>
+        )}
+        <div className="workspace-overview-heading">
           <button
             type="button"
-            className="primary"
-            disabled={busy || !name.trim() || !envId || !path.trim()}
-            onClick={() => void create()}
+            className="workspace-overview-toggle"
+            aria-label={`${expanded ? '收起' : '展开'} ${name} 的话题`}
+            aria-expanded={expanded}
+            title={workspace ? `${deviceName || workspace.envId} · ${workspace.path}` : undefined}
+            onClick={() => setExpanded(!expanded)}
           >
-            {busy ? '正在保存' : '创建工作空间'}
+            <Icon name="chevron" className={`workspace-chevron${expanded ? ' expanded' : ''}`} />
+            {mainThread ? <EntityMark threadId={mainThread.threadId} /> : <Icon name="chat" />}
+            <span className="workspace-overview-title">
+              <strong>{name}</strong>
+              <span>{tasks.length} 个话题</span>
+            </span>
+          </button>
+          <div className="workspace-overview-actions">{actions}</div>
+        </div>
+      </div>
+      {expanded && workspace?.description && (
+        <p className="workspace-overview-description">{workspace.description}</p>
+      )}
+      {expanded && (
+        <div className="workspace-overview-threads">
+          {mainThread && (
+            <button
+              type="button"
+              className="workspace-overview-thread"
+              onClick={() => onOpenThread(mainThread.threadId)}
+            >
+              <EntityMark threadId={mainThread.threadId} />
+              <strong>主对话</strong>
+              <Icon name="chevron" className="i-sm" />
+            </button>
+          )}
+          {[...tasks]
+            .sort((a, b) => Number(b.updatedAt?.seconds ?? 0n) - Number(a.updatedAt?.seconds ?? 0n))
+            .map((task) => (
+              <button
+                type="button"
+                className="workspace-overview-thread"
+                key={task.threadId}
+                onClick={() => onOpenThread(task.threadId)}
+              >
+                <ThreadBadge threadId={task.threadId} />
+                <span>{task.title || '未命名话题'}</span>
+                <Icon name="chevron" className="i-sm" />
+              </button>
+            ))}
+          {tasks.length === 0 && <p className="workspace-no-topics">尚无话题。</p>}
+          <button
+            type="button"
+            className="workspace-overview-new"
+            disabled={busy}
+            onClick={onNewTopic}
+          >
+            <Icon name="plus" className="i-sm" />
+            {workspace ? '新建话题' : '新建临时对话'}
           </button>
         </div>
-      </section>
-      <section className="workspace-list" aria-label="已有工作空间">
-        <h2>已有工作空间</h2>
-        {groups.length === 0 && !loading ? (
-          <p className="empty">还没有工作空间。</p>
-        ) : (
-          groups.map((group) => (
-            <div className="workspace-item" key={group.workspace?.workspaceId ?? 'unknown'}>
-              {renaming?.workspaceId === group.workspace?.workspaceId && renaming ? (
-                <span className="workspace-rename">
-                  <input
-                    value={renaming.name}
-                    maxLength={200}
-                    disabled={busy}
-                    onChange={(event) =>
-                      setRenaming({ workspaceId: renaming.workspaceId, name: event.target.value })
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="device-secondary"
-                    disabled={busy || !renaming.name.trim()}
-                    onClick={() => void rename()}
-                  >
-                    保存
-                  </button>
-                  <button
-                    type="button"
-                    className="device-secondary"
-                    disabled={busy}
-                    onClick={() => setRenaming(null)}
-                  >
-                    取消
-                  </button>
-                </span>
-              ) : (
-                <>
-                  <span className="workspace-item-name">{group.workspace?.name}</span>
-                  <span
-                    className="workspace-item-path"
-                    title={`${group.workspace?.envId} · ${group.workspace?.path}`}
-                  >
-                    {environments.find(
-                      (environment) => environment.envId === group.workspace?.envId,
-                    )?.name ?? group.workspace?.envId}{' '}
-                    · {group.workspace?.path}
-                  </span>
-                  <button
-                    type="button"
-                    className="device-secondary"
-                    disabled={busy}
-                    onClick={() =>
-                      setRenaming({
-                        workspaceId: group.workspace?.workspaceId ?? '',
-                        name: group.workspace?.name ?? '',
-                      })
-                    }
-                  >
-                    重命名
-                  </button>
-                  {group.mainThread && (
-                    <button
-                      type="button"
-                      className="device-secondary"
-                      onClick={() => onOpenThread(group.mainThread?.threadId ?? '')}
-                    >
-                      打开主对话
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          ))
-        )}
-      </section>
+      )}
     </section>
   );
 }

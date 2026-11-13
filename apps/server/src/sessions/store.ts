@@ -36,6 +36,7 @@ import type { Recap } from '../recap/types.js';
 import { migrateDatabase } from '../storage/migrations.js';
 import { assertServerDatabaseCompatible } from '../storage/server-schema.js';
 import { inTransaction } from '../storage/transaction.js';
+import { deleteWorkspaceRecords } from './delete-workspace.js';
 import {
   AgentEnvironmentStore,
   type EnvironmentPolicyInput,
@@ -134,6 +135,8 @@ const threadRowSchema = z.object({
   updated_at: z.string(),
 });
 const workspaceRowSchema = z.object({
+  description: z.string(),
+  hidden: z.number().int().min(0).max(1),
   workspace_id: z.string(),
   tenant_id: z.string(),
   name: z.string(),
@@ -850,11 +853,20 @@ export class SessionStore {
     });
   }
 
-  createWorkspace(input: { ownerId: string; name: string; envId: string; path: string }): {
+  createWorkspace(input: {
+    ownerId: string;
+    name: string;
+    envId: string;
+    path: string;
+    description?: string;
+  }): {
     workspace: WorkspaceRecord;
     mainThread: ThreadRecord;
   } {
     const name = requireText(input.name, 'name', 200);
+    const description = requireText(input.description?.trim() ?? '', 'description', 2000, {
+      allowEmpty: true,
+    });
     const envId = requireText(input.envId, 'envId', 200);
     const path = requireText(input.path, 'path', 4096);
     if (!path.startsWith('/')) {
@@ -876,10 +888,10 @@ export class SessionStore {
       const now = isoTime(undefined, this.#clock);
       this.database
         .prepare(
-          `INSERT INTO workspaces(workspace_id, tenant_id, name, env_id, path, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO workspaces(workspace_id, tenant_id, name, env_id, path, created_at, description)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(workspaceId, input.ownerId, name, envId, path, now);
+        .run(workspaceId, input.ownerId, name, envId, path, now, description);
       const mainThread = this.#insertThread(
         input.ownerId,
         'workspace_main',
@@ -917,13 +929,48 @@ export class SessionStore {
   }
 
   renameWorkspace(input: { ownerId: string; workspaceId: string; name: string }): WorkspaceRecord {
-    const name = requireText(input.name, 'name', 200);
+    return this.updateWorkspace(input);
+  }
+
+  updateWorkspace(input: {
+    ownerId: string;
+    workspaceId: string;
+    name?: string;
+    description?: string;
+    hidden?: boolean;
+  }): WorkspaceRecord {
     return this.transaction(() => {
-      this.#ownedWorkspace(input.ownerId, input.workspaceId);
+      const current = this.getWorkspace(input.ownerId, input.workspaceId);
+      const name =
+        input.name === undefined ? current.name : requireText(input.name.trim(), 'name', 200);
+      const description =
+        input.description === undefined
+          ? current.description
+          : requireText(input.description.trim(), 'description', 2000, { allowEmpty: true });
       this.database
-        .prepare('UPDATE workspaces SET name = ? WHERE workspace_id = ?')
-        .run(name, input.workspaceId);
+        .prepare(
+          'UPDATE workspaces SET name = ?, description = ?, hidden = ? WHERE workspace_id = ? AND tenant_id = ?',
+        )
+        .run(
+          name,
+          description,
+          Number(input.hidden ?? current.hidden),
+          input.workspaceId,
+          input.ownerId,
+        );
+      if (name !== current.name) {
+        const mainId = this.workspaceMainThreadId(input.ownerId, input.workspaceId);
+        if (mainId) this.#updateThreadTitle(input.ownerId, mainId, name);
+      }
       return this.getWorkspace(input.ownerId, input.workspaceId);
+    });
+  }
+
+  deleteWorkspace(action: ActionInput & { workspaceId: string }): { workspaceId: string } {
+    return this.#action(action, z.object({ workspaceId: z.string() }), () => {
+      this.#ownedWorkspace(action.ownerId, action.workspaceId);
+      deleteWorkspaceRecords(this.database, action.ownerId, action.workspaceId);
+      return { workspaceId: action.workspaceId };
     });
   }
 
@@ -963,6 +1010,8 @@ export class SessionStore {
   #toWorkspace(row: z.infer<typeof workspaceRowSchema>): WorkspaceRecord {
     return {
       workspaceId: row.workspace_id,
+      description: row.description,
+      hidden: row.hidden === 1,
       tenantId: row.tenant_id,
       name: row.name,
       envId: row.env_id,

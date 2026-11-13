@@ -63,7 +63,7 @@ export type ConversationVariant =
   | 'subagent'
   | 'automation';
 type SharedActions = ReturnType<typeof useActionExecutor>;
-type DraftStore = ReturnType<typeof useDrafts>;
+type DraftStore = Omit<ReturnType<typeof useDrafts>, 'discardDrafts'>;
 
 export function ConversationPane({
   clients,
@@ -93,6 +93,7 @@ export function ConversationPane({
   onCloseTopic,
   onShowOrigin,
   showNotice,
+  onEditWorkspace,
 }: {
   clients: KairosClients;
   threadSyncManager: ThreadSyncManager;
@@ -103,6 +104,7 @@ export function ConversationPane({
   mainThreadId: string | null;
   draftOwner: string;
   draftWorkspaceId?: string | null;
+  onEditWorkspace?: (() => void) | undefined;
   actions: SharedActions;
   drafts: DraftStore;
   topicCards: readonly TopicCardView[];
@@ -440,7 +442,7 @@ export function ConversationPane({
       submission.actionKind === 'createThread' &&
       submission.payload &&
       typeof submission.payload === 'object'
-        ? { ...submission.payload, title: title.trim() || '新话题' }
+        ? { ...submission.payload, title: title.trim() || '新话题', draftOwner }
         : submission.payload;
     if (submission.actionKind === 'sendMessage' || submission.actionKind === 'createThread')
       followAfterSend();
@@ -773,12 +775,22 @@ export function ConversationPane({
                         ? () => onShowOrigin(activeThreadId ?? '', origin)
                         : undefined
                     }
-                    onEdit={readOnly ? undefined : () => setEditingTitle(true)}
+                    onEdit={readOnly || onEditWorkspace ? undefined : () => setEditingTitle(true)}
                   />
                 </>
               )}
             </div>
           </div>
+          {onEditWorkspace && (
+            <button
+              type="button"
+              className="device-secondary workspace-edit-entry"
+              onClick={onEditWorkspace}
+            >
+              <Icon name="edit" className="i-sm" />
+              编辑空间
+            </button>
+          )}
           {(variant === 'topic' || readOnly) && (
             <button
               type="button"

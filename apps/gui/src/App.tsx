@@ -3,6 +3,8 @@ import {
   type Identity,
   type SubagentCallView,
   type ThreadSnapshot,
+  ThreadType,
+  type Workspace,
 } from '@kairos/contracts';
 import {
   useCallback,
@@ -33,6 +35,7 @@ import { localTaskDraftId } from './drafts.js';
 import { Dropdown } from './dropdown.js';
 import { DualPaneLayout } from './dual-pane-layout.js';
 import { EntityMark } from './entity-mark.js';
+import { formatClientError } from './errors.js';
 import { FailureNotice } from './failure-notice.js';
 import { Icon } from './icon.js';
 import { LoginScreen } from './login-screen.js';
@@ -57,6 +60,7 @@ import { useAuth } from './use-auth.js';
 import { useDrafts } from './use-drafts.js';
 import { useTopicPreviews } from './use-topic-previews.js';
 import { useWorkbench } from './use-workbench.js';
+import type { WorkspaceGroup } from './use-workspaces.js';
 import { useWorkspaceDirectory } from './use-workspaces.js';
 import { UserAvatar, UserProfileProvider } from './user-avatar.js';
 import {
@@ -66,6 +70,7 @@ import {
   shouldRefreshConversationPreviews,
   workbenchLocation,
 } from './workbench-navigation.js';
+import { WorkspaceDialog } from './workspace-dialog.js';
 import { WorkspacesPage } from './workspaces-page.js';
 
 const wordmark = new URL('./assets/kairos-wordmark.svg', import.meta.url).href;
@@ -187,6 +192,18 @@ export function AccountWorkbench({
     storage?.setItem('kairos.theme', theme);
   }, [theme, storage]);
   const [navigationOpen, setNavigationOpen] = useState(false);
+  const [workspaceEditor, setWorkspaceEditor] = useState<{ workspace: Workspace | null } | null>(
+    null,
+  );
+  const [deletingWorkspace, setDeletingWorkspace] = useState<WorkspaceGroup | null>(null);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const deleteActionId = useRef('');
+  const sidebarRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const navigationButton = useRef<HTMLButtonElement>(null);
+
   const [notice, setNotice] = useState<string | null>(null);
   const [activeTopic, setActiveTopic] = useState<OpenTopicRequest | null>(null);
   const [activeSubagent, setActiveSubagent] = useState<SubagentCallView | null>(null);
@@ -293,9 +310,77 @@ export function AccountWorkbench({
       setActiveSubagent(null);
       setHighlightedCallId(null);
       topics.closeDirectory();
+      workspaceDirectory.refresh();
       workbench.openWorkspaces();
     });
-  }, [navigate, topics.closeDirectory, workbench.openWorkspaces]);
+  }, [navigate, topics.closeDirectory, workbench.openWorkspaces, workspaceDirectory.refresh]);
+
+  const createWorkspace = useCallback(() => {
+    navigate(() => {
+      setNavigationOpen(false);
+      setWorkspaceEditor({ workspace: null });
+    });
+  }, [navigate]);
+  const editWorkspace = useCallback(
+    (workspace: Workspace) => {
+      navigate(() => {
+        setNavigationOpen(false);
+        setWorkspaceEditor({ workspace });
+      });
+    },
+    [navigate],
+  );
+  async function changeWorkspaceVisibility(workspace: Workspace) {
+    setWorkspaceBusy(true);
+    setWorkspaceError(null);
+    try {
+      await clients.workspaces.updateWorkspace({
+        clientActionId: crypto.randomUUID(),
+        workspaceId: workspace.workspaceId,
+        hidden: !workspace.hidden,
+      });
+      workspaceDirectory.refresh();
+      showNotice(
+        workspace.hidden
+          ? '工作空间已显示在侧边栏。'
+          : '工作空间已从侧边栏隐藏，可在全部工作空间恢复。',
+      );
+    } catch (cause) {
+      setWorkspaceError(formatClientError(cause));
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+  async function removeWorkspace() {
+    const workspace = deletingWorkspace?.workspace;
+    if (!workspace || deleteConfirmation !== workspace.name || workspaceBusy) return;
+    setWorkspaceBusy(true);
+    setWorkspaceError(null);
+    try {
+      await clients.workspaces.deleteWorkspace({
+        clientActionId: deleteActionId.current,
+        workspaceId: workspace.workspaceId,
+      });
+      const ids = [
+        ...(deletingWorkspace?.tasks ?? []).map((t) => t.threadId),
+        ...(deletingWorkspace?.mainThread ? [deletingWorkspace.mainThread.threadId] : []),
+      ];
+      drafts.discardDrafts([...ids, `${localTaskDraftId}:${workspace.workspaceId}`]);
+      workbench.forgetThreads(ids);
+      setActiveTopic(null);
+      setActiveSubagent(null);
+      setWorkspaceEditor(null);
+      setDeletingWorkspace(null);
+      workspaceDirectory.refresh();
+      void topics.openDirectory();
+      openWorkspaces();
+      showNotice('工作空间及其中的对话已删除，设备文件保留。');
+    } catch (cause) {
+      setWorkspaceError(formatClientError(cause));
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
 
   const openSettings = useCallback(() => {
     navigate(() => {
@@ -383,6 +468,7 @@ export function AccountWorkbench({
         upsertThread: (thread) => {
           workbench.upsertThread(thread);
           topics.upsertThread(thread);
+          workspaceDirectory.refresh();
         },
         selectThread: (threadId) => openFullThread(threadId),
         startNewMain: (thread) => {
@@ -409,6 +495,7 @@ export function AccountWorkbench({
       showNotice,
       topics.upsertThread,
       workbench.upsertThread,
+      workspaceDirectory.refresh,
     ],
   );
   useLayoutEffect(() => {
@@ -494,7 +581,7 @@ export function AccountWorkbench({
         automationRoute?.page ??
         (view === 'topics'
           ? 'directory'
-          : view === 'devices' || view === 'settings' || view === 'draft'
+          : view === 'devices' || view === 'settings' || view === 'draft' || view === 'workspaces'
             ? view
             : 'thread');
       const automationThreadId =
@@ -506,6 +593,7 @@ export function AccountWorkbench({
         section,
         automationRoute?.scheduleId ?? null,
         automationThreadId,
+        view === 'draft' ? params.get('workspace') : null,
       );
       window.history.replaceState(
         { kairosNavigationIndex: historyIndex.current },
@@ -519,7 +607,8 @@ export function AccountWorkbench({
       else if (view === 'settings') openSettings();
       else if (view === 'devices') openDevices();
       else if (view === 'topics') openDirectory();
-      else if (view === 'draft') openDraft();
+      else if (view === 'workspaces') openWorkspaces();
+      else if (view === 'draft') openDraft(params.get('workspace'));
       else if (view === 'thread' && params.get('thread'))
         openFullThread(params.get('thread') ?? '');
       else openMain();
@@ -564,6 +653,7 @@ export function AccountWorkbench({
     mainThreadId,
     openSettings,
     openDevices,
+    openWorkspaces,
     openDirectory,
     openDraft,
     openFullThread,
@@ -581,6 +671,7 @@ export function AccountWorkbench({
       settingsSection,
       directory.automationScheduleId,
       directory.automationThreadId,
+      directory.draftWorkspaceId,
     );
     if (search !== window.location.search) {
       historyIndex.current += 1;
@@ -595,6 +686,7 @@ export function AccountWorkbench({
     directory.page,
     directory.automationScheduleId,
     directory.automationThreadId,
+    directory.draftWorkspaceId,
     selectedThreadId,
     mainThreadId,
     settingsSection,
@@ -627,6 +719,43 @@ export function AccountWorkbench({
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [openMain]);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1020px)');
+    const update = () => {
+      if (!media.matches && navigationOpen) setNavigationOpen(false);
+      if (sidebarRef.current) sidebarRef.current.inert = media.matches && !navigationOpen;
+      if (mainRef.current) mainRef.current.inert = media.matches && navigationOpen;
+    };
+    update();
+    media.addEventListener('change', update);
+    if (navigationOpen && media.matches)
+      sidebarRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    const trap = (event: KeyboardEvent) => {
+      if (!navigationOpen || !media.matches || event.key !== 'Tab') return;
+      const elements = Array.from(
+        sidebarRef.current?.querySelectorAll<HTMLElement>(
+          'button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled)',
+        ) ?? [],
+      ).filter((e) => e.getClientRects().length > 0);
+      const first = elements[0],
+        last = elements.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener('keydown', trap);
+    return () => {
+      media.removeEventListener('change', update);
+      document.removeEventListener('keydown', trap);
+      if (mainRef.current) mainRef.current.inert = false;
+      if (navigationOpen) navigationButton.current?.focus({ preventScroll: true });
+    };
+  }, [navigationOpen]);
 
   const renderSubagentPane = () =>
     activeSubagent && (
@@ -664,8 +793,16 @@ export function AccountWorkbench({
           <a className="skip-link" href="#main-content">
             跳到消息区
           </a>
-          <aside className="thread-sidebar" aria-label="工作台导航">
+          <aside ref={sidebarRef} className="thread-sidebar" aria-label="工作台导航">
             <div className="brand-row">
+              <button
+                type="button"
+                className="icon-button drawer-close"
+                aria-label="关闭侧边栏"
+                onClick={() => setNavigationOpen(false)}
+              >
+                <Icon name="close" />
+              </button>
               <button type="button" className="brand" onClick={openMain} aria-label="Kairos 主对话">
                 <EntityMark mainAgent className="brand-mark" />
                 <img className="brand-wordmark" src={wordmark} alt="" />
@@ -708,6 +845,15 @@ export function AccountWorkbench({
                 <Icon name="clock" />
                 <span className="nav-label">定时任务</span>
               </button>
+              <button
+                type="button"
+                className={directory.page === 'directory' ? 'selected' : ''}
+                aria-current={directory.page === 'directory' ? 'page' : undefined}
+                onClick={openDirectory}
+              >
+                <Icon name="chat" />
+                <span className="nav-label">全部话题</span>
+              </button>
               <button type="button" aria-label="看板，暂不可用" title="看板暂不可用" disabled>
                 <Icon name="tasks" />
                 <span className="nav-label">看板</span>
@@ -720,21 +866,21 @@ export function AccountWorkbench({
                   <button
                     type="button"
                     className="icon-button"
-                    aria-label="新建工作空间"
-                    title="新建工作空间"
-                    onClick={openWorkspaces}
+                    aria-label="添加工作空间"
+                    title="添加工作空间"
+                    onClick={createWorkspace}
                   >
-                    <Icon name="plus" className="i-xs" />
+                    <Icon name="plus" className="i-sm" />
                   </button>
                   <button
                     type="button"
-                    className={`icon-button${directory.page === 'directory' ? ' current' : ''}`}
-                    aria-label="查看全部对话"
-                    title="查看全部对话"
-                    aria-current={directory.page === 'directory' ? 'page' : undefined}
-                    onClick={openDirectory}
+                    className={`icon-button${directory.page === 'workspaces' ? ' current' : ''}`}
+                    aria-label="查看全部工作空间"
+                    title="查看全部工作空间"
+                    aria-current={directory.page === 'workspaces' ? 'page' : undefined}
+                    onClick={openWorkspaces}
                   >
-                    <Icon name="chevron" className="i-xs" />
+                    <Icon name="grid" className="i-sm" />
                   </button>
                 </span>
               </div>
@@ -746,23 +892,25 @@ export function AccountWorkbench({
                   {workspaceDirectory.error}
                 </p>
               )}
-              {workspaceDirectory.groups.map((group) => (
-                <WorkspaceGroupSection
-                  key={group.workspace?.workspaceId ?? 'unknown'}
-                  group={group}
-                  selectedThreadId={selectedThreadId}
-                  busy={actions.busy}
-                  onOpenThread={(threadId) => openFullThread(threadId, null, null)}
-                  onNewTopic={() => openDraft(group.workspace?.workspaceId ?? null)}
-                  onRename={async (threadId, title) =>
-                    (await actions.execute(`rename-thread:${threadId}`, 'renameThread', {
-                      threadId,
-                      title,
-                    })) !== undefined
-                  }
-                />
-              ))}
-              {workspaceDirectory.temporary.length > 0 && (
+              {workspaceDirectory.groups
+                .filter((group) => !group.workspace?.hidden)
+                .map((group) => (
+                  <WorkspaceGroupSection
+                    key={group.workspace?.workspaceId ?? 'unknown'}
+                    group={group}
+                    selectedThreadId={selectedThreadId}
+                    busy={actions.busy}
+                    onOpenThread={(threadId) => openFullThread(threadId, null, null)}
+                    onNewTopic={() => openDraft(group.workspace?.workspaceId ?? null)}
+                    onRename={async (threadId, title) =>
+                      (await actions.execute(`rename-thread:${threadId}`, 'renameThread', {
+                        threadId,
+                        title,
+                      })) !== undefined
+                    }
+                  />
+                ))}
+              {
                 <TemporaryThreadsSection
                   threads={workspaceDirectory.temporary}
                   selectedThreadId={selectedThreadId}
@@ -776,7 +924,7 @@ export function AccountWorkbench({
                     })) !== undefined
                   }
                 />
-              )}
+              }
             </section>
             <div className="sidebar-bottom">
               <button
@@ -842,18 +990,23 @@ export function AccountWorkbench({
             type="button"
             className="phone-scrim"
             aria-label="关闭导航"
+            tabIndex={-1}
             onClick={() => setNavigationOpen(false)}
           />
-          <main id="main-content" className="workspace">
-            <button
-              type="button"
-              className="icon-button mobile-menu"
-              aria-label="打开导航"
-              aria-expanded={navigationOpen}
-              onClick={() => setNavigationOpen(true)}
-            >
-              <Icon name="menu" />
-            </button>
+          <main ref={mainRef} id="main-content" className="workspace">
+            <div className="mobile-toolbar">
+              <button
+                type="button"
+                ref={navigationButton}
+                className="icon-button mobile-menu"
+                aria-label="打开导航"
+                aria-expanded={navigationOpen}
+                onClick={() => setNavigationOpen(true)}
+              >
+                <Icon name="menu" />
+              </button>
+              <span>Kairos</span>
+            </div>
             {health !== 'ready' && (
               <span
                 className={`server-status health-${health}`}
@@ -1023,10 +1176,21 @@ export function AccountWorkbench({
                 <ConnectedDevicesPage clients={clients} />
               ) : directory.page === 'workspaces' ? (
                 <WorkspacesPage
-                  clients={clients}
                   groups={workspaceDirectory.groups}
+                  temporary={workspaceDirectory.temporary}
+                  busy={workspaceBusy}
+                  onCreate={createWorkspace}
+                  onEdit={editWorkspace}
+                  onVisibility={(workspace) => void changeWorkspaceVisibility(workspace)}
+                  onDelete={(group) => {
+                    setDeletingWorkspace(group);
+                    setDeleteConfirmation('');
+                    setWorkspaceError(null);
+                    deleteActionId.current = crypto.randomUUID();
+                  }}
+                  onNewTopic={openDraft}
                   loading={workspaceDirectory.loading}
-                  error={workspaceDirectory.error}
+                  error={(deletingWorkspace ? null : workspaceError) ?? workspaceDirectory.error}
                   onChanged={workspaceDirectory.refresh}
                   onOpenThread={(threadId) => openFullThread(threadId, null, null)}
                 />
@@ -1069,7 +1233,7 @@ export function AccountWorkbench({
                   threadId={null}
                   thread={null}
                   mainThreadId={mainThreadId}
-                  draftOwner={localTaskDraftId}
+                  draftOwner={`${localTaskDraftId}:${directory.draftWorkspaceId ?? 'temporary'}`}
                   draftWorkspaceId={directory.draftWorkspaceId}
                   actions={actions}
                   drafts={drafts}
@@ -1093,6 +1257,16 @@ export function AccountWorkbench({
                 >
                   <ConversationPane
                     key={selectedThreadId}
+                    onEditWorkspace={
+                      selectedThread?.threadType === ThreadType.WORKSPACE_MAIN
+                        ? () => {
+                            const workspace = workspaceDirectory.groups.find(
+                              (g) => g.workspace?.workspaceId === selectedThread.workspaceId,
+                            )?.workspace;
+                            if (workspace) editWorkspace(workspace);
+                          }
+                        : undefined
+                    }
                     clients={clients}
                     threadSyncManager={threadSyncManager}
                     variant="fullscreen"
@@ -1124,6 +1298,77 @@ export function AccountWorkbench({
             </div>
           </main>
         </div>
+        {workspaceEditor && (
+          <WorkspaceDialog
+            clients={clients}
+            workspace={workspaceEditor.workspace}
+            onClose={() => setWorkspaceEditor(null)}
+            onSaved={() => {
+              setWorkspaceEditor(null);
+              workspaceDirectory.refresh();
+              setPreviewRevision((v) => v + 1);
+            }}
+          />
+        )}
+        {deletingWorkspace?.workspace && (
+          <AppDialog
+            title="删除工作空间"
+            closeDisabled={workspaceBusy}
+            onClose={() => {
+              setDeletingWorkspace(null);
+              setWorkspaceError(null);
+            }}
+            actions={
+              <>
+                <button
+                  type="button"
+                  className="device-secondary"
+                  disabled={workspaceBusy}
+                  onClick={() => {
+                    setDeletingWorkspace(null);
+                    setWorkspaceError(null);
+                  }}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className="device-primary device-danger"
+                  disabled={
+                    workspaceBusy || deleteConfirmation !== deletingWorkspace.workspace.name
+                  }
+                  onClick={() => void removeWorkspace()}
+                >
+                  {workspaceBusy ? '正在删除…' : '删除工作空间及对话'}
+                </button>
+              </>
+            }
+          >
+            <div className="workspace-delete-confirm">
+              <p>
+                将永久删除“{deletingWorkspace.workspace.name}”、主对话和其中的{' '}
+                {deletingWorkspace.tasks.length} 个话题及其历史记录。
+              </p>
+              <p>
+                设备上的项目目录和文件保留。仍在执行的任务需要先停止；使用该空间的定时任务需先修改执行目标或删除。
+              </p>
+              <label className="settings-field">
+                输入工作空间名称确认
+                <input
+                  value={deleteConfirmation}
+                  onChange={(e) => setDeleteConfirmation(e.target.value)}
+                  autoComplete="off"
+                  placeholder={deletingWorkspace.workspace.name}
+                />
+              </label>
+              {workspaceError && (
+                <p className="settings-error" role="alert">
+                  {workspaceError}
+                </p>
+              )}
+            </div>
+          </AppDialog>
+        )}
         {leaveAction && (
           <AppDialog
             title="放弃未保存的修改"

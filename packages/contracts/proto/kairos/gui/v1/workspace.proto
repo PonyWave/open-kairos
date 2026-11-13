@@ -11,6 +11,8 @@ message Workspace {
   string path = 4;
   google.protobuf.Timestamp created_at = 5;
   string main_thread_id = 6;
+  string description = 7;
+  bool hidden = 8;
 }
 
 message ListWorkspacesRequest {}
@@ -24,6 +26,7 @@ message CreateWorkspaceRequest {
   string name = 2;
   string env_id = 3;
   string path = 4;
+  string description = 5;
 }
 
 message CreateWorkspaceResponse {
@@ -43,8 +46,31 @@ message RenameWorkspaceResponse {
   Workspace workspace = 2;
 }
 
+message UpdateWorkspaceRequest {
+  string client_action_id = 1;
+  string workspace_id = 2;
+  optional string name = 3;
+  optional string description = 4;
+  optional bool hidden = 5;
+}
+
+message UpdateWorkspaceResponse {
+  Workspace workspace = 1;
+}
+
+message DeleteWorkspaceRequest {
+  string client_action_id = 1;
+  string workspace_id = 2;
+}
+
+message DeleteWorkspaceResponse {
+  string workspace_id = 1;
+}
+
 service WorkspacesService {
   rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResponse);
   rpc CreateWorkspace(CreateWorkspaceRequest) returns (CreateWorkspaceResponse);
+  rpc UpdateWorkspace(UpdateWorkspaceRequest) returns (UpdateWorkspaceResponse);
+  rpc DeleteWorkspace(DeleteWorkspaceRequest) returns (DeleteWorkspaceResponse);
   rpc RenameWorkspace(RenameWorkspaceRequest) returns (RenameWorkspaceResponse);
 }

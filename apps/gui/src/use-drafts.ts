@@ -80,5 +80,22 @@ export function useDrafts(storage: StorageLike | undefined) {
     [getDraft, updateDraft],
   );
 
-  return { getDraft, updateDraft, completeDraft, removeAttachment, restoreQueueDraft };
+  const discardDrafts = useCallback(
+    (owners: readonly string[]) => {
+      for (const owner of owners) {
+        clearDraft(storage, owner);
+        cache.current.delete(owner);
+      }
+      setRevision((value) => value + 1);
+    },
+    [storage],
+  );
+  return {
+    getDraft,
+    updateDraft,
+    completeDraft,
+    removeAttachment,
+    restoreQueueDraft,
+    discardDrafts,
+  };
 }

@@ -130,6 +130,13 @@ export class ThreadDirectory {
     });
   }
 
+  forgetThreads(threadIds: readonly string[]): void {
+    const removed = new Set(threadIds);
+    this.patch({ threads: this.current.threads.filter((thread) => !removed.has(thread.threadId)) });
+    if (this.current.selectedThreadId && removed.has(this.current.selectedThreadId))
+      this.showMain();
+  }
+
   upsertThread(thread: Thread): void {
     if (!isListedThread(thread)) return;
     const byId = new Map(this.current.threads.map((item) => [item.threadId, item]));

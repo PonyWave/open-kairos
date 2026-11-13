@@ -1,10 +1,11 @@
 import type { Thread, Workspace } from '@kairos/contracts';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { KairosClients } from './client.js';
 import { formatClientError } from './errors.js';
 
 export interface WorkspaceGroup {
   workspace: Workspace | null;
+  deviceName?: string | undefined;
   mainThread: Thread | null;
   tasks: Thread[];
 }
@@ -50,13 +51,15 @@ export function useWorkspaceDirectory(clients: KairosClients, enabled: boolean) 
     void (async () => {
       try {
         void revision;
-        const [workspaces, threads] = await Promise.all([
+        const [workspaces, threads, environments] = await Promise.all([
           clients.workspaces.listWorkspaces({}),
           listAllThreads(clients),
+          clients.environments.listEnvironments({}),
         ]);
         if (cancelled) return;
         const groups: WorkspaceGroup[] = workspaces.workspaces.map((workspace) => ({
           workspace,
+          deviceName: environments.environments.find((e) => e.envId === workspace.envId)?.name,
           mainThread:
             threads.find(
               (thread) =>
@@ -87,5 +90,6 @@ export function useWorkspaceDirectory(clients: KairosClients, enabled: boolean) 
     };
   }, [clients, enabled, revision]);
 
-  return useMemo(() => ({ ...state, refresh: () => setRevision((value) => value + 1) }), [state]);
+  const refresh = useCallback(() => setRevision((value) => value + 1), []);
+  return useMemo(() => ({ ...state, refresh }), [state, refresh]);
 }

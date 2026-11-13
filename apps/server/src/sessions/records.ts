@@ -37,6 +37,8 @@ export interface ThreadRecord {
 }
 
 export interface WorkspaceRecord {
+  description: string;
+  hidden: boolean;
   workspaceId: string;
   tenantId: string;
   name: string;

@@ -46,7 +46,7 @@ pnpm exec playwright install chromium
 
 ## 数据与迁移
 
-SQLite 数据库为 `<KAIROS_DATA_DIR>/kairos.sqlite`，新库安装即最终结构（`context_recap` 与 `server_runtime` 为 v2，其余命名空间为 v1）。`node apps/server/dist/migrate.js --data-dir <dir> --backup-dir <dir>` 用于检查与迁移：v1 数据库带备份升级到 v2，未版本化应用表的数据库明确拒绝。
+SQLite 数据库为 `<KAIROS_DATA_DIR>/kairos.sqlite`，新库安装即最终结构（`context_recap` 为 v2，`server_runtime` 为 v3，其余命名空间为 v1）。`node apps/server/dist/migrate.js --data-dir <dir> --backup-dir <dir>` 用于检查与迁移：旧数据库带备份升级到当前版本，未版本化应用表的数据库明确拒绝。
 
 ## 验证
 

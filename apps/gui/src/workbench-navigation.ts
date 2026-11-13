@@ -5,6 +5,7 @@ export type WorkbenchPage =
   | 'directory'
   | 'thread'
   | 'draft'
+  | 'workspaces'
   | 'devices'
   | 'settings'
   | 'automations'
@@ -16,6 +17,7 @@ export type AutomationRoute =
 
 export function pageFromLocation(search: string): WorkbenchPage | null {
   const view = new URLSearchParams(search).get('view');
+  if (view === 'workspaces') return 'workspaces';
   return view === 'settings'
     ? 'settings'
     : view === 'devices'
@@ -48,11 +50,14 @@ export function workbenchLocation(
   section: 'account' | 'models' | 'channels' | 'display',
   automationScheduleId: string | null = null,
   automationThreadId: string | null = null,
+  draftWorkspaceId: string | null = null,
 ): string {
   if (page === 'settings') return `?view=settings&section=${section}`;
+  if (page === 'workspaces') return '?view=workspaces';
   if (page === 'devices') return '?view=devices';
   if (page === 'directory') return '?view=topics';
-  if (page === 'draft') return '?view=draft';
+  if (page === 'draft')
+    return `?view=draft${draftWorkspaceId ? `&workspace=${encodeURIComponent(draftWorkspaceId)}` : ''}`;
   if (page === 'automations')
     return `?view=automations${automationScheduleId ? `&schedule=${encodeURIComponent(automationScheduleId)}` : ''}`;
   if (page === 'automationThread' && automationScheduleId && automationThreadId)

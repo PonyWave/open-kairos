@@ -35,6 +35,20 @@ export function WorkspaceGroupSection({
         className={`workspace-group-header${mainCurrent ? ' current' : ''}`}
         title={group.workspace ? `${group.workspace.envId} · ${group.workspace.path}` : undefined}
       >
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={expanded ? `收起 ${name} 的对话` : `展开 ${name} 的对话`}
+          aria-expanded={expanded}
+          onClick={() =>
+            setExpanded((value) => {
+              if (value) setShowAll(false);
+              return !value;
+            })
+          }
+        >
+          <Icon name="chevron" className={`i-sm workspace-chevron${expanded ? ' expanded' : ''}`} />
+        </button>
         {main ? (
           <button
             type="button"
@@ -52,25 +66,6 @@ export function WorkspaceGroupSection({
           </span>
         )}
         <span className="workspace-group-actions">
-          {group.tasks.length > 0 && (
-            <button
-              type="button"
-              className="icon-button"
-              aria-label={expanded ? `收起 ${name} 的对话` : `展开 ${name} 的对话`}
-              aria-expanded={expanded}
-              onClick={() =>
-                setExpanded((value) => {
-                  if (value) setShowAll(false);
-                  return !value;
-                })
-              }
-            >
-              <Icon
-                name="chevron"
-                className={`i-sm workspace-chevron${expanded ? ' expanded' : ''}`}
-              />
-            </button>
-          )}
           <button
             type="button"
             className="icon-button"
@@ -180,7 +175,7 @@ export function TemporaryThreadsSection({
           <span className="workspace-name">临时对话</span>
         </span>
         <span className="workspace-group-actions">
-          {threads.length > 0 && (
+          {
             <button
               type="button"
               className="icon-button"
@@ -198,7 +193,7 @@ export function TemporaryThreadsSection({
                 className={`i-sm workspace-chevron${expanded ? ' expanded' : ''}`}
               />
             </button>
-          )}
+          }
           <button
             type="button"
             className="icon-button"

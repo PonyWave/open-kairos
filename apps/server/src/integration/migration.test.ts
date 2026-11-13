@@ -41,7 +41,7 @@ describe('baseline installation', () => {
       ]);
       const expectedVersions: Record<string, number> = {
         context_recap: 2,
-        server_runtime: 2,
+        server_runtime: 3,
         devices: 1,
         environment_operations: 1,
       };
@@ -208,4 +208,58 @@ describe('migration command on the installed baseline', () => {
       upgraded.close();
     }
   });
+});
+
+it('migrates workspace metadata from v2 with a backup and preserves existing conversations', async () => {
+  const dataDirectory = directory();
+  const path = join(dataDirectory, 'kairos.sqlite');
+  const legacy = new DatabaseSync(path, { enableForeignKeyConstraints: true });
+  migrateDatabase(legacy, contextRecapMigrations, 'context_recap');
+  migrateDatabase(legacy, sessionMigrations.slice(0, 2), 'server_runtime');
+  migrateDatabase(legacy, deviceMigrations, 'devices');
+  migrateDatabase(legacy, environmentOperationMigrations, 'environment_operations');
+  legacy
+    .prepare(
+      'INSERT INTO workspaces(workspace_id,tenant_id,name,env_id,path,created_at) VALUES (?,?,?,?,?,?)',
+    )
+    .run('old-space', 'owner', '旧空间', 'main', '/projects/old', '2026-11-01T00:00:00Z');
+  legacy
+    .prepare(
+      'INSERT INTO threads(thread_id,owner_id,title,thread_type,workspace_id,automation_only,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)',
+    )
+    .run(
+      'old-main',
+      'owner',
+      '旧空间',
+      'workspace_main',
+      'old-space',
+      0,
+      '2026-11-01T00:00:00Z',
+      '2026-11-01T00:00:00Z',
+    );
+  legacy.close();
+  const hash = fileHash(path);
+  expect(() => openDatabase(path)).toThrow(/migrat/i);
+  expect(fileHash(path)).toBe(hash);
+  const upgraded = await upgradeDatabaseFile({
+    dataDirectory,
+    backupDirectory: join(dataDirectory, 'backups'),
+  });
+  expect(upgraded.backupPath).toBeDefined();
+  const db = openDatabase(path);
+  try {
+    expect(
+      db.prepare('SELECT workspace_id,name,path,description,hidden FROM workspaces').get(),
+    ).toEqual({
+      workspace_id: 'old-space',
+      name: '旧空间',
+      path: '/projects/old',
+      description: '',
+      hidden: 0,
+    });
+    expect(db.prepare('SELECT thread_id FROM threads').get()).toEqual({ thread_id: 'old-main' });
+    expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  } finally {
+    db.close();
+  }
 });

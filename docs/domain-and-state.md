@@ -9,13 +9,15 @@
 | 命名空间                 | 版本 | 说明                                                     |
 | ------------------------ | ---- | -------------------------------------------------------- |
 | `context_recap`          | 2    | Context、Recap、附件、环境、身份与设置记录。             |
-| `server_runtime`         | 2    | Thread、输入队列、Run、Automation、通知交付、工作空间与 IM 渠道记录。 |
+| `server_runtime`         | 3    | Thread、输入队列、Run、Automation、通知交付、工作空间与 IM 渠道记录。 |
 | `devices`                | 1    | 设备身份与绑定。                                         |
 | `environment_operations` | 1    | 远程 Operation 意图、状态与输出，以及环境间文件同步记录。 |
 
 v2 迁移（`context_recap` 与 `server_runtime`）为 IM 渠道引入：`context_messages` 与 `inputs` 的 `source` 取值扩展 `channel` 并新增 `channel_json` 列（表重建），`server_runtime` 新增 `channel_states`、`channel_inbound_events`、`channel_deliveries` 表。迁移在关闭外键检查的事务中重建表，提交后执行 `foreign_key_check`。
 
-正常启动先预检全部命名空间，存在未迁移旧版本时在任何 DDL 或 DML 前拒绝启动；v1 数据库通过显式迁移命令（`migrate.js`，带受限权限备份）升级到 v2，未版本化应用表的数据库明确拒绝。
+正常启动先预检全部命名空间，存在未迁移旧版本时在任何 DDL 或 DML 前拒绝启动；v1 数据库通过显式迁移命令（`migrate.js`，带受限权限备份）升级到当前版本，未版本化应用表的数据库明确拒绝。
+
+v3 迁移为 `workspaces` 新增 `description TEXT NOT NULL DEFAULT ''` 和 `hidden INTEGER NOT NULL DEFAULT 0`，旧工作空间默认没有描述并显示在侧栏，原对话与文件保留。
 
 ## 2. 单用户身份
 
@@ -30,6 +32,8 @@ v2 迁移（`context_recap` 与 `server_runtime`）为 IM 渠道引入：`contex
 | `workspace_id` | `TEXT` | 稳定工作空间 ID，主键。         |
 | `tenant_id`    | `TEXT` | 归属租户。                      |
 | `name`         | `TEXT` | 显示名称。                      |
+| `description` | `TEXT` | 可选描述，上限 2000 字符。 |
+| `hidden` | `INTEGER` | 0 显示在侧栏，1 隐藏；全部工作空间均保留。 |
 | `env_id`       | `TEXT` | 默认设备，主环境或已配对设备。  |
 | `path`         | `TEXT` | 规范化工作目录。                |
 | `created_at`   | `TEXT` | 创建时间，UTC ISO 8601。        |
