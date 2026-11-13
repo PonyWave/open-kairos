@@ -135,11 +135,13 @@ export function ArchivedSettingsPanel({
                   <span className="settings-archived-actions">
                     <button
                       type="button"
-                      className="device-secondary"
+                      className="icon-button settings-archived-restore"
+                      aria-label={`恢复 ${thread.title || '未命名话题'}`}
+                      title="恢复话题"
                       disabled={busy}
                       onClick={() => void restore(thread)}
                     >
-                      恢复
+                      <Icon name="retry" className="i-sm" />
                     </button>
                     <button
                       type="button"

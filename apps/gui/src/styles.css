@@ -1473,7 +1473,7 @@ button.thread-replies-footer {
   overflow-wrap: anywhere;
 }
 .tool-group > summary {
-  min-height: 32px;
+  min-height: 28px;
   gap: 6px;
   flex-wrap: nowrap;
 }
@@ -2067,13 +2067,22 @@ button.icon-button.failure-details {
   padding: 0 24px;
 }
 .workspace-notice {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 95;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 24px;
-  color: var(--muted);
-  background: var(--wash);
-  font-size: 11px;
+  gap: 10px;
+  max-width: min(480px, calc(100vw - 32px));
+  padding: 10px 14px;
+  color: var(--ink);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-menu);
+  font-size: 13px;
 }
 .workspace-notice > span {
   flex: 1;
@@ -2085,6 +2094,7 @@ button.icon-button.failure-details {
 .workspace-notice .icon-button {
   width: 22px;
   height: 22px;
+  flex-shrink: 0;
 }
 .conversation-list-page {
   max-width: 900px;
@@ -3698,4 +3708,11 @@ button.dropdown-item {
 }
 .settings-archived-time {
   margin-right: 12px;
+}
+
+.settings-archived-restore {
+  color: var(--muted);
+}
+.settings-archived-restore:hover {
+  color: var(--green);
 }
