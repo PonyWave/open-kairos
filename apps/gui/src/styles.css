@@ -3682,3 +3682,20 @@ button.dropdown-item {
 .settings-archived-delete:hover {
   color: var(--danger);
 }
+
+.workspace-notice-action {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.workspace-notice-action:hover {
+  background: var(--blue-wash);
+}
+.settings-archived-time {
+  margin-right: 12px;
+}

@@ -213,7 +213,11 @@ export function AccountWorkbench({
   const mainRef = useRef<HTMLElement>(null);
   const navigationButton = useRef<HTMLButtonElement>(null);
 
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{
+    text: string;
+    actionLabel?: string;
+    onAction?: () => void;
+  } | null>(null);
   const [activeTopic, setActiveTopic] = useState<OpenTopicRequest | null>(null);
   const [activeSubagent, setActiveSubagent] = useState<SubagentCallView | null>(null);
   const [fullTopic, setFullTopic] = useState<{
@@ -243,10 +247,13 @@ export function AccountWorkbench({
   const historyIndex = useRef(0);
   const restoringHistory = useRef(false);
 
-  const showNotice = useCallback((message: string) => setNotice(message || null), []);
+  const showNotice = useCallback(
+    (message: string) => setNotice(message ? { text: message } : null),
+    [],
+  );
   useEffect(() => {
     if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(null), 5000);
+    const timer = window.setTimeout(() => setNotice(null), notice.onAction ? 8000 : 5000);
     return () => window.clearTimeout(timer);
   }, [notice]);
 
@@ -388,7 +395,21 @@ export function AccountWorkbench({
       if (selectedThreadId === threadId) workbench.showMain();
       workspaceDirectory.refresh();
       void topics.openDirectory();
-      showNotice('话题已归档，可在「设置 → 已归档」中恢复或删除。');
+      setNotice({
+        text: '对话已归档。',
+        actionLabel: '撤销',
+        onAction: () => void restoreArchivedThread(threadId),
+      });
+    } catch (cause) {
+      showNotice(formatClientError(cause));
+    }
+  }
+  async function restoreArchivedThread(threadId: string) {
+    try {
+      await clients.thread.restoreThread({ clientActionId: randomId(), threadId });
+      workspaceDirectory.refresh();
+      void topics.openDirectory();
+      showNotice('对话已恢复。');
     } catch (cause) {
       showNotice(formatClientError(cause));
     }
@@ -1139,7 +1160,20 @@ export function AccountWorkbench({
             )}
             {notice && (
               <div className="workspace-notice" role="status">
-                <span title={notice}>{notice}</span>
+                <span title={notice.text}>{notice.text}</span>
+                {notice.onAction && (
+                  <button
+                    type="button"
+                    className="workspace-notice-action"
+                    onClick={() => {
+                      const action = notice.onAction;
+                      setNotice(null);
+                      action?.();
+                    }}
+                  >
+                    {notice.actionLabel}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="icon-button"

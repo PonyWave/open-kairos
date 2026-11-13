@@ -85,7 +85,6 @@ export function ArchivedSettingsPanel({
     <div className="settings-form settings-archived">
       <div className="settings-section-heading">
         <h2>已归档话题</h2>
-        <p>归档的话题不在列表和工具查询中出现，历史数据保留；可以恢复，也可以彻底删除。</p>
       </div>
       {error && (
         <p className="settings-error" role="alert">
@@ -111,7 +110,7 @@ export function ArchivedSettingsPanel({
                   {thread.title || '未命名话题'}
                 </span>
                 <span className="settings-help settings-archived-time">
-                  {archivedAt ? `${formatAbsoluteDateTime(archivedAt)} 归档` : ''}
+                  {archivedAt ? formatAbsoluteDateTime(archivedAt) : ''}
                 </span>
                 {confirming ? (
                   <span className="settings-archived-actions">
