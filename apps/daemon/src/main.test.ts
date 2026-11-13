@@ -22,6 +22,7 @@ const sourceDirectory = dirname(fileURLToPath(import.meta.url));
 const repository = resolve(sourceDirectory, '../../..');
 const main = join(sourceDirectory, 'main.ts');
 const cleanup: Array<() => Promise<void> | void> = [];
+const spawnedMainTestTimeoutMilliseconds = 15_000;
 
 type FakeServiceState = 'running' | 'stopping' | 'loaded' | 'stopped';
 
@@ -320,7 +321,11 @@ afterEach(async () => {
   for (const clean of cleanup.splice(0).reverse()) await clean();
 });
 
-describe.skipIf(process.platform !== 'darwin')('Daemon environment resolution', () => {
+function describeSpawnedMainSuite(name: string, suite: () => void): void {
+  describe.skipIf(process.platform !== 'darwin')(name, suite, spawnedMainTestTimeoutMilliseconds);
+}
+
+describeSpawnedMainSuite('Daemon environment resolution', () => {
   function saveBindingIdentity(directory: string, envId: string, deviceName: string): void {
     const envDirectory = join(
       directory,
@@ -446,7 +451,7 @@ process.exit(1);
   });
 });
 
-describe.skipIf(process.platform !== 'darwin')('macOS Daemon service lifecycle', () => {
+describeSpawnedMainSuite('macOS Daemon service lifecycle', () => {
   it('waits for launchd and process exit before stop and immediate start', async () => {
     const test = fixture({ transitionPrints: 2, processChecks: 2 });
     const originalIdentity = readFileSync(test.identityPath);
@@ -527,7 +532,7 @@ describe.skipIf(process.platform !== 'darwin')('macOS Daemon service lifecycle',
       bootstrapCount: 1,
     });
     expect(readFileSync(test.identityPath)).toEqual(originalIdentity);
-  }, 15_000);
+  });
 
   it('waits for an active old status socket when launchd is already stopped', async () => {
     const test = fixture({
@@ -600,7 +605,7 @@ describe.skipIf(process.platform !== 'darwin')('macOS Daemon service lifecycle',
       bootstrapCount: 1,
     });
     expect(readFileSync(test.identityPath)).toEqual(originalIdentity);
-  }, 15_000);
+  });
 
   it('rejects a stale lock without service control and succeeds after manual cleanup', async () => {
     const test = fixture({ service: 'stopped', pid: undefined, oldProcess: false });
@@ -682,63 +687,56 @@ console.log(process.env.KAIROS_TEST_IDENTITY);
     expect(stopped.code).toBe(0);
     expect(readFileSync(join(lockPath, 'pid'), 'utf8')).toBe(replacementOwner);
     expect(existsSync(displaced)).toBe(true);
-  }, 15_000);
+  });
 
   it.each([
     { signal: 'SIGINT' as const, code: 130 },
     { signal: 'SIGTERM' as const, code: 143 },
-  ])(
-    'cleans a new lock on $signal before owner write completes',
-    async ({ signal, code }) => {
-      const test = fixture({ service: 'stopped', pid: undefined, oldProcess: false });
-      const lockPath = controlLockPath(test);
-      const ownerPath = join(lockPath, 'pid');
-      const starting = mainProcess(test, 'start');
-      cleanup.push(async () => {
-        if (starting.child.exitCode === null && starting.child.signalCode === null) {
-          starting.child.kill('SIGKILL');
-        }
-        await starting.result;
-        cleanControlLockArtifacts(test);
-      });
-      const deadline = Date.now() + 5000;
-      while (!existsSync(lockPath)) {
-        if (starting.child.exitCode !== null || starting.child.signalCode !== null) {
-          throw new Error(`start exited before lock creation: ${starting.output()}`);
-        }
-        if (Date.now() >= deadline)
-          throw new Error('Timed out waiting for lock directory creation.');
-        await new Promise((resolvePromise) => setImmediate(resolvePromise));
+  ])('cleans a new lock on $signal before owner write completes', async ({ signal, code }) => {
+    const test = fixture({ service: 'stopped', pid: undefined, oldProcess: false });
+    const lockPath = controlLockPath(test);
+    const ownerPath = join(lockPath, 'pid');
+    const starting = mainProcess(test, 'start');
+    cleanup.push(async () => {
+      if (starting.child.exitCode === null && starting.child.signalCode === null) {
+        starting.child.kill('SIGKILL');
       }
-      starting.child.kill('SIGSTOP');
-      expect(existsSync(ownerPath)).toBe(false);
-      starting.child.kill(signal);
-      starting.child.kill('SIGCONT');
+      await starting.result;
+      cleanControlLockArtifacts(test);
+    });
+    const deadline = Date.now() + 5000;
+    while (!existsSync(lockPath)) {
+      if (starting.child.exitCode !== null || starting.child.signalCode !== null) {
+        throw new Error(`start exited before lock creation: ${starting.output()}`);
+      }
+      if (Date.now() >= deadline) throw new Error('Timed out waiting for lock directory creation.');
+      await new Promise((resolvePromise) => setImmediate(resolvePromise));
+    }
+    starting.child.kill('SIGSTOP');
+    expect(existsSync(ownerPath)).toBe(false);
+    starting.child.kill(signal);
+    starting.child.kill('SIGCONT');
 
-      const signaled = await starting.result;
+    const signaled = await starting.result;
 
-      expect(signaled.code).toBe(code);
-      expect(existsSync(lockPath)).toBe(false);
-      expect(readState(test.statePath)).toMatchObject({ bootstrapAttempts: 0, bootoutCount: 0 });
-    },
-    15_000,
-  );
+    expect(signaled.code).toBe(code);
+    expect(existsSync(lockPath)).toBe(false);
+    expect(readState(test.statePath)).toMatchObject({ bootstrapAttempts: 0, bootoutCount: 0 });
+  });
 
   it.each([
     { signal: 'SIGINT' as const, code: 130 },
     { signal: 'SIGTERM' as const, code: 143 },
-  ])(
-    'cleans the control lock on $signal before exiting',
-    async ({ signal, code }) => {
-      const test = fixture({ service: 'stopped', pid: undefined, oldProcess: false });
-      const lockPath = controlLockPath(test);
-      const entered = join(test.directory, 'plutil-entered');
-      const gate = join(test.directory, 'plutil-gate');
-      test.environment.KAIROS_TEST_PLUTIL_ENTERED = entered;
-      test.environment.KAIROS_TEST_PLUTIL_GATE = gate;
-      writeFileSync(
-        join(test.directory, 'bin', 'plutil'),
-        `#!${process.execPath}
+  ])('cleans the control lock on $signal before exiting', async ({ signal, code }) => {
+    const test = fixture({ service: 'stopped', pid: undefined, oldProcess: false });
+    const lockPath = controlLockPath(test);
+    const entered = join(test.directory, 'plutil-entered');
+    const gate = join(test.directory, 'plutil-gate');
+    test.environment.KAIROS_TEST_PLUTIL_ENTERED = entered;
+    test.environment.KAIROS_TEST_PLUTIL_GATE = gate;
+    writeFileSync(
+      join(test.directory, 'bin', 'plutil'),
+      `#!${process.execPath}
 import { existsSync, writeFileSync } from 'node:fs';
 writeFileSync(process.env.KAIROS_TEST_PLUTIL_ENTERED, '');
 while (!existsSync(process.env.KAIROS_TEST_PLUTIL_GATE)) {
@@ -746,49 +744,45 @@ while (!existsSync(process.env.KAIROS_TEST_PLUTIL_GATE)) {
 }
 console.log(process.env.KAIROS_TEST_IDENTITY);
 `,
-        { mode: 0o700 },
-      );
-      const starting = mainProcess(test, 'start');
-      cleanup.push(async () => {
-        writeFileSync(gate, '');
-        if (starting.child.exitCode === null && starting.child.signalCode === null) {
-          starting.child.kill('SIGKILL');
-        }
-        await starting.result;
-        cleanControlLockArtifacts(test);
-      });
-      await waitFor(() => existsSync(entered));
-      starting.child.kill(signal);
-      const signaled = await starting.result;
+      { mode: 0o700 },
+    );
+    const starting = mainProcess(test, 'start');
+    cleanup.push(async () => {
       writeFileSync(gate, '');
+      if (starting.child.exitCode === null && starting.child.signalCode === null) {
+        starting.child.kill('SIGKILL');
+      }
+      await starting.result;
+      cleanControlLockArtifacts(test);
+    });
+    await waitFor(() => existsSync(entered));
+    starting.child.kill(signal);
+    const signaled = await starting.result;
+    writeFileSync(gate, '');
 
-      expect(signaled.code).toBe(code);
-      expect(existsSync(lockPath)).toBe(false);
-      expect(readState(test.statePath)).toMatchObject({ bootstrapAttempts: 0, bootoutCount: 0 });
-      const started = await runMain(test, 'start');
-      expect(started).toMatchObject({ code: 0 });
-      expect(started.output).toContain('started (pid 4102)');
-      expect(existsSync(lockPath)).toBe(false);
-    },
-    15_000,
-  );
+    expect(signaled.code).toBe(code);
+    expect(existsSync(lockPath)).toBe(false);
+    expect(readState(test.statePath)).toMatchObject({ bootstrapAttempts: 0, bootoutCount: 0 });
+    const started = await runMain(test, 'start');
+    expect(started).toMatchObject({ code: 0 });
+    expect(started.output).toContain('started (pid 4102)');
+    expect(existsSync(lockPath)).toBe(false);
+  });
 
   it.each([
     { signal: 'SIGINT' as const, code: 130 },
     { signal: 'SIGTERM' as const, code: 143 },
-  ])(
-    'waits for lock release on $signal during rmdir',
-    async ({ signal, code }) => {
-      const test = fixture({ service: 'stopped', pid: undefined, oldProcess: false });
-      const lockPath = controlLockPath(test);
-      const ownerPath = join(lockPath, 'pid');
-      const entered = join(test.directory, 'rmdir-entered');
-      const gate = join(test.directory, 'rmdir-gate');
-      const signalObserved = join(test.directory, 'rmdir-signal-observed');
-      const preload = join(test.directory, 'rmdir-gate.mjs');
-      writeFileSync(
-        preload,
-        `
+  ])('waits for lock release on $signal during rmdir', async ({ signal, code }) => {
+    const test = fixture({ service: 'stopped', pid: undefined, oldProcess: false });
+    const lockPath = controlLockPath(test);
+    const ownerPath = join(lockPath, 'pid');
+    const entered = join(test.directory, 'rmdir-entered');
+    const gate = join(test.directory, 'rmdir-gate');
+    const signalObserved = join(test.directory, 'rmdir-signal-observed');
+    const preload = join(test.directory, 'rmdir-gate.mjs');
+    writeFileSync(
+      preload,
+      `
 import filesystem from 'node:fs/promises';
 import { existsSync, writeFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
@@ -812,35 +806,33 @@ process.on(${JSON.stringify(signal)}, () => {
   if (existsSync(entered)) writeFileSync(${JSON.stringify(signalObserved)}, '');
 });
 `,
-        { mode: 0o600 },
-      );
-      const stopping = mainProcess(test, 'stop', [preload]);
-      cleanup.push(async () => {
-        writeFileSync(gate, '');
-        if (stopping.child.exitCode === null && stopping.child.signalCode === null) {
-          stopping.child.kill('SIGKILL');
-        }
-        await stopping.result;
-        cleanControlLockArtifacts(test);
-      });
-      await waitFor(() => existsSync(entered));
-      expect(existsSync(lockPath)).toBe(true);
-      expect(existsSync(ownerPath)).toBe(false);
-      stopping.child.kill(signal);
-      await waitFor(() => existsSync(signalObserved));
-      expect(stopping.child.exitCode).toBeNull();
-      expect(existsSync(lockPath)).toBe(true);
+      { mode: 0o600 },
+    );
+    const stopping = mainProcess(test, 'stop', [preload]);
+    cleanup.push(async () => {
       writeFileSync(gate, '');
+      if (stopping.child.exitCode === null && stopping.child.signalCode === null) {
+        stopping.child.kill('SIGKILL');
+      }
+      await stopping.result;
+      cleanControlLockArtifacts(test);
+    });
+    await waitFor(() => existsSync(entered));
+    expect(existsSync(lockPath)).toBe(true);
+    expect(existsSync(ownerPath)).toBe(false);
+    stopping.child.kill(signal);
+    await waitFor(() => existsSync(signalObserved));
+    expect(stopping.child.exitCode).toBeNull();
+    expect(existsSync(lockPath)).toBe(true);
+    writeFileSync(gate, '');
 
-      const signaled = await stopping.result;
+    const signaled = await stopping.result;
 
-      expect(signaled.code).toBe(code);
-      expect(stopping.output()).toContain('already stopped');
-      expect(existsSync(lockPath)).toBe(false);
-      expect(readState(test.statePath)).toMatchObject({ bootstrapAttempts: 0, bootoutCount: 0 });
-    },
-    15_000,
-  );
+    expect(signaled.code).toBe(code);
+    expect(stopping.output()).toContain('already stopped');
+    expect(existsSync(lockPath)).toBe(false);
+    expect(readState(test.statePath)).toMatchObject({ bootstrapAttempts: 0, bootoutCount: 0 });
+  });
 
   it('does not remove a lock whose PID is alive', async () => {
     const test = fixture({ service: 'stopped', pid: undefined, oldProcess: false });
@@ -857,7 +849,7 @@ process.on(${JSON.stringify(signal)}, () => {
     expect(started.output).toContain(lockPath);
     expect(readFileSync(join(lockPath, 'pid'), 'utf8')).toBe(owner);
     expect(readState(test.statePath).bootstrapAttempts).toBe(0);
-  }, 15_000);
+  });
 
   it('keeps start idempotent for a stable healthy instance', async () => {
     const test = fixture();
@@ -901,7 +893,7 @@ process.on(${JSON.stringify(signal)}, () => {
     expect(stopped.output).not.toContain('stopped; identity was retained');
     expect(readState(test.statePath).service).toBe('stopping');
     expect(readFileSync(test.identityPath)).toEqual(originalIdentity);
-  }, 15_000);
+  });
 
   it('fails instead of reporting stop when the old process outlives launchd', async () => {
     const test = fixture({ transitionPrints: 0, processChecks: -1 });
@@ -914,5 +906,5 @@ process.on(${JSON.stringify(signal)}, () => {
     expect(stopped.output).not.toContain('stopped; identity was retained');
     expect(readState(test.statePath)).toMatchObject({ service: 'stopped', oldProcess: true });
     expect(readFileSync(test.identityPath)).toEqual(originalIdentity);
-  }, 15_000);
+  });
 });
