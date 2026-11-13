@@ -252,7 +252,15 @@ function installApplication(staging, temporary) {
     recursive: true,
     dereference: true,
   });
-  for (const dependency of ['ws', '@bufbuild/protobuf', 'zod']) {
+  const contractsManifest = JSON.parse(
+    readFileSync(join(repository, 'packages', 'contracts', 'package.json'), 'utf8'),
+  );
+  const runtimeDependencies = new Set([
+    ...Object.keys(deployedPackage.dependencies ?? {}),
+    ...Object.keys(contractsManifest.dependencies ?? {}),
+  ]);
+  for (const dependency of runtimeDependencies) {
+    if (dependency.startsWith('@kairos/')) continue;
     copyProductionDependency(deployed, staging, dependency);
   }
   for (const deploymentMetadata of ['.pnpm', '.modules.yaml', '.package-map.json']) {
