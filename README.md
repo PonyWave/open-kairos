@@ -123,6 +123,8 @@ pnpm start
 
 网页「连接设备」页生成一次性配对命令，在目标设备（Linux/macOS）上执行后，设备通过 WSS 主动接入。安装结束会打印 GUI 访问地址（与 Server 同源，使用 `kairos start` 打印的带令牌地址登录）和本机管理命令。配对安装包默认从 `dist/releases` 提供，用以下命令构建：
 
+GUI 经反向代理暴露而设备与 Server 内网直连时，用 `KAIROS_DEVICE_ORIGIN` 指定配对命令中的设备直连地址（install.sh 下载与 WSS 接入），未设置时与 `KAIROS_PUBLIC_ORIGIN` 一致。
+
 ```bash
 node scripts/build-daemon-release.mjs --version <版本> [--platform linux|darwin] [--arch x64|arm64]
 ```
@@ -155,6 +157,7 @@ kairos-daemon start    # 重新启动
 | `KAIROS_AUTH_ENABLED`                                                | 本地会话令牌认证开关            | `true`，`false` 时网页直接进入 |
 | `KAIROS_MODEL_BASE_URL` / `KAIROS_MODEL_ID` / `KAIROS_MODEL_API_KEY` | 平台默认模型接口                | 未配置时不能执行 Agent 任务    |
 | `KAIROS_PUBLIC_ORIGIN`                                               | 通过反向代理暴露时的公开 Origin | 接受回环与同源来源             |
+| `KAIROS_DEVICE_ORIGIN`                                               | 配对命令中设备直连的 Origin     | `KAIROS_PUBLIC_ORIGIN`         |
 
 ## 数据与迁移
 

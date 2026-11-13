@@ -69,6 +69,7 @@ const environmentSchema = z.object({
   KAIROS_MAIN_ENV_ID: z.string().optional(),
   KAIROS_MAIN_WORKSPACE: z.string().optional(),
   KAIROS_PUBLIC_ORIGIN: z.string().optional(),
+  KAIROS_DEVICE_ORIGIN: z.string().optional(),
   KAIROS_DAEMON_RELEASE_DIR: z
     .string()
     .refine(isAbsolute, 'KAIROS_DAEMON_RELEASE_DIR must be an absolute path.')
@@ -498,7 +499,7 @@ function isLoopbackHost(host: string): boolean {
   return host === '127.0.0.1' || host === '::1' || host.toLowerCase() === 'localhost';
 }
 
-function readPublicOrigin(configured: string): string {
+function readPublicOrigin(configured: string, variable = 'KAIROS_PUBLIC_ORIGIN'): string {
   const url = new URL(configured);
   if (
     url.username ||
@@ -508,9 +509,7 @@ function readPublicOrigin(configured: string): string {
     url.hash ||
     (url.protocol !== 'http:' && url.protocol !== 'https:')
   ) {
-    throw new Error(
-      'KAIROS_PUBLIC_ORIGIN must be an HTTP(S) origin without a path or credentials.',
-    );
+    throw new Error(`${variable} must be an HTTP(S) origin without a path or credentials.`);
   }
   return url.origin;
 }
@@ -556,6 +555,9 @@ export function readServerConfig(environment: NodeJS.ProcessEnv = process.env) {
     daemonReleaseDirectory:
       config.KAIROS_DAEMON_RELEASE_DIR ??
       fileURLToPath(new URL('../../../dist/releases', import.meta.url)),
+    deviceOrigin: config.KAIROS_DEVICE_ORIGIN
+      ? readPublicOrigin(config.KAIROS_DEVICE_ORIGIN, 'KAIROS_DEVICE_ORIGIN')
+      : null,
     auth: {
       enabled: config.KAIROS_AUTH_ENABLED === 'true',
       secret: config.KAIROS_AUTH_SECRET,

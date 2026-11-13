@@ -240,6 +240,7 @@ export function createServer(
   const deviceInstaller = new DeviceInstaller(
     options.deviceReleaseDirectory ?? serverConfig.daemonReleaseDirectory,
     () =>
+      serverConfig.deviceOrigin ??
       identity.allowedOrigin ??
       `http://127.0.0.1:${(server.server.address() as { port: number } | null)?.port ?? serverConfig.port}`,
   );

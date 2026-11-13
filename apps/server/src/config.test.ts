@@ -432,3 +432,21 @@ describe('memory configuration', () => {
     expect(() => readServerConfig({ KAIROS_MEMORY_DREAM_ENABLED: 'yes' })).toThrowError();
   });
 });
+
+describe('device origin configuration', () => {
+  it('defaults to null and accepts an HTTP(S) origin without a path', () => {
+    expect(readServerConfig({}).deviceOrigin).toBeNull();
+    expect(readServerConfig({ KAIROS_DEVICE_ORIGIN: 'http://192.0.2.10:4317/' }).deviceOrigin).toBe(
+      'http://192.0.2.10:4317',
+    );
+  });
+
+  it('rejects a device origin with a path or credentials', () => {
+    expect(() =>
+      readServerConfig({ KAIROS_DEVICE_ORIGIN: 'http://192.0.2.10:4317/devices' }),
+    ).toThrowError(/KAIROS_DEVICE_ORIGIN/);
+    expect(() =>
+      readServerConfig({ KAIROS_DEVICE_ORIGIN: 'http://user@192.0.2.10:4317' }),
+    ).toThrowError(/KAIROS_DEVICE_ORIGIN/);
+  });
+});
