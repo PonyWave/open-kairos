@@ -19,7 +19,7 @@ open-kairos 是 Kairos 的单用户开源版本，一个本地优先的 AI Agent
 - **工作空间**：名称、一台设备和一个工作目录组成的持久记录，规定所属 Thread 的默认执行设备与路径；工作空间只提供默认值，不构成权限边界。
 - **三级对话**：全局 main、工作空间 main、任务 Thread；话题按工作空间在界面聚类，每个工作空间固定展示其 main 对话；不属于任何工作空间的任务进入临时对话列表。
 - **多设备**：其他 Linux/macOS 设备通过 Daemon 主动建立的 WSS 连接配对接入，与主环境使用同一套执行协议。
-- **Agent 工具**：bash（大输出保存于 Server，可用 `read_output` 检索）、文件读写与编辑、`web_fetch`、`web_search`（SearXNG 或 Brave）、受限 browser（Playwright Chromium）、Subagent 委派与结果交付。
+- **Agent 工具**：bash（可后台执行，大输出落盘主机日志文件，用 `read`/`grep` 继续读取）、`glob`/`grep` 文件搜索（Daemon 内置 ripgrep）、文件读写与编辑、`web_fetch`、`web_search`（SearXNG 或 Brave）、MCP 工具桥接（含 OAuth 授权）、Subagent 委派与结果交付。
 - **上下文管理**：Context 完整保存逐条原始消息，Recap 按区间概述历史；输入超过模型上下文容量 80% 时自动硬切，也可用 `/compact` 手动硬切；`recall` 提供三张只读 SQL 查询表。
 - **定时任务**：Automation 按 cron 触发，可指定工作空间，目标 Thread 自动创建。
 - **单用户**：首次启动自动初始化唯一用户与租户，本地会话令牌认证，无需邮箱验证与 SMTP。

@@ -34,13 +34,15 @@
 - `KAIROS_MEMORY_DREAM_ENABLED`：是否播种每日 dream Automation，`true`（默认）或 `false`。
 - 模型配置：`KAIROS_MODEL_BASE_URL`、`KAIROS_MODEL_ID` 等，未配置时不能执行 Agent 任务。
 
-受限 browser 工具使用 Playwright 驱动的 Chromium，首次使用前安装浏览器二进制：
+GUI 浏览器检查脚本（`check-automation-browser.mjs`、`check-settings-browser.mjs`）使用 Playwright 驱动的 Chromium，首次使用前安装浏览器二进制：
 
 ```bash
-pnpm --filter @kairos/server exec playwright install chromium
+pnpm exec playwright install chromium
 ```
 
-`PLAYWRIGHT_BROWSERS_PATH` 与 `KAIROS_BROWSER_EXECUTABLE_PATH` 可覆盖浏览器二进制的解析位置，见 `.env.example`。
+`PLAYWRIGHT_BROWSERS_PATH` 可覆盖浏览器二进制的解析位置，见 `.env.example`。
+
+`KAIROS_MCP_CONFIG` 指定 MCP server 配置 JSON 路径（`servers` 数组，字段见 `.env.example` 注释与[整体架构](architecture.md#21-mcp-工具桥接)）；未设置时不注册 MCP 工具。
 
 ## 数据与迁移
 

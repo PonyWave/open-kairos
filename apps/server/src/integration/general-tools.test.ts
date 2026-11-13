@@ -14,7 +14,7 @@ import { startRealEnvironmentServer } from './environment-fixture.js';
 
 const ownerId = 'general-tools-owner';
 const accessToken = 'general-tools-access-token';
-const generalTools = ['web_fetch', 'web_search', 'read_image', 'browser'];
+const generalTools = ['web_fetch', 'web_search', 'read_image', 'glob', 'grep'];
 
 type Fixture = Awaited<ReturnType<typeof startRealEnvironmentServer>>;
 type ContextMessages = Awaited<
@@ -189,9 +189,9 @@ function registerActor(provider: ControlledProvider, actor: string, envId?: stri
   );
   provider.respond(
     `tool:${actor}-image`,
-    response('', [{ id: `${actor}-browser`, name: 'browser', arguments: { action: 'close' } }]),
+    response('', [{ id: `${actor}-glob`, name: 'glob', arguments: { pattern: '*.png' } }]),
   );
-  provider.respond(`tool:${actor}-browser`, response(`${actor} general tools complete`));
+  provider.respond(`tool:${actor}-glob`, response(`${actor} general tools complete`));
 }
 
 async function readContext(fixture: Fixture, threadId: string, agentId: string) {
@@ -243,11 +243,10 @@ async function verifyActor(
     .parse(toolContent(messages, `${actor}-image`).outcome);
   expect(image).toMatchObject({ media_type: 'image/png', width: 1, height: 1 });
   const attachmentId = z.string().parse(image.attachment_id);
-  expect(toolContent(messages, `${actor}-browser`)).toMatchObject({
-    status: 'ok',
-    action: 'close',
-    closed: true,
-  });
+  const globResult = z
+    .object({ files: z.array(z.string()).min(1), truncated: z.boolean() })
+    .parse(toolContent(messages, `${actor}-glob`));
+  expect(globResult.truncated).toBe(false);
 
   const rows = z
     .array(
@@ -269,7 +268,7 @@ async function verifyActor(
     );
   expect(rows).toEqual(
     expect.arrayContaining(
-      ['fetch', 'search', 'image', 'browser'].map((suffix) => ({
+      ['fetch', 'search', 'image', 'glob'].map((suffix) => ({
         call_id: `${actor}-${suffix}`,
         result_seq: expect.any(Number),
         tool_status: 'success',
@@ -419,7 +418,7 @@ it('main Thread reaches all four general tools and restores their records', asyn
       text: expect.stringContaining('M148_FETCH_FIXTURE'),
     });
     expect(toolContent(recovered, 'main-image').outcome).toHaveProperty('attachment_id');
-    expect(toolContent(recovered, 'main-browser')).toMatchObject({ closed: true });
+    expect(toolContent(recovered, 'main-glob')).toMatchObject({ truncated: false });
   } finally {
     if (fixture.database.isOpen) await fixture.close();
     await web.close();
@@ -427,7 +426,7 @@ it('main Thread reaches all four general tools and restores their records', asyn
   }
 }, 45_000);
 
-it('persistent task Thread reaches the same four tools through Connect and the real Daemon', async () => {
+it('persistent task Thread reaches the same tool set through Connect and the real Daemon', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'kairos-general-task-'));
   const web = await startWebFixture();
   const provider = new ControlledProvider();

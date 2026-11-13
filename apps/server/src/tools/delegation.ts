@@ -255,53 +255,6 @@ export function createThreadDelegationTools(
   ];
 }
 
-export function createSubagentDelegationTools(
-  options: DelegationToolOptions,
-): [
-  AgentTool<z.infer<typeof interactionReadInputSchema>>,
-  AgentTool<z.infer<typeof interactionCancelInputSchema>>,
-] {
-  return [
-    {
-      name: 'subagent_status',
-      description:
-        'Read one background Subagent interaction by tool_call_id. Automatic delivery makes routine reads and polling unnecessary; use this only for an explicit status check, cancellation follow-up, recovery or reporting verification.',
-      parameters: readParameters,
-      concurrent: true,
-      validate: (value) => interactionReadInputSchema.parse(value),
-      execute: async (input, { signal }) => {
-        assertPersistentSource(options);
-        const interaction = managedInteraction(options, input.tool_call_id, 'subagent');
-        if (input.wait_ms !== undefined && !isTerminal(interaction.status)) {
-          await options.waitForInteraction(interaction, input.wait_ms, signal);
-        }
-        const current = managedInteraction(options, input.tool_call_id, 'subagent');
-        return jsonResult(interactionResult(options, current, input.wait_ms !== undefined));
-      },
-    },
-    {
-      name: 'subagent_cancel',
-      description:
-        'Request cancellation of one background Subagent interaction by tool_call_id. Cancellation is requested, not confirmed; the terminal state arrives with automatic delivery.',
-      parameters: cancelParameters,
-      concurrent: true,
-      validate: (value) => interactionCancelInputSchema.parse(value),
-      execute: async (input) => {
-        assertPersistentSource(options);
-        const interaction = managedInteraction(options, input.tool_call_id, 'subagent');
-        const cancelled = await options.cancelInteraction(
-          interaction,
-          'Cancellation requested by subagent_cancel.',
-        );
-        return jsonResult({
-          tool_call_id: cancelled.sourceToolCallId,
-          status: cancelled.status,
-        });
-      },
-    },
-  ];
-}
-
 export const BACKGROUND_ACCEPTED_NEXT_STEP =
   'Accepted is not completion. Continue other work, or finish this turn after stating that the task is still running. The terminal result is persisted and injected automatically, with a root Run scheduled if needed; no status read or wait_ms is needed to receive it.';
 const BACKGROUND_TIMEOUT_NEXT_STEP =
@@ -389,6 +342,36 @@ function assertPersistentSource(options: DelegationToolOptions): void {
       'Delegation controls require a persistent Thread root Agent.',
     );
   }
+}
+
+export function createSubagentTaskOps(options: DelegationToolOptions): {
+  read(
+    toolCallId: string,
+    waitMs: number | undefined,
+    signal: AbortSignal,
+  ): Promise<Record<string, unknown>>;
+  cancel(toolCallId: string): Promise<Record<string, unknown>>;
+} {
+  return {
+    read: async (toolCallId, waitMs, signal) => {
+      assertPersistentSource(options);
+      const interaction = managedInteraction(options, toolCallId, 'subagent');
+      if (waitMs !== undefined && !isTerminal(interaction.status)) {
+        await options.waitForInteraction(interaction, waitMs, signal);
+      }
+      const current = managedInteraction(options, toolCallId, 'subagent');
+      return interactionResult(options, current, waitMs !== undefined);
+    },
+    cancel: async (toolCallId) => {
+      assertPersistentSource(options);
+      const interaction = managedInteraction(options, toolCallId, 'subagent');
+      const cancelled = await options.cancelInteraction(
+        interaction,
+        'Cancellation requested by task_stop.',
+      );
+      return { tool_call_id: cancelled.sourceToolCallId, status: cancelled.status };
+    },
+  };
 }
 
 function isTerminal(status: RunStatus): boolean {

@@ -24,6 +24,7 @@ import {
   writeRemoteFile,
 } from './files.js';
 import { listRemoteDirectories } from './list-directories.js';
+import { runRemoteGlob, runRemoteGrep } from './search.js';
 import { readSyncChunk, scanSyncPath } from './sync.js';
 
 export type EnvironmentOperationResult = Extract<
@@ -182,6 +183,28 @@ function emptyOutcome(action: Action, reason?: string): Outcome {
       };
     case 'bash':
       return { case: 'bash', value: { outputComplete: false } };
+    case 'glob':
+      return {
+        case: 'glob',
+        value: {
+          path: action.value.path,
+          files: [],
+          truncated: false,
+          ...(reason === undefined ? {} : { reason }),
+        },
+      };
+    case 'grep':
+      return {
+        case: 'grep',
+        value: {
+          path: action.value.path,
+          matches: [],
+          files: [],
+          counts: [],
+          truncated: false,
+          ...(reason === undefined ? {} : { reason }),
+        },
+      };
     case 'syncScan':
       return {
         case: 'syncScan',
@@ -230,6 +253,9 @@ function requiredCapability(kind: ActionCase): DeviceCapability {
       return DeviceCapability.DIRECTORY_CHECK;
     case 'directoryList':
       return DeviceCapability.DIRECTORY_LIST;
+    case 'glob':
+    case 'grep':
+      return DeviceCapability.FILE_SEARCH;
   }
 }
 
@@ -633,6 +659,18 @@ export class EnvironmentOperationManager {
           outcome = {
             case: 'directoryList',
             value: await listRemoteDirectories(action.value, operation.abortController.signal),
+          };
+          break;
+        case 'glob':
+          outcome = {
+            case: 'glob',
+            value: await runRemoteGlob(action.value, operation.abortController.signal),
+          };
+          break;
+        case 'grep':
+          outcome = {
+            case: 'grep',
+            value: await runRemoteGrep(action.value, operation.abortController.signal),
           };
           break;
         case 'directoryCheck': {

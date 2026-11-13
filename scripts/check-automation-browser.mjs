@@ -9,9 +9,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const guiRequire = createRequire(join(root, 'apps/gui/package.json'));
-const serverRequire = createRequire(join(root, 'apps/server/package.json'));
+const rootRequire = createRequire(join(root, 'package.json'));
 const { createServer } = await import(pathToFileURL(guiRequire.resolve('vite')).href);
-const { chromium } = serverRequire('playwright');
+const { chromium } = rootRequire('playwright');
 const { CreateAutomationRequestSchema, UpdateAutomationRequestSchema, AutomationScheduleKind } =
   await import(pathToFileURL(guiRequire.resolve('@kairos/contracts')).href);
 const { fromBinary } = await import(

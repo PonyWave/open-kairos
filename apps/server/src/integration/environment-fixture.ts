@@ -20,7 +20,7 @@ import {
   RunService,
   ThreadService,
 } from '@kairos/contracts';
-import { DeviceCapability, OperationStatus } from '@kairos/contracts/device';
+import { DeviceCapability, GrepMode, OperationStatus } from '@kairos/contracts/device';
 import { z } from 'zod';
 import { DeviceChannel } from '../devices/channel.js';
 import { EnvironmentOperationStore } from '../devices/environment-operation-store.js';
@@ -250,6 +250,18 @@ export class ControlledEnvironmentOperations implements EnvironmentOperationGate
     return operation;
   }
 
+  readEnvironmentOperationSpill(
+    _operationId: string,
+  ): { data: Uint8Array; truncated: boolean } | undefined {
+    return { data: new TextEncoder().encode(this.bashOutput), truncated: false };
+  }
+
+  bashOutputLog(
+    _operationId: string,
+  ): { path: string; sizeBytes: bigint; truncated: boolean } | undefined {
+    return undefined;
+  }
+
   readEnvironmentOperationOutput(input: {
     tenantId: string;
     operationId: string;
@@ -361,6 +373,37 @@ export class ControlledEnvironmentOperations implements EnvironmentOperationGate
           replacements: 1,
           bytesWritten: BigInt(Buffer.byteLength(action.value.newText)),
           fileVersion: 'c'.repeat(64),
+        },
+      };
+    }
+    if (action.case === 'glob') {
+      return {
+        case: 'glob',
+        value: {
+          path: action.value.path,
+          files: [`${action.value.path}/src/alpha.ts`, `${action.value.path}/src/beta.ts`],
+          truncated: false,
+        },
+      };
+    }
+    if (action.case === 'grep') {
+      return {
+        case: 'grep',
+        value: {
+          path: action.value.path,
+          matches:
+            action.value.mode === GrepMode.CONTENT
+              ? [{ file: `${action.value.path}/src/alpha.ts`, line: 1, text: 'const needle = 1;' }]
+              : [],
+          files:
+            action.value.mode === GrepMode.FILES_WITH_MATCHES
+              ? [`${action.value.path}/src/alpha.ts`]
+              : [],
+          counts:
+            action.value.mode === GrepMode.COUNT
+              ? [{ file: `${action.value.path}/src/alpha.ts`, count: 2n }]
+              : [],
+          truncated: false,
         },
       };
     }
@@ -596,7 +639,9 @@ export async function startRealEnvironmentServer(
     );
   new SessionStore(database, { mainEnvironment });
   const environments = new EnvironmentStore(database, { mainEnvironment });
-  const operations = new EnvironmentOperationStore(database);
+  const operations = new EnvironmentOperationStore(database, undefined, {
+    bashLogDirectory: join(mainEnvironment.workspace, '.kairos', 'logs'),
+  });
   const channel = new DeviceChannel({
     environments,
     environmentOperations: operations,
@@ -624,6 +669,10 @@ export async function startRealEnvironmentServer(
       mainEnvironmentOperationIds.has(input.operationId)
         ? mainEnvironmentOperations.readEnvironmentOperationOutput(input)
         : channel.readEnvironmentOperationOutput(input),
+    bashOutputLog: (operationId) =>
+      mainEnvironmentOperationIds.has(operationId)
+        ? mainEnvironmentOperations.bashOutputLog(operationId)
+        : channel.bashOutputLog(operationId),
   };
   const server = createServer(database, false, {
     ...options,

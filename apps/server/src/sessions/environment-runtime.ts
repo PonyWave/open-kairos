@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
 import { AgentLoopError, type ToolExecutionResult } from '@kairos/agent-core';
-import { OperationStatus } from '@kairos/contracts/device';
+import { GrepMode, OperationStatus } from '@kairos/contracts/device';
 import { z } from 'zod';
 import type { AttachmentMetadata } from '../attachments/types.js';
 import type { EnvironmentOperationAction } from '../devices/environment-operation-store.js';
@@ -34,6 +34,7 @@ export interface EnvironmentOperationRecord {
   resultStatus?: OperationStatus;
   outcome?: unknown;
   outputComplete?: boolean;
+  endOffset?: bigint;
   postProcessedAt?: string;
   resultSource?: 'device' | 'recovery';
   expiresAt: string;
@@ -54,6 +55,9 @@ export interface EnvironmentOperationGateway {
     reason: string;
   }): Promise<EnvironmentOperationRecord>;
   getEnvironmentOperation(tenantId: string, operationId: string): EnvironmentOperationRecord;
+  bashOutputLog(
+    operationId: string,
+  ): { path: string; sizeBytes: bigint; truncated: boolean } | undefined;
   readEnvironmentOperationOutput(input: {
     tenantId: string;
     operationId: string;
@@ -116,6 +120,22 @@ const bashOutcomeSchema = z.object({
   exitCode: z.number().int().optional(),
   outputComplete: z.boolean(),
   endOffset: z.bigint().nonnegative().optional(),
+});
+const globOutcomeSchema = z.object({
+  path: z.string(),
+  files: z.array(z.string()),
+  truncated: z.boolean(),
+  reason: z.string().optional(),
+});
+const grepOutcomeSchema = z.object({
+  path: z.string(),
+  matches: z.array(
+    z.object({ file: z.string(), line: z.number().int().nonnegative(), text: z.string() }),
+  ),
+  files: z.array(z.string()),
+  counts: z.array(z.object({ file: z.string(), count: z.bigint().nonnegative() })),
+  truncated: z.boolean(),
+  reason: z.string().optional(),
 });
 
 export interface EnvironmentRuntimeOptions {
@@ -1122,6 +1142,141 @@ export class AgentEnvironmentRuntime {
     return this.store.agentEnvironments.mainEnvironmentIdFor(ownerId);
   }
 
+  async startBackgroundBash(
+    run: RunRecord,
+    input: { command: string; cwd?: string; timeoutSeconds: number },
+    envTarget: { envId?: string },
+    toolCallId: string,
+    signal: AbortSignal,
+  ): Promise<{ operationId: string; expiresAt: string }> {
+    const specification = this.store.agentEnvironments.requireExecution(run);
+    const envId = envTarget.envId
+      ? this.#resolveEnvId(run.ownerId, envTarget.envId)
+      : specification.defaultEnv;
+    if (envId.trim().length === 0 || !specification.allowedEnv.includes(envId)) {
+      throw new SessionError(
+        'permission_denied',
+        'The target environment is not allowed for this execution.',
+      );
+    }
+    const environment = this.environments.get(run.ownerId, envId);
+    if (environment.bindingStatus === 'revoked')
+      throw new SessionError('permission_denied', 'The target environment is revoked.');
+    signal.throwIfAborted();
+    this.#requireUsable(run.ownerId, envId);
+    const current = this.environments.get(run.ownerId, envId);
+    const cwd =
+      input.cwd ??
+      (envId === specification.defaultEnv
+        ? specification.defaultPwd
+        : (current.normalizedPwd ?? current.recommendedPwd));
+    requirePosixPath(cwd);
+    const operationId = this.#createId();
+    const resolvedAction: EnvironmentOperationAction = {
+      case: 'bash',
+      value: { command: input.command, cwd, timeoutSeconds: input.timeoutSeconds },
+    };
+    const policy = this.store.agentEnvironments.requirePolicy(run.threadId, run.agentId);
+    const expiresAt = new Date(
+      this.#now().getTime() + (input.timeoutSeconds + 30) * 1000,
+    ).toISOString();
+    this.store.transaction(() => {
+      this.store.agentEnvironments.recordOperationIntent({
+        operationId,
+        runId: run.runId,
+        toolCallId,
+        policy: { ...policy, currentHistoryId: specification.historyId },
+        envId,
+        action: 'bash',
+        generation: run.generation,
+        resolvedAction,
+      });
+    });
+    await this.operations.startEnvironmentOperation({
+      operationId,
+      tenantId: run.ownerId,
+      envId,
+      bindingVersion: BigInt(policy.bindingVersion),
+      action: resolvedAction,
+      expiresAt: new Date(expiresAt),
+    });
+    return { operationId, expiresAt };
+  }
+
+  async awaitBackgroundBash(
+    run: RunRecord,
+    operationId: string,
+    expiresAt: string,
+  ): Promise<{
+    operation: EnvironmentOperationRecord;
+    content: string;
+    taskStatus: 'completed' | 'failed' | 'killed' | 'unknown';
+  }> {
+    const existing = this.operations.getEnvironmentOperation(run.ownerId, operationId);
+    const policy = this.store.agentEnvironments.requirePolicy(run.threadId, run.agentId);
+    const operation = await this.#startAndWait({
+      operationId,
+      tenantId: run.ownerId,
+      envId: existing.envId,
+      bindingVersion: BigInt(policy.bindingVersion),
+      action: existing.action,
+      existingOperation: existing,
+      signal: new AbortController().signal,
+      expiresAt: new Date(expiresAt),
+    });
+    const content = await this.#operationContent(run, policy.bindingVersion, operation);
+    const status = terminal(operation);
+    return {
+      operation,
+      content,
+      taskStatus:
+        status === OperationStatus.COMPLETED
+          ? 'completed'
+          : status === OperationStatus.CANCELLED
+            ? 'killed'
+            : status === OperationStatus.FAILED
+              ? 'failed'
+              : 'unknown',
+    };
+  }
+
+  backgroundBashSnapshot(
+    run: RunRecord,
+    operationId: string,
+    limit: number,
+  ): { content: string; terminal: boolean; status: string } {
+    const operation = this.operations.getEnvironmentOperation(run.ownerId, operationId);
+    const output = this.operations.readEnvironmentOperationOutput({
+      tenantId: run.ownerId,
+      operationId,
+      offset: 0n,
+      limit,
+    });
+    const status = terminal(operation);
+    return {
+      content: Buffer.from(output.data).toString('utf8'),
+      terminal: status !== undefined,
+      status:
+        status === undefined
+          ? 'running'
+          : status === OperationStatus.COMPLETED
+            ? 'completed'
+            : status === OperationStatus.CANCELLED
+              ? 'killed'
+              : status === OperationStatus.FAILED
+                ? 'failed'
+                : 'unknown',
+    };
+  }
+
+  async cancelBackgroundBash(
+    run: RunRecord,
+    operationId: string,
+    reason: string,
+  ): Promise<EnvironmentOperationRecord> {
+    return this.#cancel(run.ownerId, operationId, reason);
+  }
+
   async execute(
     run: RunRecord,
     action: Exclude<
@@ -1235,24 +1390,6 @@ export class AgentEnvironmentRuntime {
     }
   }
 
-  readOutput(
-    run: RunRecord,
-    input: { operationId: string; offset: bigint; limit: number },
-  ): string {
-    this.store.agentEnvironments.requireOperation(run.threadId, run.agentId, input.operationId);
-    const output = this.operations.readEnvironmentOperationOutput({
-      tenantId: run.ownerId,
-      ...input,
-    });
-    return jsonStringify({
-      operation_id: input.operationId,
-      content: Buffer.from(output.data).toString('utf8'),
-      next_offset: output.nextOffset.toString(),
-      output_complete: output.outputComplete,
-      output_gap: output.outputGap,
-    });
-  }
-
   async savedResult(runId: string, toolCallId: string): Promise<ToolExecutionResult | undefined> {
     const association = this.store.agentEnvironments.findOperation(runId, toolCallId);
     const saved = this.store.agentEnvironments.savedResult(runId, toolCallId);
@@ -1269,7 +1406,9 @@ export class AgentEnvironmentRuntime {
     }
     if (
       !association ||
-      !['read', 'read_image', 'write', 'edit', 'bash'].includes(association.action) ||
+      !['read', 'read_image', 'write', 'edit', 'bash', 'glob', 'grep'].includes(
+        association.action,
+      ) ||
       association.action === 'directory_check' ||
       association.action === 'env_switch'
     ) {
@@ -1644,6 +1783,40 @@ export class AgentEnvironmentRuntime {
         outcome: editOutcomeSchema.parse(outcomeValue(operation, 'edit')),
       });
     }
+    if (operation.action.case === 'glob') {
+      const outcome = globOutcomeSchema.parse(outcomeValue(operation, 'glob'));
+      return jsonStringify({
+        ...base,
+        cwd: operation.action.value.cwd,
+        path: outcome.path,
+        files: outcome.files,
+        truncated: outcome.truncated,
+        ...(outcome.reason === undefined ? {} : { reason: outcome.reason }),
+      });
+    }
+    if (operation.action.case === 'grep') {
+      const outcome = grepOutcomeSchema.parse(outcomeValue(operation, 'grep'));
+      const mode = operation.action.value.mode;
+      const selection =
+        mode === GrepMode.FILES_WITH_MATCHES
+          ? { files: outcome.files }
+          : mode === GrepMode.COUNT
+            ? {
+                counts: outcome.counts.map((entry) => ({
+                  file: entry.file,
+                  count: entry.count.toString(),
+                })),
+              }
+            : { matches: outcome.matches };
+      return jsonStringify({
+        ...base,
+        cwd: operation.action.value.cwd,
+        path: outcome.path,
+        ...selection,
+        truncated: outcome.truncated,
+        ...(outcome.reason === undefined ? {} : { reason: outcome.reason }),
+      });
+    }
     if (operation.action.case !== 'bash') {
       throw new SessionError(
         'internal',
@@ -1655,27 +1828,31 @@ export class AgentEnvironmentRuntime {
       tenantId: run.ownerId,
       operationId: operation.operationId,
       offset: 0n,
-      limit: this.#bashPreviewBytes,
+      limit: this.#bashPreviewBytes + 1,
     });
-    const hintParts: string[] = [];
-    if (!preview.outputComplete) {
-      hintParts.push(
-        'The output preview is truncated; continue reading with read_output using this operation_id and offset=next_offset until output_complete is true.',
-      );
-    }
-    if (preview.outputGap) {
-      hintParts.push('Some output could not be recovered (output_gap).');
-    }
-    const hint = hintParts.length === 0 ? undefined : hintParts.join(' ');
-    return jsonStringify({
+    const previewBytes = Buffer.from(preview.data);
+    const truncated =
+      preview.outputGap ||
+      (operation.endOffset !== undefined && operation.endOffset > BigInt(this.#bashPreviewBytes));
+    const output = previewBytes.subarray(0, this.#bashPreviewBytes).toString('utf8');
+    const result = {
       ...base,
       cwd: operation.action.value.cwd,
       outcome,
-      output: Buffer.from(preview.data).toString('utf8'),
-      next_offset: preview.nextOffset.toString(),
-      output_complete: preview.outputComplete,
-      output_gap: preview.outputGap,
-      ...(hint === undefined ? {} : { hint }),
+      output,
+      output_truncated: truncated,
+    };
+    const log = truncated ? this.operations.bashOutputLog(operation.operationId) : undefined;
+    if (log === undefined) return jsonStringify(result);
+    return jsonStringify({
+      ...result,
+      output_file: {
+        env_id: 'main',
+        path: log.path,
+        size_bytes: log.sizeBytes.toString(),
+        ...(log.truncated ? { truncated: true } : {}),
+      },
+      hint: 'The output preview is truncated; the full output is in output_file on the main environment (env_id main). Continue reading it with read or grep using env_id main.',
     });
   }
 }

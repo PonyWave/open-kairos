@@ -97,7 +97,16 @@ export interface AgentEnvironmentOperation {
   historyId: string;
   envId: string;
   bindingVersion: number;
-  action: 'read' | 'read_image' | 'write' | 'edit' | 'bash' | 'directory_check' | 'env_switch';
+  action:
+    | 'read'
+    | 'read_image'
+    | 'write'
+    | 'edit'
+    | 'bash'
+    | 'directory_check'
+    | 'env_switch'
+    | 'glob'
+    | 'grep';
   resultContent: string | null;
   resultStatus: 'success' | 'error' | null;
 }
@@ -155,7 +164,17 @@ const operationRowSchema = z.object({
   history_id: z.string(),
   env_id: z.string(),
   binding_version: z.number().int().nonnegative(),
-  action: z.enum(['read', 'read_image', 'write', 'edit', 'bash', 'directory_check', 'env_switch']),
+  action: z.enum([
+    'read',
+    'read_image',
+    'write',
+    'edit',
+    'bash',
+    'directory_check',
+    'env_switch',
+    'glob',
+    'grep',
+  ]),
   result_content: z.string().nullable(),
   result_status: z.enum(['success', 'error']).nullable(),
 });

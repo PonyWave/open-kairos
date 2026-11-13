@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto';
+import type { WriteStream } from 'node:fs';
+import { createWriteStream, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type {
   OutputStream,
@@ -13,6 +16,7 @@ import {
   DeviceErrorCode,
   decodeDaemonMessage,
   encodeDaemonMessage,
+  GrepMode,
   OperationStatus,
 } from '@kairos/contracts/device';
 import { z } from 'zod';
@@ -25,6 +29,9 @@ import { DeviceFailure } from './errors.js';
 export { environmentOperationMigrations } from '../storage/device-migrations.js';
 
 const UINT64_KEY_LENGTH = 20;
+export const ENVIRONMENT_OPERATION_OUTPUT_RETAINED_BYTES = 16 * 1024;
+export const BASH_OUTPUT_LOG_MAX_BYTES = 64 * 1024 * 1024;
+const BASH_OUTPUT_LOG_RETENTION_MILLISECONDS = 7 * 24 * 60 * 60 * 1000;
 const ZERO_OFFSET = '0'.repeat(UINT64_KEY_LENGTH);
 const MAX_UINT64 = 1n << 64n;
 
@@ -62,6 +69,14 @@ const operationRowSchema = z.object({
   create_directory: z.number().int().min(0).max(1).nullable(),
   conflict_scan: z.number().int().min(0).max(1).nullable(),
   relative_paths_json: z.string().nullable(),
+  search_action: z.enum(['glob', 'grep']).nullable(),
+  pattern: z.string().nullable(),
+  include_glob: z.string().nullable(),
+  grep_mode: z.enum(['content', 'files_with_matches', 'count']).nullable(),
+  case_insensitive: z.number().int().min(0).max(1).nullable(),
+  line_numbers: z.number().int().min(0).max(1).nullable(),
+  search_offset: z.number().int().nullable(),
+  search_limit: z.number().int().nullable(),
   old_text: z.string().nullable(),
   new_text: z.string().nullable(),
   expected_occurrences: z.number().int().nullable(),
@@ -118,7 +133,9 @@ type EnvironmentOperationActionCase =
   | 'directoryCheck'
   | 'directoryList'
   | 'syncScan'
-  | 'syncRead';
+  | 'syncRead'
+  | 'glob'
+  | 'grep';
 export type EnvironmentOperationAction = ProtocolData<
   Extract<ProtocolOperationStart['action'], { case: EnvironmentOperationActionCase }>
 >;
@@ -359,6 +376,32 @@ function validateAction(
         throw new DeviceFailure(DeviceErrorCode.INVALID_MESSAGE, 'Read line range is invalid.');
       }
       break;
+    case 'glob': {
+      const value = action.value;
+      requiredText(value.pattern, 'pattern', 4096);
+      if (
+        value.pattern.length === 0 ||
+        (value.headLimit !== undefined && (value.headLimit < 1 || value.headLimit > 1000)) ||
+        (value.offset !== undefined && value.offset > 100_000)
+      ) {
+        throw new DeviceFailure(DeviceErrorCode.INVALID_MESSAGE, 'Glob range is invalid.');
+      }
+      break;
+    }
+    case 'grep': {
+      const value = action.value;
+      requiredText(value.pattern, 'pattern', 4096);
+      if (value.include !== undefined) requiredText(value.include, 'include', 4096);
+      if (
+        value.pattern.length === 0 ||
+        (value.headLimit !== undefined && (value.headLimit < 1 || value.headLimit > 1000)) ||
+        (value.offset !== undefined && value.offset > 100_000) ||
+        grepModeColumn[value.mode] === undefined
+      ) {
+        throw new DeviceFailure(DeviceErrorCode.INVALID_MESSAGE, 'Grep parameters are invalid.');
+      }
+      break;
+    }
     case 'readImage':
       break;
     case 'syncScan': {
@@ -527,6 +570,34 @@ function toAction(row: OperationRow): EnvironmentOperationAction {
       },
     };
   }
+  if (row.search_action === 'glob') {
+    return {
+      case: 'glob',
+      value: {
+        pattern: requiredColumn(row.pattern, 'pattern'),
+        path: requiredColumn(row.path, 'path'),
+        cwd: requiredColumn(row.cwd, 'cwd'),
+        ...(row.search_limit === null ? {} : { headLimit: row.search_limit }),
+        ...(row.search_offset === null ? {} : { offset: row.search_offset }),
+      },
+    };
+  }
+  if (row.search_action === 'grep') {
+    return {
+      case: 'grep',
+      value: {
+        pattern: requiredColumn(row.pattern, 'pattern'),
+        path: requiredColumn(row.path, 'path'),
+        cwd: requiredColumn(row.cwd, 'cwd'),
+        ...(row.include_glob === null ? {} : { include: row.include_glob }),
+        caseInsensitive: row.case_insensitive === 1,
+        mode: grepModeValue[requiredColumn(row.grep_mode, 'grep_mode')],
+        lineNumbers: row.line_numbers === 1,
+        ...(row.search_limit === null ? {} : { headLimit: row.search_limit }),
+        ...(row.search_offset === null ? {} : { offset: row.search_offset }),
+      },
+    };
+  }
   switch (row.action) {
     case 'directory_list':
       return {
@@ -685,6 +756,28 @@ export function emptyEnvironmentOutcome(
           ...(reason === undefined ? {} : { reason }),
         },
       };
+    case 'glob':
+      return {
+        case: 'glob',
+        value: {
+          path: action.value.path,
+          files: [],
+          truncated: false,
+          ...(reason === undefined ? {} : { reason }),
+        },
+      };
+    case 'grep':
+      return {
+        case: 'grep',
+        value: {
+          path: action.value.path,
+          matches: [],
+          files: [],
+          counts: [],
+          truncated: false,
+          ...(reason === undefined ? {} : { reason }),
+        },
+      };
     case 'write':
       return {
         case: 'write',
@@ -794,8 +887,27 @@ function actionColumn(action: EnvironmentOperationAction): string {
   if (action.case === 'directoryCheck') return 'directory_check';
   if (action.case === 'directoryList' || action.case === 'syncScan') return 'directory_list';
   if (action.case === 'readImage' || action.case === 'syncRead') return 'read_image';
+  if (action.case === 'glob' || action.case === 'grep') return 'read';
   return action.case;
 }
+
+function searchActionColumn(action: EnvironmentOperationAction): 'glob' | 'grep' | null {
+  if (action.case === 'glob') return 'glob';
+  if (action.case === 'grep') return 'grep';
+  return null;
+}
+
+const grepModeColumn: Record<number, 'content' | 'files_with_matches' | 'count'> = {
+  [GrepMode.CONTENT]: 'content',
+  [GrepMode.FILES_WITH_MATCHES]: 'files_with_matches',
+  [GrepMode.COUNT]: 'count',
+};
+
+const grepModeValue: Record<'content' | 'files_with_matches' | 'count', GrepMode> = {
+  content: GrepMode.CONTENT,
+  files_with_matches: GrepMode.FILES_WITH_MATCHES,
+  count: GrepMode.COUNT,
+};
 
 function syncActionColumn(
   action: EnvironmentOperationAction,
@@ -846,6 +958,24 @@ function validateResult(
       throw new DeviceFailure(
         DeviceErrorCode.INVALID_MESSAGE,
         'Directory pagination does not match the requested range.',
+      );
+    }
+  }
+  if (action.case === 'glob' && outcome.case === 'glob') {
+    if (outcome.value.files.length > (action.value.headLimit ?? 250)) {
+      throw new DeviceFailure(
+        DeviceErrorCode.INVALID_MESSAGE,
+        'Glob results exceed the requested head limit.',
+      );
+    }
+  }
+  if (action.case === 'grep' && outcome.case === 'grep') {
+    const entries =
+      outcome.value.matches.length + outcome.value.files.length + outcome.value.counts.length;
+    if (entries > (action.value.headLimit ?? 250)) {
+      throw new DeviceFailure(
+        DeviceErrorCode.INVALID_MESSAGE,
+        'Grep results exceed the requested head limit.',
       );
     }
   }
@@ -944,13 +1074,115 @@ function validateResult(
   }
 }
 
+interface BashOutputLogState {
+  head: Buffer[];
+  headBytes: number;
+  path?: string | undefined;
+  stream?: WriteStream | undefined;
+  bytes: number;
+  truncated: boolean;
+  failed: boolean;
+}
+
 export class EnvironmentOperationStore {
+  private readonly bashLogs = new Map<string, BashOutputLogState>();
+
   constructor(
     readonly database: DatabaseSync,
     private readonly now: () => Date = () => new Date(),
+    private readonly options: { bashLogDirectory?: string; bashLogMaxBytes?: number } = {},
   ) {
     assertServerDatabaseCompatible(database);
     migrateDatabase(database, environmentOperationMigrations, 'environment_operations');
+    this.sweepBashLogDirectory();
+  }
+
+  private sweepBashLogDirectory(): void {
+    const directory = this.options.bashLogDirectory;
+    if (directory === undefined) return;
+    try {
+      const cutoff = this.now().getTime() - BASH_OUTPUT_LOG_RETENTION_MILLISECONDS;
+      for (const entry of readdirSync(directory)) {
+        if (!entry.endsWith('.log')) continue;
+        const path = join(directory, entry);
+        try {
+          if (statSync(path).mtimeMs < cutoff) rmSync(path, { force: true });
+        } catch {}
+      }
+    } catch {}
+  }
+
+  // Bash 完整输出流式写入主机主环境工作目录的日志文件;SQLite 只保留头部,
+  // 完整日志不进入 Server 数据库。超过 BASH_OUTPUT_LOG_MAX_BYTES 后截断。
+  private appendBashLog(operationId: string, data: Buffer): void {
+    const directory = this.options.bashLogDirectory;
+    if (directory === undefined) return;
+    let state = this.bashLogs.get(operationId);
+    if (state === undefined) {
+      state = { head: [], headBytes: 0, bytes: 0, truncated: false, failed: false };
+      this.bashLogs.set(operationId, state);
+      if (this.bashLogs.size > 256) {
+        const oldest = this.bashLogs.keys().next().value;
+        if (oldest !== undefined && oldest !== operationId) this.bashLogs.delete(oldest);
+      }
+    }
+    if (state.failed || (state.truncated && state.stream === undefined)) return;
+    try {
+      if (state.path === undefined) {
+        if (state.headBytes + data.length <= ENVIRONMENT_OPERATION_OUTPUT_RETAINED_BYTES) {
+          state.head.push(data);
+          state.headBytes += data.length;
+          return;
+        }
+        const safeId = operationId.replace(/[^A-Za-z0-9_-]/g, '_');
+        state.path = join(directory, `${safeId}.log`);
+        mkdirSync(directory, { recursive: true });
+        const stream = createWriteStream(state.path, { flags: 'w' });
+        stream.on('error', () => {
+          state.failed = true;
+          state.truncated = true;
+          state.stream = undefined;
+        });
+        state.stream = stream;
+        for (const chunk of state.head) stream.write(chunk);
+        state.bytes = state.headBytes;
+        state.head = [];
+        state.headBytes = 0;
+      }
+      const stream = state.stream;
+      if (stream === undefined) return;
+      const remaining = (this.options.bashLogMaxBytes ?? BASH_OUTPUT_LOG_MAX_BYTES) - state.bytes;
+      if (remaining <= 0 || data.length > remaining) {
+        if (remaining > 0) stream.write(data.subarray(0, remaining));
+        state.bytes += Math.max(remaining, 0);
+        state.truncated = true;
+        stream.end();
+        state.stream = undefined;
+        return;
+      }
+      stream.write(data);
+      state.bytes += data.length;
+    } catch {
+      state.failed = true;
+      state.truncated = true;
+      state.stream = undefined;
+    }
+  }
+
+  private finalizeBashLog(operationId: string): void {
+    const state = this.bashLogs.get(operationId);
+    if (state?.stream !== undefined) {
+      state.stream.end();
+      state.stream = undefined;
+    }
+  }
+
+  bashOutputLog(
+    operationId: string,
+  ): { path: string; sizeBytes: bigint; truncated: boolean } | undefined {
+    const state = this.bashLogs.get(operationId);
+    if (state === undefined || state.path === undefined || state.failed) return undefined;
+    return { path: state.path, sizeBytes: BigInt(state.bytes), truncated: state.truncated };
   }
 
   createIntent(input: CreateEnvironmentOperationInput): {
@@ -1058,6 +1290,21 @@ export class EnvironmentOperationStore {
         timeoutSeconds: action.case === 'bash' ? action.value.timeoutSeconds : null,
         loadWorkspace:
           action.case === 'directoryCheck' ? (action.value.loadWorkspace ? 1 : 0) : null,
+        searchAction: searchActionColumn(action),
+        pattern: action.case === 'glob' || action.case === 'grep' ? action.value.pattern : null,
+        includeGlob:
+          action.case === 'grep' && action.value.include !== undefined
+            ? action.value.include
+            : null,
+        grepMode: action.case === 'grep' ? (grepModeColumn[action.value.mode] ?? 'content') : null,
+        caseInsensitive: action.case === 'grep' ? (action.value.caseInsensitive ? 1 : 0) : null,
+        lineNumbers: action.case === 'grep' ? (action.value.lineNumbers ? 1 : 0) : null,
+        searchOffset:
+          action.case === 'glob' || action.case === 'grep' ? (action.value.offset ?? null) : null,
+        searchLimit:
+          action.case === 'glob' || action.case === 'grep'
+            ? (action.value.headLimit ?? null)
+            : null,
       };
       this.database
         .prepare(
@@ -1067,9 +1314,11 @@ export class EnvironmentOperationStore {
             binary_content, overwrite, create_parents, sync_action, sync_offset, transfer_id,
             total_size, executable, create_directory, conflict_scan, relative_paths_json, old_text,
             new_text, expected_occurrences, expected_file_version, command, timeout_seconds,
-            load_workspace, delivery_state, status, next_offset, expires_at, created_at, updated_at
+            load_workspace, search_action, pattern, include_glob, grep_mode, case_insensitive,
+            line_numbers, search_offset, search_limit,
+            delivery_state, status, next_offset, expires_at, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?, 'intent', ?, ?, ?, ?, ?)`,
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'intent', ?, ?, ?, ?, ?)`,
         )
         .run(
           input.operationId,
@@ -1104,6 +1353,14 @@ export class EnvironmentOperationStore {
           values.command,
           values.timeoutSeconds,
           values.loadWorkspace,
+          values.searchAction,
+          values.pattern,
+          values.includeGlob,
+          values.grepMode,
+          values.caseInsensitive,
+          values.lineNumbers,
+          values.searchOffset,
+          values.searchLimit,
           OperationStatus.CREATED,
           ZERO_OFFSET,
           input.expiresAt.toISOString(),
@@ -1252,13 +1509,20 @@ export class EnvironmentOperationStore {
         );
       }
       const data = Buffer.from(input.data);
-      const overlaps = this.database
-        .prepare(
-          `SELECT * FROM environment_operation_output_chunks
+      this.appendBashLog(input.operationId, data);
+      const retainedEnd = BigInt(ENVIRONMENT_OPERATION_OUTPUT_RETAINED_BYTES);
+      const persistStart = start < retainedEnd ? start : retainedEnd;
+      const persistEnd = end < retainedEnd ? end : retainedEnd;
+      const overlaps =
+        persistStart >= persistEnd
+          ? []
+          : this.database
+              .prepare(
+                `SELECT * FROM environment_operation_output_chunks
            WHERE operation_id = ? AND offset < ? AND end_offset > ? ORDER BY offset`,
-        )
-        .all(input.operationId, offsetKey(end), offsetKey(start))
-        .map((row) => chunkRowSchema.parse(row));
+              )
+              .all(input.operationId, offsetKey(persistEnd), offsetKey(persistStart))
+              .map((row) => chunkRowSchema.parse(row));
       for (const existing of overlaps) {
         const existingStart = keyOffset(existing.offset);
         const existingEnd = keyOffset(existing.end_offset);
@@ -1279,24 +1543,27 @@ export class EnvironmentOperationStore {
       }
 
       let nextOffset = keyOffset(operation.next_offset);
-      let cursor = maximumOffset(start, nextOffset);
+      let cursor = maximumOffset(persistStart, nextOffset);
       const segments: Array<{ offset: bigint; data: Buffer }> = [];
       for (const existing of overlaps) {
         const existingStart = keyOffset(existing.offset);
         const existingEnd = keyOffset(existing.end_offset);
         if (existingEnd <= cursor) continue;
         if (existingStart > cursor) {
-          const segmentEnd = minimumOffset(existingStart, end);
+          const segmentEnd = minimumOffset(existingStart, persistEnd);
           segments.push({
             offset: cursor,
             data: data.subarray(Number(cursor - start), Number(segmentEnd - start)),
           });
         }
         if (existingEnd > cursor) cursor = existingEnd;
-        if (cursor >= end) break;
+        if (cursor >= persistEnd) break;
       }
-      if (cursor < end)
-        segments.push({ offset: cursor, data: data.subarray(Number(cursor - start)) });
+      if (cursor < persistEnd)
+        segments.push({
+          offset: cursor,
+          data: data.subarray(Number(cursor - start), Number(persistEnd - start)),
+        });
       for (const segment of segments) {
         if (segment.data.length === 0) continue;
         const segmentEnd = segment.offset + BigInt(segment.data.length);
@@ -1323,16 +1590,18 @@ export class EnvironmentOperationStore {
         if (contiguousRow === undefined) break;
         nextOffset = keyOffset(chunkRowSchema.parse(contiguousRow).end_offset);
       }
+      const headTarget =
+        operation.result_end_offset === null
+          ? null
+          : minimumOffset(keyOffset(operation.result_end_offset), retainedEnd);
       const outputComplete =
         operation.result_recorded_at !== null &&
         operation.result_source === 'device' &&
         operation.device_output_complete === 1 &&
-        operation.result_end_offset !== null &&
-        keyOffset(operation.result_end_offset) === nextOffset;
+        headTarget !== null &&
+        nextOffset >= headTarget;
       const outputGap =
-        operation.result_recorded_at !== null &&
-        operation.result_end_offset !== null &&
-        nextOffset < keyOffset(operation.result_end_offset);
+        operation.result_recorded_at !== null && headTarget !== null && nextOffset < headTarget;
       this.database
         .prepare(
           `UPDATE environment_operations SET next_offset = ?, output_complete = ?, output_gap = ?,
@@ -1412,13 +1681,17 @@ export class EnvironmentOperationStore {
         );
       }
     }
+    const headTarget =
+      endOffset === undefined
+        ? undefined
+        : minimumOffset(endOffset, BigInt(ENVIRONMENT_OPERATION_OUTPUT_RETAINED_BYTES));
     const outputComplete =
       operation.action !== 'bash' ||
       (source === 'device' &&
         deviceOutputComplete &&
-        endOffset !== undefined &&
-        endOffset === nextOffset);
-    const outputGap = endOffset !== undefined && nextOffset < endOffset;
+        headTarget !== undefined &&
+        nextOffset >= headTarget);
+    const outputGap = headTarget !== undefined && nextOffset < headTarget;
     const target: OperationTarget = {
       envId: operation.env_id,
       deviceBindingId: operation.device_binding_id,
@@ -1490,10 +1763,16 @@ export class EnvironmentOperationStore {
         operationId,
       );
     }
+    const acknowledgedTarget =
+      operation.result_end_offset === null
+        ? null
+        : minimumOffset(
+            keyOffset(operation.result_end_offset),
+            BigInt(ENVIRONMENT_OPERATION_OUTPUT_RETAINED_BYTES),
+          );
     if (
       operation.output_gap === 1 ||
-      (operation.result_end_offset !== null &&
-        operation.next_offset !== operation.result_end_offset)
+      (acknowledgedTarget !== null && keyOffset(operation.next_offset) !== acknowledgedTarget)
     ) {
       throw new DeviceFailure(
         DeviceErrorCode.INVALID_MESSAGE,
@@ -1508,6 +1787,8 @@ export class EnvironmentOperationStore {
          updated_at = ? WHERE operation_id = ?`,
       )
       .run(this.now().toISOString(), this.now().toISOString(), operationId);
+    this.finalizeBashLog(operationId);
+    this.bashLogs.delete(operationId);
     if (updated.changes !== 1) {
       throw new DeviceFailure(
         DeviceErrorCode.INTERNAL,

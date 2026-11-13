@@ -594,14 +594,18 @@ async function runConnectedDemo(config: RealModelConfig): Promise<void> {
     }
     const pagedLog = await readCompleteLog(fixture, operationId);
     expect(pagedLog.toString('utf8').includes('HIDDEN_MARKER')).toBe(true);
-    expect(pagedLog.length).toBeGreaterThan(Buffer.byteLength(String(deviceResult.output)));
+    expect(pagedLog.length).toBe(16 * 1024);
+    expect(Buffer.byteLength(String(deviceResult.output))).toBeLessThanOrEqual(pagedLog.length);
 
+    const outputFile = z
+      .object({ env_id: z.string(), path: z.string() })
+      .parse(Reflect.get(deviceResult, 'output_file'));
     const logRun = await runForTool(
       fixture,
       threadId,
       'real-server-log-search',
-      `Call read_output exactly once with operation_id ${operationId}, offset 0 and limit 100, then report its actual result.`,
-      'read_output',
+      `Call grep exactly once with env_id ${outputFile.env_id}, path ${outputFile.path} and pattern HIDDEN_MARKER, then report its actual result.`,
+      'grep',
     );
     expect(logRun.result.content.includes('HIDDEN_MARKER')).toBe(true);
 

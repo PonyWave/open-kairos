@@ -1,5 +1,16 @@
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { DeviceErrorCode, OperationStatus, OutputStream } from '@kairos/contracts/device';
+import { DeviceErrorCode, GrepMode, OperationStatus, OutputStream } from '@kairos/contracts/device';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { sizedJpegBytes } from '../attachments/fixtures.js';
 import { contextRecapMigrations } from '../storage/migrations.js';
@@ -130,6 +141,24 @@ describe('EnvironmentOperationStore', () => {
         },
       },
       bashAction(),
+      {
+        case: 'glob',
+        value: { pattern: '**/*.ts', path: '/workspace/src', cwd: '/workspace', headLimit: 50 },
+      },
+      {
+        case: 'grep',
+        value: {
+          pattern: 'needle',
+          path: '/workspace',
+          cwd: '/workspace',
+          include: '*.ts',
+          caseInsensitive: true,
+          mode: GrepMode.FILES_WITH_MATCHES,
+          lineNumbers: true,
+          headLimit: 20,
+          offset: 5,
+        },
+      },
     ];
     for (const [index, action] of actions.entries()) {
       const { database, store, input } = fixture(action);
@@ -140,7 +169,7 @@ describe('EnvironmentOperationStore', () => {
       expect(
         database
           .prepare(
-            'SELECT action, path, cwd, binding_version FROM environment_operations WHERE operation_id = ?',
+            'SELECT action, path, cwd, binding_version, search_action FROM environment_operations WHERE operation_id = ?',
           )
           .get(input.operationId),
       ).toMatchObject({
@@ -149,13 +178,16 @@ describe('EnvironmentOperationStore', () => {
             ? 'directory_check'
             : action.case === 'readImage'
               ? 'read_image'
-              : action.case,
+              : action.case === 'glob' || action.case === 'grep'
+                ? 'read'
+                : action.case,
         path: action.case === 'bash' ? null : action.value.path,
         cwd:
           action.case === 'directoryCheck' || action.case === 'directoryList'
             ? null
             : action.value.cwd,
         binding_version: action.case === 'directoryCheck' ? null : '7',
+        search_action: action.case === 'glob' || action.case === 'grep' ? action.case : null,
       });
       expect(() =>
         store.createIntent({
@@ -482,5 +514,162 @@ describe('EnvironmentOperationStore maximum image fingerprints', () => {
     } finally {
       entries.mockRestore();
     }
+  });
+});
+
+const logDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of logDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+describe('EnvironmentOperationStore host bash output log', () => {
+  function logFixture(options?: { bashLogMaxBytes?: number }) {
+    const directory = mkdtempSync(join(tmpdir(), 'kairos-bash-log-'));
+    logDirectories.push(directory);
+    const database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
+    databases.push(database);
+    database.exec(`
+      CREATE TABLE schema_migrations(
+        namespace TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        applied_at TEXT NOT NULL,
+        PRIMARY KEY(namespace, version)
+      );
+      CREATE TABLE environments(env_id TEXT PRIMARY KEY);
+      CREATE TABLE environment_device_bindings(device_binding_id TEXT PRIMARY KEY);
+      INSERT INTO environments(env_id) VALUES ('env-1');
+      INSERT INTO environment_device_bindings(device_binding_id) VALUES ('binding-1');
+    `);
+    const contextMigration = contextRecapMigrations.at(-1);
+    if (!contextMigration) throw new Error('Context schema migration is missing.');
+    database
+      .prepare(
+        'INSERT INTO schema_migrations(namespace, version, name, applied_at) VALUES (?, ?, ?, ?)',
+      )
+      .run('context_recap', contextMigration.version, contextMigration.name, now.toISOString());
+    const store = new EnvironmentOperationStore(database, () => now, {
+      bashLogDirectory: join(directory, '.kairos', 'logs'),
+      ...(options?.bashLogMaxBytes === undefined
+        ? {}
+        : { bashLogMaxBytes: options.bashLogMaxBytes }),
+    });
+    return { database, store, directory };
+  }
+
+  function bashInput(input: { operationId: string }) {
+    return {
+      operationId: input.operationId,
+      tenantId: 'tenant-1',
+      envId: 'env-1',
+      deviceId: 'device-1',
+      deviceBindingId: 'binding-1',
+      targetInstanceId: 'instance-1',
+      bindingVersion: 7n,
+      action: bashAction(),
+      expiresAt: new Date(now.getTime() + 60_000),
+    };
+  }
+
+  function recordChunk(
+    store: EnvironmentOperationStore,
+    operationId: string,
+    offset: bigint,
+    data: string,
+  ) {
+    store.recordOutput({
+      operationId,
+      envId: 'env-1',
+      deviceBindingId: 'binding-1',
+      targetInstanceId: 'instance-1',
+      bindingVersion: 7n,
+      offset,
+      stream: OutputStream.STDOUT,
+      data: new TextEncoder().encode(data),
+    });
+  }
+
+  it('keeps output without a log file while it fits the retained head', () => {
+    const { store } = logFixture();
+    const input = bashInput({ operationId: 'operation-small' });
+    store.createIntent(input);
+    recordChunk(store, 'operation-small', 0n, 'hello');
+    expect(store.bashOutputLog('operation-small')).toBeUndefined();
+  });
+
+  it('spills the full output to a host log file beyond the retained head', async () => {
+    const { store, directory } = logFixture();
+    const input = bashInput({ operationId: 'operation-large' });
+    store.createIntent(input);
+    const first = 'a'.repeat(10 * 1024);
+    const second = 'b'.repeat(10 * 1024);
+    recordChunk(store, 'operation-large', 0n, first);
+    recordChunk(store, 'operation-large', BigInt(first.length), second);
+    const log = store.bashOutputLog('operation-large');
+    expect(log?.path).toBe(join(directory, '.kairos', 'logs', 'operation-large.log'));
+    expect(log?.sizeBytes).toBe(20n * 1024n);
+    expect(log?.truncated).toBe(false);
+    await vi.waitFor(() => {
+      expect(readFileSync(log?.path ?? '', 'utf8')).toBe(first + second);
+    });
+    const retained = store.readOutputForTenant('tenant-1', 'operation-large', 0n, 64 * 1024);
+    const retainedBytes = retained.reduce((total, chunk) => total + chunk.data.byteLength, 0);
+    expect(retainedBytes).toBeLessThanOrEqual(16 * 1024);
+  });
+
+  it('truncates the host log file at the configured cap', async () => {
+    const { store } = logFixture({ bashLogMaxBytes: 20 * 1024 });
+    const input = bashInput({ operationId: 'operation-capped' });
+    store.createIntent(input);
+    const first = 'a'.repeat(10 * 1024);
+    recordChunk(store, 'operation-capped', 0n, first);
+    recordChunk(store, 'operation-capped', BigInt(first.length), 'b'.repeat(20 * 1024));
+    const log = store.bashOutputLog('operation-capped');
+    expect(log?.sizeBytes).toBe(20n * 1024n);
+    expect(log?.truncated).toBe(true);
+    await vi.waitFor(() => {
+      expect(readFileSync(log?.path ?? '', 'utf8')).toBe(first + 'b'.repeat(10 * 1024));
+    });
+  });
+
+  it('sweeps host log files older than the retention window on startup', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'kairos-bash-log-sweep-'));
+    logDirectories.push(directory);
+    const logs = join(directory, '.kairos', 'logs');
+    mkdirSync(logs, { recursive: true });
+    const stale = join(logs, 'stale.log');
+    const fresh = join(logs, 'fresh.log');
+    writeFileSync(stale, 'old');
+    writeFileSync(fresh, 'new');
+    const old = new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000);
+    utimesSync(stale, old, old);
+    const database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
+    databases.push(database);
+    database.exec(`
+      CREATE TABLE schema_migrations(
+        namespace TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        applied_at TEXT NOT NULL,
+        PRIMARY KEY(namespace, version)
+      );
+      CREATE TABLE environments(env_id TEXT PRIMARY KEY);
+      CREATE TABLE environment_device_bindings(device_binding_id TEXT PRIMARY KEY);
+      INSERT INTO environments(env_id) VALUES ('env-1');
+      INSERT INTO environment_device_bindings(device_binding_id) VALUES ('binding-1');
+    `);
+    const contextMigration = contextRecapMigrations.at(-1);
+    if (!contextMigration) throw new Error('Context schema migration is missing.');
+    database
+      .prepare(
+        'INSERT INTO schema_migrations(namespace, version, name, applied_at) VALUES (?, ?, ?, ?)',
+      )
+      .run('context_recap', contextMigration.version, contextMigration.name, now.toISOString());
+    new EnvironmentOperationStore(database, () => now, { bashLogDirectory: logs });
+    expect(existsSync(stale)).toBe(false);
+    expect(existsSync(fresh)).toBe(true);
   });
 });

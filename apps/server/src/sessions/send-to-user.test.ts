@@ -6,7 +6,12 @@ import { getThreadSnapshot } from '../api/snapshot.js';
 import { ModelInputService } from '../context/model-input-service.js';
 import { controlledEnvironmentDependencies } from '../integration/environment-fixture.js';
 import { openDatabase } from '../storage/database.js';
-import type { RunStatus, TextDeltaRecord, ThreadEventRecord } from './records.js';
+import type {
+  RunStatus,
+  TextDeltaRecord,
+  ThreadEventRecord,
+  ToolProgressRecord,
+} from './records.js';
 import { RunCoordinator } from './runtime.js';
 import { SessionStore } from './store.js';
 
@@ -78,7 +83,7 @@ it('persists a final send, publishes its mode before text and restores exact dis
   ]);
   const current = fixture(provider);
   const { store, thread, coordinator, database } = current;
-  const events: Array<ThreadEventRecord | TextDeltaRecord> = [];
+  const events: Array<ThreadEventRecord | TextDeltaRecord | ToolProgressRecord> = [];
   const unsubscribe = store.subscribe(thread.threadId, (event) => events.push(event));
   try {
     const accepted = send(store, thread.threadId);

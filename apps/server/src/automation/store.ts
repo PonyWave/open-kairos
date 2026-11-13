@@ -4,7 +4,13 @@ import type { AutomationReference } from '../context/types.js';
 import { requirePositiveInteger, requireText, SessionError } from '../sessions/errors.js';
 import type { RunError, RunStatus } from '../sessions/records.js';
 import type { SessionStore } from '../sessions/store.js';
-import { countOccurrences, nextOccurrence, normalizeSchedule, previousOccurrence } from './cron.js';
+import {
+  countOccurrences,
+  jitteredNextOccurrence,
+  nextOccurrence,
+  normalizeSchedule,
+  previousOccurrence,
+} from './cron.js';
 import type {
   AutomationFireRecord,
   AutomationFireStatus,
@@ -180,9 +186,8 @@ export class AutomationStore {
         const scheduleId = this.#createId();
         const cursorAt = schedule.kind === 'cron' ? now : null;
         const nextFireAt = enabled
-          ? schedule.kind === 'once'
-            ? schedule.runAt
-            : nextOccurrence(schedule, now)
+          ? (jitteredNextOccurrence(schedule, now, scheduleId) ??
+            (schedule.kind === 'once' ? schedule.runAt : null))
           : null;
         this.#sessions.database
           .prepare(
@@ -296,13 +301,12 @@ export class AutomationStore {
           nextFireAt = null;
         } else if (input.enabled === true && !current.enabled) {
           cursorAt = schedule.kind === 'cron' ? now : current.cursorAt;
-          nextFireAt = nextOccurrence(schedule, now);
+          nextFireAt = jitteredNextOccurrence(schedule, now, current.scheduleId);
         } else if (scheduleChanged) {
           cursorAt = schedule.kind === 'cron' ? now : null;
           nextFireAt = enabled
-            ? schedule.kind === 'once'
-              ? schedule.runAt
-              : nextOccurrence(schedule, now)
+            ? (jitteredNextOccurrence(schedule, now, current.scheduleId) ??
+              (schedule.kind === 'once' ? schedule.runAt : null))
             : null;
         }
         this.#sessions.database
@@ -405,7 +409,7 @@ export class AutomationStore {
         this.#advanceCursor(
           automation,
           automation.cursorAt,
-          nextOccurrence(automation.schedule, now),
+          jitteredNextOccurrence(automation.schedule, now, automation.scheduleId),
         );
         return null;
       }
@@ -609,6 +613,10 @@ export class AutomationStore {
       trigger,
       scheduledAt,
     };
+    const deliveredPrompt =
+      trigger === 'scheduled'
+        ? `[Automation scheduled trigger: schedule ${JSON.stringify(automation.name)}, occurrence ${scheduledAt}, coalesced_missed_occurrences: ${coalescedCount}. This is an Automation input, not a new human instruction.]\n\n${automation.prompt}`
+        : automation.prompt;
     let accepted:
       | {
           thread: { threadId: string };
@@ -627,7 +635,7 @@ export class AutomationStore {
           targetKind: automation.target.kind,
           threadId: automation.target.threadId,
           title: automation.name,
-          prompt: automation.prompt,
+          prompt: deliveredPrompt,
           environmentPolicy: automation.target.environmentPolicy,
           workspaceId: automation.target.workspaceId,
           automation: reference,
@@ -635,7 +643,7 @@ export class AutomationStore {
         targetKind: automation.target.kind,
         threadId: automation.target.threadId,
         title: automation.name,
-        prompt: automation.prompt,
+        prompt: deliveredPrompt,
         environmentPolicy: automation.target.environmentPolicy,
         workspaceId: automation.target.workspaceId,
         automation: reference,
@@ -676,7 +684,7 @@ export class AutomationStore {
       finishedAt: accepted ? null : now,
     });
     if (trigger === 'scheduled') {
-      const next = nextOccurrence(automation.schedule, scheduledAt);
+      const next = jitteredNextOccurrence(automation.schedule, scheduledAt, automation.scheduleId);
       this.#advanceCursor(automation, scheduledAt, next);
     }
     return this.#fire(fireId);

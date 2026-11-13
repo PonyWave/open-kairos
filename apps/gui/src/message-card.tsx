@@ -32,6 +32,7 @@ import { SentUserMessageCard, UserMessageFailure } from './sent-user-message-car
 import { SubagentCard } from './subagent-card.js';
 import { MessageContent } from './thinking-block.js';
 import type { ThinkingExpansionChoices } from './thinking-expansion.js';
+import type { ToolProgressState } from './thread-projection.js';
 import {
   type DelegationReceipt,
   delegationThreadId,
@@ -65,6 +66,7 @@ export interface MessageCardProps {
   topicTitles?: ReadonlyMap<string, string>;
   notifications?: ReadonlyMap<string, ThreadNotification>;
   toolOutcomes?: ReadonlyMap<string, ToolOutcome> | undefined;
+  toolProgress?: ReadonlyMap<string, ToolProgressState> | undefined;
   associatedToolResultIds?: ReadonlySet<string> | undefined;
   toolItems?: ToolItem[] | undefined;
   mergedThinkingBlockIndexes?: ReadonlySet<number> | undefined;
@@ -104,6 +106,7 @@ export function MessageCard({
   topicTitles,
   notifications,
   toolOutcomes,
+  toolProgress,
   associatedToolResultIds,
   toolItems: projectedToolItems,
   mergedThinkingBlockIndexes: projectedMergedThinking,
@@ -293,6 +296,7 @@ export function MessageCard({
           message={message}
           calls={item.calls}
           operations={item.operations}
+          progressByCall={toolProgress}
           outcomes={toolOutcomes ?? new Map<string, ToolOutcome>()}
           streaming={streaming}
           clients={clients}

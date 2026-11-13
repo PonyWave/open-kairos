@@ -27,6 +27,7 @@ enum MessageSource {
   MESSAGE_SOURCE_AUTOMATION = 5;
   MESSAGE_SOURCE_THREAD_NOTIFICATION = 6;
   MESSAGE_SOURCE_CHANNEL = 7;
+  MESSAGE_SOURCE_BACKGROUND_TASK = 8;
 }
 
 enum ChannelId {
@@ -902,11 +903,27 @@ message ThinkingDelta {
   optional string agent_id = 7;
 }
 
+message ToolProgressAuthorization {
+  string server_name = 1;
+  string authorization_url = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message ToolProgress {
+  string thread_id = 1;
+  string run_id = 2;
+  string agent_id = 3;
+  string tool_call_id = 4;
+  string text = 5;
+  ToolProgressAuthorization authorization = 6;
+}
+
 message WatchThreadResponse {
   oneof payload {
     PersistedThreadEvent event = 1;
     TextDelta text_delta = 2;
     ThinkingDelta thinking_delta = 3;
+    ToolProgress tool_progress = 4;
   }
 }
 

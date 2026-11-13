@@ -1,4 +1,5 @@
 import type { Message, ToolCall } from '@kairos/contracts';
+import { useState } from 'react';
 import type { KairosClients } from './client.js';
 import { ToolResultCard } from './conversation.js';
 import { Icon } from './icon.js';
@@ -15,9 +16,12 @@ import {
 export type ToolExpansionChoices = Readonly<Record<string, boolean>>;
 export type ToolExpansionChange = (operationId: string, expanded: boolean) => void;
 
+import type { ToolProgressState } from './thread-projection.js';
+
 type ToolProps = {
   message: Message;
   calls: readonly ToolCall[];
+  progressByCall?: ReadonlyMap<string, ToolProgressState> | undefined;
   operations?: readonly ToolGroupOperation[] | undefined;
   outcomes: ReadonlyMap<string, ToolOutcome>;
   streaming: boolean;
@@ -198,6 +202,45 @@ function toolDescription(call: ToolCall): string {
   return '';
 }
 
+function OAuthProgressCard({
+  authorization,
+}: {
+  authorization: NonNullable<ToolProgressState['authorization']>;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="oauth-progress">
+      <p className="oauth-progress-title">
+        <Icon name="spinner" className="i-sm spinning" />
+        MCP server {authorization.serverName} 需要授权
+      </p>
+      <div className="oauth-progress-link">
+        <a href={authorization.authorizationUrl} target="_blank" rel="noopener noreferrer">
+          {authorization.authorizationUrl}
+        </a>
+        <button
+          type="button"
+          className="device-secondary"
+          aria-label="复制授权链接"
+          aria-live="polite"
+          onClick={() => {
+            void navigator.clipboard.writeText(authorization.authorizationUrl).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            });
+          }}
+        >
+          <Icon name={copied ? 'check' : 'copy'} className="i-sm" />
+          {copied ? '已复制' : '复制'}
+        </button>
+      </div>
+      <p className="oauth-progress-expiry">
+        有效期至 {new Date(authorization.expiresAt).toLocaleString()}
+      </p>
+    </div>
+  );
+}
+
 function ToolOperationLine({
   message,
   messageId = message.messageId,
@@ -207,8 +250,10 @@ function ToolOperationLine({
   clients,
   choices,
   onExpandedChange,
+  progressByCall,
 }: ToolProps & { call: ToolCall; messageId?: string }) {
   const outcome = outcomes.get(call.toolCallId);
+  const progress = progressByCall?.get(call.toolCallId);
   const state = toolOperationState(call, outcome, streaming);
   const operationId = `call:${messageId}:${call.toolCallId}`;
   const icon =
@@ -223,7 +268,7 @@ function ToolOperationLine({
       className={`tool-operation ${state}`}
       data-operation={operationId}
       data-tool-call-id={call.toolCallId}
-      open={choices[operationId] === true}
+      open={choices[operationId] === true || progress?.authorization !== undefined}
       onToggle={(event) => onExpandedChange(operationId, event.currentTarget.open)}
     >
       <summary>
@@ -241,6 +286,10 @@ function ToolOperationLine({
         <pre>{call.argumentsJson}</pre>
         {outcome ? (
           <ToolResultCard message={outcome.message} clients={clients} />
+        ) : progress?.authorization !== undefined ? (
+          <OAuthProgressCard authorization={progress.authorization} />
+        ) : progress !== undefined ? (
+          <p className="tool-progress">{progress.text}</p>
         ) : (
           <p className="tool-waiting">
             {state === 'running' ? '等待工具返回结果' : '工具结果待核对'}

@@ -59,7 +59,8 @@ CREATE TABLE agent_environment_operations (
         env_id TEXT NOT NULL,
         binding_version INTEGER NOT NULL CHECK(binding_version >= 0),
         action TEXT NOT NULL CHECK(action IN (
-          'read', 'read_image', 'write', 'edit', 'bash', 'directory_check', 'env_switch'
+          'read', 'read_image', 'write', 'edit', 'bash', 'directory_check', 'env_switch',
+          'glob', 'grep'
         )),
         result_content TEXT,
         result_status TEXT CHECK(result_status IN ('success', 'error')),
@@ -191,7 +192,7 @@ CREATE TABLE context_messages (
         superseded_by_run_id TEXT,
         source TEXT CHECK(source IN (
           'user', 'thread_call', 'thread_response', 'subagent_response', 'automation',
-          'thread_notification'
+          'thread_notification', 'background_task'
         )),
         delegation_source_thread_id TEXT,
         delegation_source_agent_id TEXT,
@@ -742,10 +743,20 @@ export function migrateDatabase(
 
 export function migrationTableNames(migrations: readonly Migration[]): Set<string> {
   const names = new Set<string>();
-  const pattern = /(?:CREATE TABLE(?: IF NOT EXISTS)?|ALTER TABLE)\s+([A-Za-z_][A-Za-z0-9_]*)/gi;
+  const pattern =
+    /(CREATE TABLE(?: IF NOT EXISTS)?|ALTER TABLE|DROP TABLE(?: IF EXISTS)?)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+RENAME\s+TO\s+([A-Za-z_][A-Za-z0-9_]*))?/gi;
   for (const migration of migrations) {
     for (const match of migration.sql.matchAll(pattern)) {
-      if (match[1]) names.add(match[1]);
+      if (match[1]?.toUpperCase().startsWith('DROP')) {
+        names.delete(match[2] ?? '');
+        continue;
+      }
+      if (match[3] !== undefined) {
+        names.delete(match[2] ?? '');
+        names.add(match[3]);
+        continue;
+      }
+      if (match[2]) names.add(match[2]);
     }
   }
   names.delete('schema_migrations');

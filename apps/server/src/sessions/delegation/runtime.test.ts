@@ -236,14 +236,12 @@ it('exposes main Agent delegation choices and delivery guidance in actual model 
       'Use foreground when the next step needs the result immediately',
     );
     expect(subagent?.description).toContain('Background returns accepted, which is not completion');
-    expect(subagent?.description).toContain('Do not use subagent_status or wait_ms');
+    expect(subagent?.description).toContain('task_output');
 
-    for (const name of ['thread_read', 'subagent_status']) {
+    for (const name of ['thread_read', 'task_output']) {
       const tool = request.tools.find((candidate) => candidate.name === name);
       expect(tool?.description).toContain('an explicit status check');
-      expect(tool?.description).toContain(
-        'Automatic delivery makes routine reads and polling unnecessary',
-      );
+      expect(tool?.description).toContain('Automatic delivery makes routine reads');
       expect(tool?.parameters).toMatchObject({
         properties: {
           wait_ms: {
@@ -543,8 +541,10 @@ it('rejects invalid delegation arguments and does not register Thread tools on t
         'thread_call',
         'thread_read',
         'thread_cancel',
-        'subagent_status',
-        'subagent_cancel',
+        'task_list',
+        'task_output',
+        'task_stop',
+        'task_wait',
       ]),
     );
     expect(mainTools).not.toContain('thread_create');
@@ -581,7 +581,7 @@ it('rejects invalid delegation arguments and does not register Thread tools on t
       ]),
     );
     expect(taskRequest?.request.tools.map((tool) => tool.name)).toEqual(
-      expect.arrayContaining(['subagent_status', 'subagent_cancel']),
+      expect.arrayContaining(['task_list', 'task_output', 'task_stop', 'task_wait']),
     );
     provider.resolve('user:task cannot delegate');
     await waitRequest(provider, 'tool:task-thread-call');
@@ -865,7 +865,7 @@ it('keeps a background Subagent alive after parent cancellation and delivers it 
     provider.register(
       'user:new main input',
       response('', [
-        { id: 'bg-status', name: 'subagent_status', arguments: { tool_call_id: interactionId } },
+        { id: 'bg-status', name: 'task_output', arguments: { task_id: interactionId } },
       ]),
     );
     const current = send(store, main.threadId, 'new main input', 'send-new-main');
@@ -950,8 +950,8 @@ it('cancels only the requested background Subagent and delivers the real termina
       response('', [
         {
           id: 'bg-cancel',
-          name: 'subagent_cancel',
-          arguments: { tool_call_id: accepted.tool_call_id },
+          name: 'task_stop',
+          arguments: { task_id: accepted.tool_call_id },
         },
       ]),
     );

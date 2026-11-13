@@ -335,6 +335,42 @@ CREATE UNIQUE INDEX threads_one_main_per_owner
 CREATE UNIQUE INDEX threads_one_workspace_main_per_workspace
         ON threads(workspace_id) WHERE thread_type = 'workspace_main';
 CREATE INDEX threads_owner_seq ON threads(owner_id, seq);
+CREATE TABLE background_tasks (
+        task_id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
+        agent_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        source_tool_call_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('bash', 'subagent')),
+        description TEXT NOT NULL,
+        operation_id TEXT,
+        status TEXT NOT NULL CHECK(status IN (
+          'running', 'completed', 'failed', 'timed_out', 'killed', 'unknown'
+        )),
+        result_text TEXT,
+        delivery_content TEXT,
+        delivery_run_id TEXT,
+        delivery_status TEXT NOT NULL DEFAULT 'pending'
+          CHECK(delivery_status IN ('pending', 'queued', 'consumed')),
+        context_message_seq INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        ended_at TEXT,
+        consumed_at TEXT
+      );
+CREATE INDEX background_tasks_owner
+        ON background_tasks(thread_id, agent_id, created_at, task_id);
+CREATE INDEX background_tasks_delivery
+        ON background_tasks(delivery_run_id, delivery_status);
+CREATE TABLE mcp_oauth_credentials (
+        credential_key TEXT PRIMARY KEY,
+        access_token TEXT NOT NULL,
+        refresh_token TEXT NOT NULL DEFAULT '',
+        expires_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
     `,
   },
   {

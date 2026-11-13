@@ -430,7 +430,11 @@ describe('environment pairing integration', () => {
       connectionStatus: 'offline',
       capabilityStatus: 'ready',
       directoryStatus: 'ready',
-      grantedCapabilities: [DeviceCapability.DIRECTORY_CHECK, DeviceCapability.DIRECTORY_LIST],
+      grantedCapabilities: [
+        DeviceCapability.DIRECTORY_CHECK,
+        DeviceCapability.DIRECTORY_LIST,
+        DeviceCapability.FILE_SEARCH,
+      ],
       normalizedPwd: realpathSync(workspace),
       ready: false,
     });

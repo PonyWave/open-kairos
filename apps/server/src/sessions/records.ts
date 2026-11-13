@@ -165,6 +165,53 @@ export interface ThreadNotificationRecord extends DelegationKey {
   consumedAt: string | null;
 }
 
+export interface ToolProgressAuthorization {
+  serverName: string;
+  authorizationUrl: string;
+  expiresAt: string;
+}
+
+export interface ToolProgressRecord {
+  threadId: string;
+  agentId: string;
+  runId: string;
+  toolCallId: string;
+  text: string;
+  authorization?: ToolProgressAuthorization;
+}
+
+export type BackgroundTaskKind = 'bash' | 'subagent';
+export type BackgroundTaskStatus =
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'timed_out'
+  | 'killed'
+  | 'unknown';
+export type BackgroundTaskDeliveryStatus = 'pending' | 'queued' | 'consumed';
+
+export interface BackgroundTaskRecord {
+  taskId: string;
+  ownerId: string;
+  threadId: string;
+  agentId: string;
+  runId: string;
+  sourceToolCallId: string;
+  kind: BackgroundTaskKind;
+  description: string;
+  operationId: string | null;
+  status: BackgroundTaskStatus;
+  resultText: string | null;
+  deliveryContent: string | null;
+  deliveryRunId: string | null;
+  deliveryStatus: BackgroundTaskDeliveryStatus;
+  contextMessageSeq: number | null;
+  createdAt: string;
+  updatedAt: string;
+  endedAt: string | null;
+  consumedAt: string | null;
+}
+
 export interface MessageRevisionRecord {
   revisionId: string;
   messageId: string;

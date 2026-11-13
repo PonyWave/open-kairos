@@ -157,7 +157,8 @@ export type MessageSource =
   | 'subagent_response'
   | 'automation'
   | 'thread_notification'
-  | 'channel';
+  | 'channel'
+  | 'background_task';
 
 export type ChannelId = 'wechat' | 'feishu';
 export type ChannelReferenceKind = 'inbound' | 'delivery_failure';

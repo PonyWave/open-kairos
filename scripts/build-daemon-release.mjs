@@ -105,6 +105,61 @@ async function download(url, destination) {
   await pipeline(Readable.fromWeb(response.body), file);
 }
 
+const RG_VERSION = '15.0.0';
+const RG_ARCHIVE_SHA256 = {
+  'ripgrep-15.0.0-x86_64-unknown-linux-musl.tar.gz':
+    '253ad0fd5fef0d64cba56c70dccdacc1916d4ed70ad057cc525fcdb0c3bbd2a7',
+  'ripgrep-15.0.0-x86_64-apple-darwin.tar.gz':
+    '44128c733d127ddbda461e01225a68b5f9997cfe7635242a797f645ca674a71a',
+  'ripgrep-15.0.0-aarch64-apple-darwin.tar.gz':
+    '98bb2e61e7277ba0ea72d2ae2592497fd8d2940934a16b122448d302a6637e3b',
+};
+
+function ripgrepArchiveName() {
+  const target =
+    NODE_PLATFORM === 'linux'
+      ? 'x86_64-unknown-linux-musl'
+      : NODE_ARCH === 'arm64'
+        ? 'aarch64-apple-darwin'
+        : 'x86_64-apple-darwin';
+  return `ripgrep-${RG_VERSION}-${target}.tar.gz`;
+}
+
+async function installRipgrep(staging, temporary) {
+  const archiveName = ripgrepArchiveName();
+  const archive = join(temporary, archiveName);
+  await download(
+    `https://github.com/BurntSushi/ripgrep/releases/download/${RG_VERSION}/${archiveName}`,
+    archive,
+  );
+  const expected = RG_ARCHIVE_SHA256[archiveName];
+  if (expected === undefined || sha256(archive) !== expected) {
+    fail('ripgrep archive checksum verification failed.');
+  }
+  const extracted = join(temporary, 'ripgrep-extracted');
+  mkdirSync(extracted);
+  run('tar', ['-xzf', archive, '-C', extracted]);
+  const root = join(extracted, archiveName.replace(/\.tar\.gz$/, ''));
+  mkdirSync(join(staging, 'bin'), { recursive: true });
+  cpSync(join(root, 'rg'), join(staging, 'bin', 'rg'));
+  chmodSync(join(staging, 'bin', 'rg'), 0o755);
+  const license = join(root, 'LICENSE-MIT');
+  if (existsSync(license)) {
+    mkdirSync(join(staging, 'NOTICE'), { recursive: true });
+    cpSync(license, join(staging, 'NOTICE', 'ripgrep-LICENSE-MIT'));
+  }
+  const executable = readFileSync(join(staging, 'bin', 'rg'));
+  const valid =
+    executable.length >= 20 &&
+    (NODE_PLATFORM === 'linux'
+      ? executable.subarray(0, 4).toString('hex') === '7f454c46' &&
+        executable.readUInt16LE(18) === 62
+      : executable.subarray(0, 4).toString('hex') === 'cffaedfe' &&
+        executable.readUInt32LE(4) === (NODE_ARCH === 'arm64' ? 0x0100000c : 0x01000007));
+  if (!valid)
+    fail('Packaged ripgrep executable does not match the target platform and architecture.');
+}
+
 async function installNodeRuntime(staging, temporary, cached = {}) {
   const archive = cached.archive ?? join(temporary, NODE_ARCHIVE);
   const sums = cached.sums ?? join(temporary, 'NODE-SHA256SUMS256.txt');
@@ -331,6 +386,7 @@ async function main() {
     const staging = join(temporary, 'staging');
     mkdirSync(staging);
     installApplication(staging, temporary);
+    await installRipgrep(staging, temporary);
     const nodeHash = await installNodeRuntime(staging, temporary, {
       ...(options.nodeArchive === undefined ? {} : { archive: options.nodeArchive }),
       ...(options.nodeSums === undefined ? {} : { sums: options.nodeSums }),

@@ -44,6 +44,7 @@ export class ThreadSynchronizer {
         snapshot: null,
         throughSeq: 0n,
         transientResponses: [],
+        toolProgress: new Map(),
         bashOperations: [],
         hardCuts: [],
         invalidatedRecaps: {},

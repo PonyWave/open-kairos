@@ -126,6 +126,16 @@ class DeferredSyncOperations implements EnvironmentOperationGateway {
     return operation;
   }
 
+  readEnvironmentOperationSpill(): { data: Uint8Array; truncated: boolean } | undefined {
+    return undefined;
+  }
+
+  bashOutputLog(
+    _operationId: string,
+  ): { path: string; sizeBytes: bigint; truncated: boolean } | undefined {
+    return undefined;
+  }
+
   readEnvironmentOperationOutput() {
     return { data: new Uint8Array(), nextOffset: 0n, outputComplete: true, outputGap: false };
   }

@@ -347,6 +347,48 @@ export function nextOccurrence(schedule: AutomationSchedule, after: string): str
   return next === null ? null : new Date(next).toISOString();
 }
 
+const JITTER_RECURRING_MAX_FRACTION = 0.1;
+const JITTER_RECURRING_MAX_MS = 15 * 60_000;
+const JITTER_ONE_SHOT_MAX_MS = 90_000;
+const MS_PER_MINUTE = 60_000;
+const MS_PER_DAY = 24 * 60 * MS_PER_MINUTE;
+
+export function jitterFraction(id: string): number {
+  let hash = 5381;
+  for (let index = 0; index < id.length; index += 1) {
+    hash = ((hash << 5) + hash + id.charCodeAt(index)) | 0;
+  }
+  return (hash >>> 0) / 0x1_0000_0000;
+}
+
+// Deterministic per-schedule offset so simultaneous schedules spread out across
+// restarts: recurring fires shift later by up to min(period * 10%, 15 min), and
+// one-shot fires landing exactly on the hour or half hour shift earlier by up to 90s.
+export function jitteredNextOccurrence(
+  schedule: AutomationSchedule,
+  after: string,
+  id: string,
+): string | null {
+  const ideal = nextOccurrence(schedule, after);
+  if (ideal === null) return null;
+  const normalized = normalizeSchedule(schedule);
+  const afterMs = Date.parse(after);
+  const idealMs = Date.parse(ideal);
+  const fraction = jitterFraction(id);
+  if (normalized.kind === 'once') {
+    if (idealMs % MS_PER_MINUTE !== 0) return ideal;
+    const halfHour = idealMs % (30 * MS_PER_MINUTE);
+    if (halfHour !== 0) return ideal;
+    const shifted = idealMs - Math.round(JITTER_ONE_SHOT_MAX_MS * fraction);
+    return shifted > afterMs ? new Date(shifted).toISOString() : ideal;
+  }
+  const following = nextCron(parseCron(normalized.expression), normalized.timeZone, idealMs);
+  const period = following !== null && following > idealMs ? following - idealMs : MS_PER_DAY;
+  const cap = Math.min(period * JITTER_RECURRING_MAX_FRACTION, JITTER_RECURRING_MAX_MS);
+  if (!(cap > 0)) return ideal;
+  return new Date(idealMs + Math.round(cap * fraction)).toISOString();
+}
+
 export function previousOccurrence(schedule: AutomationSchedule, before: string): string | null {
   const normalized = normalizeSchedule(schedule);
   const beforeMs = Date.parse(before);

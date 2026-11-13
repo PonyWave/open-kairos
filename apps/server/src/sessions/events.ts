@@ -1,4 +1,4 @@
-import type { StreamDeltaRecord, ThreadEventRecord } from './records.js';
+import type { StreamDeltaRecord, ThreadEventRecord, ToolProgressRecord } from './records.js';
 import type { SessionStore } from './store.js';
 
 export class EventCursorError extends Error {
@@ -8,7 +8,7 @@ export class EventCursorError extends Error {
   }
 }
 
-type WatchedRecord = ThreadEventRecord | StreamDeltaRecord;
+type WatchedRecord = ThreadEventRecord | StreamDeltaRecord | ToolProgressRecord;
 type QueueItem = { value: WatchedRecord } | { error: unknown };
 
 class BoundedQueue {

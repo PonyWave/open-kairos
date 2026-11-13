@@ -6,6 +6,7 @@ import { controlledEnvironmentDependencies } from '../integration/environment-fi
 import type { InputRecord, RunStatus } from '../sessions/records.js';
 import { SessionStore } from '../sessions/store.js';
 import { openDatabase } from '../storage/database.js';
+import { jitteredNextOccurrence } from './cron.js';
 import { AutomationService } from './service.js';
 import type { AutomationFireRecord, AutomationTarget } from './types.js';
 
@@ -216,7 +217,13 @@ describe('Automation CRUD and targets', () => {
         enabled: true,
       });
       expect(enabled.cursorAt).toBe('2026-01-01T00:05:00.000Z');
-      expect(enabled.nextFireAt).toBe('2026-01-01T00:06:00.000Z');
+      expect(enabled.nextFireAt).toBe(
+        jitteredNextOccurrence(
+          { kind: 'cron', expression: '* * * * *', timeZone: 'Asia/Shanghai' },
+          '2026-01-01T00:05:00.000Z',
+          created.scheduleId,
+        ),
+      );
       const changed = current.service.update({
         ownerId,
         clientActionId: 'change-cron',
@@ -224,7 +231,13 @@ describe('Automation CRUD and targets', () => {
         expectedVersion: 3n,
         schedule: { kind: 'cron', expression: '0 * * * *', timeZone: 'Asia/Shanghai' },
       });
-      expect(changed.nextFireAt).toBe('2026-01-01T01:00:00.000Z');
+      expect(changed.nextFireAt).toBe(
+        jitteredNextOccurrence(
+          { kind: 'cron', expression: '0 * * * *', timeZone: 'Asia/Shanghai' },
+          '2026-01-01T00:05:00.000Z',
+          created.scheduleId,
+        ),
+      );
       const deleted = current.service.delete({
         ownerId,
         clientActionId: 'delete',
@@ -447,7 +460,13 @@ describe('Automation enablement and timer recovery', () => {
         enabled: true,
       });
       expect(enabled.cursorAt).toBeNull();
-      expect(enabled.nextFireAt).toBe('2026-01-01T01:00:00.000Z');
+      expect(enabled.nextFireAt).toBe(
+        jitteredNextOccurrence(
+          { kind: 'once', runAt: '2026-01-01T01:00:00.000Z', timeZone: 'Asia/Shanghai' },
+          '2026-01-01T00:00:00.000Z',
+          future.scheduleId,
+        ),
+      );
       current.advance(61 * 60_000);
       await current.service.runDue();
       expect(current.service.store.listFires(ownerId, future.scheduleId, 0n, 10)).toHaveLength(1);

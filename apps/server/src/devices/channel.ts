@@ -96,6 +96,9 @@ function environmentOperationCapability(action: EnvironmentOperationAction): Dev
       return DeviceCapability.DIRECTORY_CHECK;
     case 'directoryList':
       return DeviceCapability.DIRECTORY_LIST;
+    case 'glob':
+    case 'grep':
+      return DeviceCapability.FILE_SEARCH;
   }
 }
 
@@ -227,6 +230,14 @@ export class DeviceChannel {
   private readonly offlineAfterMilliseconds: number;
   private readonly now: () => Date;
   private readonly environmentConnections = new Map<string, ServerPeer>();
+  private readonly mcpWaiters = new Map<
+    string,
+    {
+      resolve: (value: unknown) => void;
+      reject: (error: unknown) => void;
+      timeout: NodeJS.Timeout;
+    }
+  >();
   private readonly controlConnections = new Set<ServerPeer>();
   private controlSweepTimer: NodeJS.Timeout | undefined;
 
@@ -482,6 +493,247 @@ export class DeviceChannel {
     return this.environmentStores().operations.getForTenant(tenantId, operationId);
   }
 
+  private mcpPeer(envId: string): ServerPeer {
+    for (const peer of this.environmentConnections.values()) {
+      const authentication = peer.authentication;
+      if (authentication?.environment?.envId === envId) return peer;
+    }
+    throw new DeviceFailure(
+      DeviceErrorCode.ENVIRONMENT_OFFLINE,
+      'The MCP target environment is offline.',
+    );
+  }
+
+  async openMcpSession(input: {
+    envId: string;
+    sessionId: string;
+    serverName: string;
+    transport: string;
+    command?: string;
+    args?: string[];
+    env?: Record<string, string>;
+    url?: string;
+    headers?: Record<string, string>;
+  }): Promise<{ error: string; needsAuth: boolean }> {
+    const peer = this.mcpPeer(input.envId);
+    const result = new Promise<{ error: string; needsAuth: boolean }>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.mcpOpenWaiters.delete(input.sessionId);
+        reject(
+          new DeviceFailure(DeviceErrorCode.OPERATION_UNKNOWN, 'The MCP session open timed out.'),
+        );
+      }, 40_000);
+      this.mcpOpenWaiters.set(input.sessionId, { resolve, timeout });
+    });
+    await peer
+      .send({
+        payload: {
+          case: 'mcpSessionOpen',
+          value: {
+            sessionId: input.sessionId,
+            serverName: input.serverName,
+            transport: input.transport,
+            command: input.command ?? '',
+            args: input.args ?? [],
+            env: input.env ?? {},
+            url: input.url ?? '',
+            headers: input.headers ?? {},
+          },
+        },
+      })
+      .catch((error: unknown) => {
+        const waiter = this.mcpOpenWaiters.get(input.sessionId);
+        if (waiter !== undefined) {
+          this.mcpOpenWaiters.delete(input.sessionId);
+          clearTimeout(waiter.timeout);
+        }
+        throw error instanceof Error ? error : new Error('The MCP session open could not be sent.');
+      });
+    return result;
+  }
+
+  mcpAuthBegin(
+    input: {
+      envId: string;
+      sessionId: string;
+      requestId: string;
+      serverName: string;
+      url: string;
+      headers: Record<string, string>;
+      redirectUri: string;
+      accessToken?: string;
+      refreshToken?: string;
+    },
+    hooks: { onUrl: (url: string) => void },
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresInSeconds: bigint;
+    error: string;
+  }> {
+    const peer = this.mcpPeer(input.envId);
+    const requestId = input.requestId;
+    const urlWaiter = new Promise<void>((resolve) => {
+      this.mcpAuthUrlWaiters.set(requestId, { onUrl: hooks.onUrl, resolve });
+    });
+    const resultPromise = new Promise<{
+      accessToken: string;
+      refreshToken: string;
+      expiresInSeconds: bigint;
+      error: string;
+    }>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.mcpAuthWaiters.delete(requestId);
+        this.mcpAuthUrlWaiters.delete(requestId);
+        reject(
+          new DeviceFailure(DeviceErrorCode.OPERATION_UNKNOWN, 'The MCP authorization timed out.'),
+        );
+      }, 16 * 60_000);
+      this.mcpAuthWaiters.set(requestId, { resolve, reject, timeout });
+    });
+    void urlWaiter;
+    void peer
+      .send({
+        payload: {
+          case: 'mcpAuthBegin',
+          value: {
+            sessionId: input.sessionId,
+            requestId,
+            serverName: input.serverName,
+            transport: 'http',
+            url: input.url,
+            headers: input.headers,
+            redirectUri: input.redirectUri,
+            accessToken: input.accessToken ?? '',
+            refreshToken: input.refreshToken ?? '',
+          },
+        },
+      })
+      .catch((error: unknown) => {
+        const waiter = this.mcpAuthWaiters.get(requestId);
+        if (waiter !== undefined) {
+          this.mcpAuthWaiters.delete(requestId);
+          clearTimeout(waiter.timeout);
+          waiter.reject(
+            error instanceof Error ? error : new Error('The MCP authorization could not be sent.'),
+          );
+        }
+      });
+    return resultPromise;
+  }
+
+  submitMcpAuthCode(input: {
+    envId: string;
+    sessionId: string;
+    requestId: string;
+    code: string;
+  }): void {
+    const peer = this.mcpPeer(input.envId);
+    void peer.send({
+      payload: {
+        case: 'mcpAuthCode',
+        value: { sessionId: input.sessionId, requestId: input.requestId, code: input.code },
+      },
+    });
+  }
+
+  private readonly mcpOpenWaiters = new Map<
+    string,
+    { resolve: (value: { error: string; needsAuth: boolean }) => void; timeout: NodeJS.Timeout }
+  >();
+  private readonly mcpAuthUrlWaiters = new Map<
+    string,
+    { onUrl: (url: string) => void; resolve: () => void }
+  >();
+  private readonly mcpAuthWaiters = new Map<
+    string,
+    {
+      resolve: (value: {
+        accessToken: string;
+        refreshToken: string;
+        expiresInSeconds: bigint;
+        error: string;
+      }) => void;
+      reject: (error: unknown) => void;
+      timeout: NodeJS.Timeout;
+    }
+  >();
+
+  async closeMcpSession(input: { envId: string; sessionId: string }): Promise<void> {
+    const peer = this.mcpPeer(input.envId);
+    await peer.send({
+      payload: { case: 'mcpSessionClose', value: { sessionId: input.sessionId } },
+    });
+  }
+
+  private mcpRequest<T>(
+    envId: string,
+    build: (requestId: string) => Parameters<ServerPeer['send']>[0],
+    timeoutMs: number,
+  ): Promise<T> {
+    const peer = this.mcpPeer(envId);
+    const requestId = randomUUID();
+    return new Promise<T>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.mcpWaiters.delete(requestId);
+        reject(new DeviceFailure(DeviceErrorCode.OPERATION_UNKNOWN, 'The MCP request timed out.'));
+      }, timeoutMs);
+      this.mcpWaiters.set(requestId, {
+        resolve: resolve as (value: unknown) => void,
+        reject,
+        timeout,
+      });
+      peer.send(build(requestId)).catch((error: unknown) => {
+        this.mcpWaiters.delete(requestId);
+        clearTimeout(timeout);
+        reject(error instanceof Error ? error : new Error('The MCP request could not be sent.'));
+      });
+    });
+  }
+
+  mcpListTools(input: { envId: string; sessionId: string }): Promise<{
+    tools: Array<{ name: string; description: string; inputSchemaJson: string }>;
+    error: string;
+  }> {
+    return this.mcpRequest(
+      input.envId,
+      (requestId) => ({
+        payload: { case: 'mcpListTools', value: { sessionId: input.sessionId, requestId } },
+      }),
+      35_000,
+    );
+  }
+
+  mcpCallTool(input: {
+    envId: string;
+    sessionId: string;
+    toolName: string;
+    argumentsJson: string;
+  }): Promise<{ contentJson: string; isError: boolean; error: string }> {
+    return this.mcpRequest(
+      input.envId,
+      (requestId) => ({
+        payload: {
+          case: 'mcpCallTool',
+          value: {
+            sessionId: input.sessionId,
+            requestId,
+            toolName: input.toolName,
+            argumentsJson: input.argumentsJson,
+          },
+        },
+      }),
+      150_000,
+    );
+  }
+
+  bashOutputLog(
+    operationId: string,
+  ): { path: string; sizeBytes: bigint; truncated: boolean } | undefined {
+    const { operations } = this.environmentStores();
+    return operations.bashOutputLog(operationId);
+  }
+
   readEnvironmentOperationOutput(input: {
     tenantId: string;
     operationId: string;
@@ -664,6 +916,65 @@ export class DeviceChannel {
       case 'environmentMaintenanceQuery':
         await this.reportEnvironmentMaintenance(peer, message.payload.value);
         return;
+      case 'mcpListToolsResult': {
+        const value = message.payload.value;
+        const waiter = this.mcpWaiters.get(value.requestId);
+        if (waiter !== undefined) {
+          this.mcpWaiters.delete(value.requestId);
+          clearTimeout(waiter.timeout);
+          waiter.resolve({ tools: value.tools, error: value.error });
+        }
+        return;
+      }
+      case 'mcpSessionOpenResult': {
+        const value = message.payload.value;
+        const waiter = this.mcpOpenWaiters.get(value.sessionId);
+        if (waiter !== undefined) {
+          this.mcpOpenWaiters.delete(value.sessionId);
+          clearTimeout(waiter.timeout);
+          waiter.resolve({ error: value.error, needsAuth: value.needsAuth });
+        }
+        return;
+      }
+      case 'mcpAuthUrl': {
+        const value = message.payload.value;
+        const waiter = this.mcpAuthUrlWaiters.get(value.requestId);
+        if (waiter !== undefined) {
+          this.mcpAuthUrlWaiters.delete(value.requestId);
+          waiter.resolve();
+          if (value.error.length === 0) waiter.onUrl(value.authorizationUrl);
+        }
+        return;
+      }
+      case 'mcpAuthResult': {
+        const value = message.payload.value;
+        const waiter = this.mcpAuthWaiters.get(value.requestId);
+        if (waiter !== undefined) {
+          this.mcpAuthWaiters.delete(value.requestId);
+          clearTimeout(waiter.timeout);
+          waiter.resolve({
+            accessToken: value.accessToken,
+            refreshToken: value.refreshToken,
+            expiresInSeconds: value.expiresInSeconds,
+            error: value.error,
+          });
+        }
+        return;
+      }
+      case 'mcpCallToolResult': {
+        const value = message.payload.value;
+        const waiter = this.mcpWaiters.get(value.requestId);
+        if (waiter !== undefined) {
+          this.mcpWaiters.delete(value.requestId);
+          clearTimeout(waiter.timeout);
+          waiter.resolve({
+            contentJson: value.contentJson,
+            isError: value.isError,
+            error: value.error,
+          });
+        }
+        return;
+      }
       case 'error': {
         const value = message.payload.value;
         if (!isDeviceErrorCode(value.code) || !isDeviceErrorAction(value.action)) {

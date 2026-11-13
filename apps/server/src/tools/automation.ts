@@ -154,7 +154,7 @@ export function createAutomationTools(
     {
       name: 'automation_create',
       description:
-        'Create a persistent Automation from the main conversation. Use a five-field cron with an explicit IANA time_zone, or once with an offset-bearing run_at. Targets are main, existing_thread, new_task or new_automation_only. New Threads use the main environment by default; allowed_env narrows environment access. automation_only Threads are persistent but hidden from ordinary Thread lists and readable through Automation history. Scheduled triggers and run_now execute the configured prompt as Automation input, not as a new human instruction.',
+        'Create a persistent Automation from the main conversation. Use a five-field cron with an explicit IANA time_zone, or once with an offset-bearing run_at. Stored fire times carry a deterministic per-schedule jitter: recurring fires shift later by up to min(period * 10%, 15 minutes), and once fires landing exactly on the hour or half hour shift earlier by up to 90 seconds; automation_read shows the actual next fire time. Missed occurrences while the Server is down coalesce into one immediate fire on recovery, and the delivered input notes the occurrence time and coalesced count. Targets are main, existing_thread, new_task or new_automation_only. New Threads use the main environment by default; allowed_env narrows environment access. automation_only Threads are persistent but hidden from ordinary Thread lists and readable through Automation history. Scheduled triggers and run_now execute the configured prompt as Automation input, not as a new human instruction.',
       parameters: {
         type: 'object',
         additionalProperties: false,

@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { fastifyConnectPlugin } from '@connectrpc/connect-fastify';
@@ -30,6 +31,7 @@ import {
   MainEnvironmentUseGateway,
 } from './devices/main-environment.js';
 import { registerDeviceWebSocket } from './devices/websocket.js';
+import { McpManager } from './mcp/manager.js';
 import {
   ensureMemoryDreamAutomation,
   type MemoryConfiguration,
@@ -120,7 +122,9 @@ export function createServer(
     ...(options.now ? { now: options.now } : {}),
     mainEnvironment,
   });
-  const environmentOperations = new EnvironmentOperationStore(database, options.now);
+  const environmentOperations = new EnvironmentOperationStore(database, options.now, {
+    bashLogDirectory: join(mainEnvironment.workspace, '.kairos', 'logs'),
+  });
   const deviceChannel =
     options.deviceChannel ??
     new DeviceChannel({
@@ -158,11 +162,25 @@ export function createServer(
     deliver: (input, runId) => coordinator.deliver(input, runId),
     onError: (error) => server.log.error(error),
   });
+  const mcp =
+    serverConfig.mcp.length > 0
+      ? new McpManager({
+          configs: serverConfig.mcp,
+          channel: deviceChannel,
+          resolveMainEnvId: (ownerId: string) =>
+            store.agentEnvironments.mainEnvironmentIdFor(ownerId),
+          credentials: store,
+          publicOrigin:
+            serverConfig.auth.allowedOrigin ?? `http://${serverConfig.host}:${serverConfig.port}`,
+          onError: (error: unknown) => server.log.error(error),
+        })
+      : undefined;
   coordinator = new RunCoordinator({
     settings,
     store,
     automations,
     channels: { store: channelManager.store },
+    ...(mcp ? { mcp } : {}),
     ...(options.model ? { model: options.model } : {}),
     environments,
     environmentOperations: options.environmentOperations ?? deviceChannel,
@@ -204,6 +222,21 @@ export function createServer(
   if (!guiServed) {
     server.log.warn('GUI build output is missing; run pnpm build to serve the local web page.');
   }
+  server.get('/mcp/oauth/callback', async (request, reply) => {
+    const query = request.query as Record<string, unknown>;
+    const state = typeof query.state === 'string' ? query.state : '';
+    const code = typeof query.code === 'string' ? query.code : '';
+    const error = typeof query.error === 'string' ? query.error : '';
+    const handled =
+      mcp !== undefined && state.length > 0 && code.length > 0 && error.length === 0
+        ? mcp.handleOAuthCallback(state, code)
+        : false;
+    reply.type('text/html');
+    if (handled) {
+      return '<!doctype html><html><head><meta charset="utf-8"><title>Authorized</title></head><body style="font-family:system-ui,sans-serif;padding:2rem;"><h1>Sign-in complete</h1><p>You can close this tab and return to the conversation.</p></body></html>';
+    }
+    return '<!doctype html><html><head><meta charset="utf-8"><title>OAuth error</title></head><body style="font-family:system-ui,sans-serif;padding:2rem;"><h1>Sign-in failed</h1><p>The authorization could not be matched or the provider reported an error. Return to the conversation for details.</p></body></html>';
+  });
   const deviceInstaller = new DeviceInstaller(
     options.deviceReleaseDirectory ?? serverConfig.daemonReleaseDirectory,
     () =>
@@ -263,6 +296,7 @@ export function createServer(
   const startup = Promise.resolve().then(() => {
     store.recoverInterrupted();
     coordinator.recoverManualCompactions();
+    coordinator.recoverBackgroundTasks();
     coordinator.resumePeriodicRecaps();
     coordinator.resumeDeliveries();
     channelManager.start();
@@ -287,6 +321,7 @@ export function createServer(
     channelManager.stop();
     await automations.close();
     await coordinator.close();
+    if (mcp) await mcp.close();
     server.server.closeIdleConnections();
   });
   server.addHook('onClose', async () => {

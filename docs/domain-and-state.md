@@ -55,7 +55,7 @@ v2 迁移（`context_recap` 与 `server_runtime`）为 IM 渠道引入：`contex
 
 ## 5. Automation
 
-`automations` 表包含 `workspace_id TEXT NULL` 列。fire 创建新 Thread 时写入对应工作空间，为空时落入临时对话列表。cron 计算、游标、fire 去重与恢复规则沿用现有设计。
+`automations` 表包含 `workspace_id TEXT NULL` 列。fire 创建新 Thread 时写入对应工作空间，为空时落入临时对话列表。cron 计算、游标、fire 去重与恢复规则沿用现有设计；存储的触发时间带确定性 jitter，停机错过的触发恢复后合并为一次立即触发并注明合并次数，规则见[整体架构](architecture.md#5-召回与-automation)。
 
 内置 `记忆整理 (dream)` Automation 在启动时按固定 client action 幂等播种，目标为 `new_automation_only`，每日 cron 触发；用户禁用或删除后不重建，重新启用走 GUI 的 Automation 开关。`KAIROS_MEMORY_DREAM_ENABLED=false` 时不播种。
 
@@ -74,7 +74,11 @@ v2 迁移（`context_recap` 与 `server_runtime`）为 IM 渠道引入：`contex
 
 ## 7. 设备与 Operation
 
-主环境在首次启动写入环境记录并完成设备绑定，不可删除、不可撤销。远程设备配对、`environment_operations` 意图与恢复、输出与日志规则沿用现有设计。
+主环境在首次启动写入环境记录并完成设备绑定，不可删除、不可撤销。远程设备配对、`environment_operations` 意图与恢复规则沿用现有设计。bash 输出分块只保留 16 KiB 头部（与模型可见预览一致）；完整输出由 Server 流式写入主机主环境工作目录的 `.kairos/logs/`（保留 7 天，单文件上限 64 MiB），与执行环境无关；`environment_operations` 增加 `search_action`、`pattern`、`include_glob`、`grep_mode`、`case_insensitive`、`line_numbers`、`search_offset`、`search_limit` 列承载 glob/grep 意图。
+
+`background_tasks` 表登记后台任务（bash 与 Subagent 两类）：来源 Thread、Run 与工具调用、终态结果、投递内容与投递状态（`pending`/`queued`/`consumed`）。终态结果与待交付记录先持久化，再绑定回复 Thread 的持久根 Run 直接注入模型输入；注入消息的 Context 来源为 `background_task`。
+
+`mcp_oauth_credentials` 表保存 MCP OAuth 令牌（`credential_key` 为主键，访问令牌、刷新令牌与到期时间），到期前自动刷新。
 
 ## 8. Memory Wiki 与 dream
 
