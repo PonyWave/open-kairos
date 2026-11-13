@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { openDatabase } from '../storage/database.js';
 import { ContextStore } from './context-store.js';
+import { stripMessageMeta } from './model-input.js';
 import type { PrepareModelInput } from './model-input-service.js';
 import { ModelInputService } from './model-input-service.js';
-import { stripMessageMeta } from './model-input.js';
 
 function input(overrides: Partial<PrepareModelInput> = {}): PrepareModelInput {
   return {

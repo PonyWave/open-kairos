@@ -13,6 +13,7 @@ import {
   toBinary,
 } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
+import { stripMessageMeta } from '../context/model-input.js';
 import { SessionStore } from '../sessions/store.js';
 import { systemReminderContent } from '../sessions/system-reminder.js';
 import {
@@ -495,6 +496,7 @@ it('REQ-05 isolates identical Subagent call IDs across GUI, Provider, SQLite and
     const taskRootContext = await readContext(fixture, taskId);
     expect(toolResult(mainRootContext, 'shared-subagent-call')).toEqual({
       tool_call_id: 'shared-subagent-call',
+      agent_id: expect.any(String),
       status: 'accepted',
       automatic_delivery: true,
       next_step: expect.stringMatching(
@@ -503,6 +505,7 @@ it('REQ-05 isolates identical Subagent call IDs across GUI, Provider, SQLite and
     });
     expect(toolResult(taskRootContext, 'shared-subagent-call')).toEqual({
       tool_call_id: 'shared-subagent-call',
+      agent_id: expect.any(String),
       status: 'accepted',
       automatic_delivery: true,
       next_step: expect.stringMatching(
@@ -532,7 +535,7 @@ it('REQ-05 isolates identical Subagent call IDs across GUI, Provider, SQLite and
     );
     expect(deliveryRequests).toHaveLength(1);
     const deliveryReminder = systemReminderContent(
-      deliveryRequests[0]?.request.messages.at(-1)?.content ?? '',
+      stripMessageMeta(deliveryRequests[0]?.request.messages.at(-1)?.content ?? ''),
     );
     const providerDelivery = JSON.parse(
       deliveryReminder === undefined
@@ -685,7 +688,7 @@ it('REQ-05 persists busy direct injection before ordinary follow_up without a qu
         last.content.includes('"tool_call_id":"busy-call"') &&
         currentFixture
       ) {
-        const deliveryText = systemReminderContent(last.content);
+        const deliveryText = systemReminderContent(stripMessageMeta(last.content));
         if (deliveryText === undefined) {
           throw new Error('Delegation delivery is not wrapped as a system reminder.');
         }
@@ -808,10 +811,12 @@ it('REQ-05 persists busy direct injection before ordinary follow_up without a qu
     const deliveryRequest = provider.requests[deliveryIndex];
     expect(JSON.stringify(deliveryRequest?.request.messages)).not.toContain('ordinary follow-up');
     const ordinaryRequest = provider.requests[ordinaryIndex];
-    expect(ordinaryRequest?.request.messages.at(-1)?.content).toBe('ordinary follow-up');
-    expect(ordinaryRequest?.request.messages.map((message) => message.content)).toContain(
-      delivery(fixture, mainId, 'busy-call')?.content,
+    expect(stripMessageMeta(ordinaryRequest?.request.messages.at(-1)?.content ?? '')).toBe(
+      'ordinary follow-up',
     );
+    expect(
+      ordinaryRequest?.request.messages.map((message) => stripMessageMeta(message.content)),
+    ).toContain(delivery(fixture, mainId, 'busy-call')?.content);
 
     expect(observations).toHaveLength(1);
     expect(observations[0]).toMatchObject({

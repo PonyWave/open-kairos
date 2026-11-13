@@ -73,7 +73,12 @@ it('returns a final message only for its persisted main root intent', async () =
         signal: new AbortController().signal,
       }),
     ).resolves.toEqual({
-      content: JSON.stringify({ status: 'sent', content: call.arguments.content, end_turn: true }),
+      content: JSON.stringify({
+        status: 'sent',
+        content: call.arguments.content,
+        message_seq: 1,
+        end_turn: true,
+      }),
       status: 'success',
       endTurn: true,
     });
@@ -224,7 +229,12 @@ it('allows a workspace main root Agent to send its reply', async () => {
         signal: new AbortController().signal,
       }),
     ).resolves.toEqual({
-      content: JSON.stringify({ status: 'sent', content: '整理完成。', end_turn: true }),
+      content: JSON.stringify({
+        status: 'sent',
+        content: '整理完成。',
+        message_seq: 1,
+        end_turn: true,
+      }),
       status: 'success',
       endTurn: true,
     });

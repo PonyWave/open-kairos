@@ -12,6 +12,7 @@ import {
 } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { stripMessageMeta } from '../context/model-input.js';
 import { OpenAICompatibleProvider } from '../providers/openai-compatible.js';
 import {
   ControlledSseServer,
@@ -323,7 +324,7 @@ it('streams controlled Thinking through Provider, AgentLoop, SQLite and Connect 
     const previousAssistant = sse.requests[1]?.messages.find(
       (message) => message.role === 'assistant',
     );
-    expect(previousAssistant?.content).toBe('Before tool.');
+    expect(stripMessageMeta(String(previousAssistant?.content))).toBe('Before tool.');
     expect(JSON.stringify(sse.requests[1]?.messages)).not.toContain('Plan');
     expect(JSON.stringify(sse.requests[1]?.messages)).not.toContain('Verify.');
 

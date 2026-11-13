@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ModelEvent, ModelProvider, ModelRequest, ToolCall } from '@kairos/agent-core';
 import { expect, it, vi } from 'vitest';
+import { stripMessageMeta } from '../context/model-input.js';
 import {
   controlledEnvironmentDependencies,
   seedTestTenant,
@@ -218,14 +219,18 @@ it('pins an active Run while another Thread reloads and reloads its own default 
     await waitRequests(provider, 2);
     expect(instructions(provider.requests[1])).toContain('instructions old');
     expect(instructions(provider.requests[1])).not.toContain('instructions new');
-    expect(provider.requests[1]?.messages.some((message) => message.content === 'steer')).toBe(
-      true,
-    );
+    expect(
+      provider.requests[1]?.messages.some(
+        (message) => stripMessageMeta(String(message.content)) === 'steer',
+      ),
+    ).toBe(true);
 
     provider.gates[1]?.resolve();
     await waitRequests(provider, 3);
     expect(instructions(provider.requests[2])).toContain('instructions old');
-    expect(provider.requests[2]?.messages.at(-1)?.content).toBe('follow up');
+    expect(stripMessageMeta(String(provider.requests[2]?.messages.at(-1)?.content))).toBe(
+      'follow up',
+    );
     provider.gates[2]?.resolve();
     await waitStatus(store, initial.runId, 'completed');
 
@@ -264,7 +269,9 @@ it('inherits fixed workspace resources in a foreground Subagent', async () => {
     await waitRequests(provider, 2);
     expect(instructions(provider.requests[1])).not.toContain('instructions new');
     expect(instructions(provider.requests[1])).toContain('instructions old');
-    expect(provider.requests[1]?.messages.at(-1)?.content).toBe('child task');
+    expect(stripMessageMeta(String(provider.requests[1]?.messages.at(-1)?.content))).toBe(
+      'child task',
+    );
     provider.gates[1]?.resolve();
     await waitRequests(provider, 3);
     expect(instructions(provider.requests[2])).toContain('instructions old');
@@ -324,7 +331,9 @@ it('loads a task Thread workspace independently from its main Agent', async () =
     expect(accepted.interaction.kind).toBe('thread_call');
     await coordinator.scheduleThreadCall(accepted);
     await waitRequests(provider, 2);
-    expect(provider.requests[1]?.messages.at(-1)?.content).toBe('delegated task');
+    expect(stripMessageMeta(String(provider.requests[1]?.messages.at(-1)?.content))).toBe(
+      'delegated task',
+    );
     expect(instructions(provider.requests[1])).toContain('instructions new');
     expect(instructions(provider.requests[1])).not.toContain('instructions old');
 
@@ -389,7 +398,9 @@ it('keeps background Subagent resources fixed through another Thread reload', as
     await waitRequests(provider, 1);
     provider.gates[0]?.resolve();
     await waitRequests(provider, 3);
-    expect(provider.requests[1]?.messages.at(-1)?.content).toBe('old child task');
+    expect(stripMessageMeta(String(provider.requests[1]?.messages.at(-1)?.content))).toBe(
+      'old child task',
+    );
     expect(instructions(provider.requests[1])).toContain('instructions old');
     expect(instructions(provider.requests[2])).toContain('instructions old');
 
@@ -410,7 +421,9 @@ it('keeps background Subagent resources fixed through another Thread reload', as
     expect(instructions(provider.requests[4])).toContain('instructions old');
     provider.gates[4]?.resolve();
     await waitRequests(provider, 7);
-    expect(provider.requests[5]?.messages.at(-1)?.content).toBe('new child task');
+    expect(stripMessageMeta(String(provider.requests[5]?.messages.at(-1)?.content))).toBe(
+      'new child task',
+    );
     expect(instructions(provider.requests[5])).not.toContain('instructions new');
     expect(instructions(provider.requests[5])).toContain('instructions old');
     expect(instructions(provider.requests[6])).toContain('instructions old');

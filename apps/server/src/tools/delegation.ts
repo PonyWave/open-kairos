@@ -314,6 +314,7 @@ function interactionResult(
   const timedOut = waited && !isTerminal(interaction.status);
   return {
     tool_call_id: interaction.sourceToolCallId,
+    agent_id: interaction.targetAgentId,
     status: interaction.status,
     response: response?.message.role === 'assistant' ? response.message.content : null,
     error: interaction.error,

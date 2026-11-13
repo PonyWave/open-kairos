@@ -3,6 +3,7 @@ import { ScriptedProvider } from '@kairos/agent-core/testing';
 import { create, GetThreadRequestSchema, MessageRole } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
 import { getThreadSnapshot } from '../api/snapshot.js';
+import { stripMessageMeta } from '../context/model-input.js';
 import { ModelInputService } from '../context/model-input-service.js';
 import { controlledEnvironmentDependencies } from '../integration/environment-fixture.js';
 import { openDatabase } from '../storage/database.js';
@@ -111,7 +112,12 @@ it('persists a final send, publishes its mode before text and restores exact dis
         tool_call_id: 'final',
         tool_name: 'send_to_user',
         status: 'success',
-        content: JSON.stringify({ status: 'sent', content: '**完成。**', end_turn: true }),
+        content: JSON.stringify({
+          status: 'sent',
+          content: '**完成。**',
+          message_seq: 2,
+          end_turn: true,
+        }),
       },
     });
     const snapshot = getThreadSnapshot(
@@ -152,7 +158,8 @@ it('persists a final send, publishes its mode before text and restores exact dis
       tool_call_id: 'final',
       status: 'success',
     });
-    expect(nextMessages.at(-1)).toMatchObject({ role: 'user', content: 'next-question' });
+    expect(nextMessages.at(-1)?.role).toBe('user');
+    expect(stripMessageMeta(String(nextMessages.at(-1)?.content))).toBe('next-question');
     expect(nextMessages.some((message) => 'sendToUserEnabled' in message)).toBe(false);
   } finally {
     unsubscribe();
@@ -286,7 +293,9 @@ it('keeps the tool and user communication instructions exclusive to the main roo
         .join('\n'),
     );
     expect(instructions[0]).toContain('Use send_to_user for every user-facing');
-    expect(instructions[0]).toContain('The full view is only a diagnostic view');
+    expect(instructions[0]).toContain('Never produce ordinary assistant text in this conversation');
+    expect(instructions[0]).toContain('several send_to_user calls across the turn');
+    expect(instructions[0]).toContain('the full view is only a diagnostic view');
     expect(instructions[0]).toContain(
       'your first and only action is exactly one send_to_user call',
     );

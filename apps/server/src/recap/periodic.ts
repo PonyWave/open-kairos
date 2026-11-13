@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { ModelMessage, ModelProvider } from '@kairos/agent-core';
 import { z } from 'zod';
 import { ContextStore } from '../context/context-store.js';
+import { currentModelMessageWithMeta } from '../context/model-input.js';
 import { ModelInputService } from '../context/model-input-service.js';
 import type { Clock, ContextMessage, ToolCallRelation } from '../context/types.js';
 import { currentModelMessage, jsonText, systemClock } from '../context/types.js';
@@ -324,7 +325,8 @@ export class PeriodicRecapService {
       if (messageIndex === undefined) return { kind: 'skip' };
       if (requestIndex !== undefined) {
         const sent = normalRequest.messages[requestIndex];
-        if (!sent || !sameMessage(sent, currentModelMessage(source))) return { kind: 'skip' };
+        if (!sent || !sameMessage(sent, currentModelMessageWithMeta(source)))
+          return { kind: 'skip' };
       }
       sourceMessageIndexes.push({ seq: source.seq, messageIndex });
     }

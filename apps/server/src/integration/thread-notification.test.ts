@@ -9,6 +9,7 @@ import {
   ThreadNotificationStatus,
 } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
+import { stripMessageMeta } from '../context/model-input.js';
 import { systemReminderContent } from '../sessions/system-reminder.js';
 import {
   ControlledProvider,
@@ -313,9 +314,11 @@ it('queues a busy notification before ordinary follow-up and lets the main Agent
       false,
     );
     expect(
-      provider.requests
-        .find((request) => request.key === 'user:main is busy')
-        ?.request.messages.at(-1)?.content,
+      stripMessageMeta(
+        provider.requests
+          .find((request) => request.key === 'user:main is busy')
+          ?.request.messages.at(-1)?.content ?? '',
+      ),
     ).toBe('main is busy');
 
     provider.respond(

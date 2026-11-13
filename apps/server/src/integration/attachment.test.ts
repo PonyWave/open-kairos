@@ -18,6 +18,7 @@ import {
 import { expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { jpegBytes, pngBytes, utf8 } from '../attachments/fixtures.js';
+import { stripMessageMeta } from '../context/model-input.js';
 import { openDatabase } from '../storage/database.js';
 import {
   ControlledProvider,
@@ -194,7 +195,8 @@ it('sends stored text and images, preserves history and inherits attachments on 
     const firstUser = provider.requests[0]?.messages.find(
       (message) => message.role === 'user' && message.content_parts !== undefined,
     );
-    expect(firstUser).toMatchObject({ role: 'user', content: '' });
+    expect(firstUser?.role).toBe('user');
+    expect(stripMessageMeta(String(firstUser?.content))).toBe('');
     if (firstUser?.role !== 'user') throw new Error('The multimodal user message is missing.');
     const textPath = `/workspace/.kairos/attachments/${text.attachmentId}.txt`;
     const pngPath = `/workspace/.kairos/attachments/${png.attachmentId}.png`;
@@ -355,9 +357,10 @@ it('sends stored text and images, preserves history and inherits attachments on 
     if (!rerun) throw new Error('Revision did not start the attachment Rerun.');
     await waitStatus(fixture.database, rerun.runId, 'completed');
     const rerunUser = provider.requests[1]?.messages.find(
-      (message) => message.role === 'user' && message.content === 'latest question',
+      (message) =>
+        message.role === 'user' && stripMessageMeta(String(message.content)) === 'latest question',
     );
-    expect(rerunUser).toMatchObject({ content: 'latest question' });
+    expect(stripMessageMeta(String(rerunUser?.content))).toBe('latest question');
     expect(imageParts(provider.requests[1])).toHaveLength(2);
 
     const audit = await fixture.clients.context.readContext({

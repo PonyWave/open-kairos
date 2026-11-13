@@ -10,6 +10,7 @@ import { ScriptedProvider } from '@kairos/agent-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { pngBytes } from '../attachments/fixtures.js';
 import { ContextStore } from '../context/context-store.js';
+import { stripMessageMeta } from '../context/model-input.js';
 import { ModelInputService } from '../context/model-input-service.js';
 import { seedTestTenant } from '../integration/environment-fixture.js';
 import { OpenAICompatibleProvider } from '../providers/openai-compatible.js';
@@ -319,9 +320,11 @@ it('includes direct delivery in root periodic Recap without using the ordinary i
     const normalRequest = exchange.normalRequest;
     const recapRequest = provider.requests[0];
     if (!normalRequest || !recapRequest) throw new Error('Expected normal and Recap requests.');
-    expect(normalRequest.messages.filter((message) => message.content === directText)).toHaveLength(
-      1,
-    );
+    expect(
+      normalRequest.messages.filter(
+        (message) => stripMessageMeta(String(message.content)) === directText,
+      ),
+    ).toHaveLength(1);
     expect(JSON.stringify(normalRequest)).not.toContain('target internal response');
     expect(recapRequest.messages.slice(0, normalRequest.messages.length)).toEqual(
       normalRequest.messages,
@@ -819,10 +822,8 @@ describe('periodic Recap source indexes in the final Provider request', () => {
         tool_call_id: 'image-periodic-image',
       });
       expect(body.messages[4]).toMatchObject({ role: 'user' });
-      expect(body.messages[5]).toMatchObject({
-        role: 'user',
-        content: 'user-periodic-image-1',
-      });
+      expect(body.messages[5]?.role).toBe('user');
+      expect(stripMessageMeta(String(body.messages[5]?.content))).toBe('user-periodic-image-1');
       expect(body.messages.at(-1)?.content).toContain(`{"seq":${later.seq},"message_index":5}`);
       expect(body.messages.at(-1)?.content).not.toContain(`{"seq":${later.seq},"message_index":4}`);
     } finally {

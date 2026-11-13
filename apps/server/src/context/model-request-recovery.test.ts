@@ -4,9 +4,9 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { openDatabase } from '../storage/database.js';
 import { ContextStore } from './context-store.js';
+import { stripMessageMeta } from './model-input.js';
 import type { PrepareModelInput } from './model-input-service.js';
 import { ModelInputService } from './model-input-service.js';
-import { stripMessageMeta } from './model-input.js';
 
 it('persists pending inputs and restores each complete model request after reopen', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'kairos-request-recovery-'));

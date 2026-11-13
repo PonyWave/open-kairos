@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { ModelEvent, ModelProvider, ModelRequest } from '@kairos/agent-core';
 import { ScriptedProvider } from '@kairos/agent-core/testing';
 import { describe, expect, it, vi } from 'vitest';
+import { stripMessageMeta } from '../context/model-input.js';
 import { controlledEnvironmentDependencies } from '../integration/environment-fixture.js';
 import { openDatabase } from '../storage/database.js';
 import { RunCoordinator } from './runtime.js';
@@ -158,7 +159,7 @@ describe('manual compaction', () => {
       const conversation = nextMessages.filter((message) => message.role !== 'system');
       expect(conversation[0]?.role).toBe('user');
       expect(conversation[0]?.content).toContain('summary');
-      expect(nextMessages.at(-1)).toEqual({ role: 'user', content: 'new raw suffix' });
+      expect(stripMessageMeta(String(nextMessages.at(-1)?.content))).toBe('new raw suffix');
       expect(nextMessages.some((message) => message.content === 'original user message')).toBe(
         false,
       );

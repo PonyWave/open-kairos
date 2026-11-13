@@ -23,6 +23,7 @@ import {
 } from '@kairos/contracts';
 import { OperationStatus } from '@kairos/contracts/device';
 import { expect, it, vi } from 'vitest';
+import { stripMessageMeta } from '../context/model-input.js';
 import { EnvironmentStore } from '../devices/environment-store.js';
 import { openDatabase } from '../storage/database.js';
 import {
@@ -385,10 +386,14 @@ it('AT-02/AT-12 uses real Connect streams for message control and reconnection',
     await firstItem;
     await vi.waitFor(() => expect(provider.requests).toHaveLength(2));
     expect(
-      provider.requests[1]?.messages.some((message) => message.content === 'steer input'),
+      provider.requests[1]?.messages.some(
+        (message) => stripMessageMeta(String(message.content)) === 'steer input',
+      ),
     ).toBe(true);
     expect(
-      provider.requests[1]?.messages.some((message) => message.content === 'follow-up input'),
+      provider.requests[1]?.messages.some(
+        (message) => stripMessageMeta(String(message.content)) === 'follow-up input',
+      ),
     ).toBe(false);
     controller.abort();
     await firstWatch.return?.();
@@ -396,7 +401,9 @@ it('AT-02/AT-12 uses real Connect streams for message control and reconnection',
     provider.gates[1]?.resolve();
     await vi.waitFor(() => expect(provider.requests).toHaveLength(3));
     expect(
-      provider.requests[2]?.messages.some((message) => message.content === 'follow-up input'),
+      provider.requests[2]?.messages.some(
+        (message) => stripMessageMeta(String(message.content)) === 'follow-up input',
+      ),
     ).toBe(true);
     provider.gates[2]?.resolve();
     await waitRun(fixture, threadId, runId, RunStatus.COMPLETED);
@@ -468,7 +475,10 @@ it('AT-07/AT-09/AT-10 preserves hard-cut evidence and recalls it after Server re
     contextWindowTokens: 10_000,
     outputReserveTokens: 100,
     countTokens: (request) =>
-      request.messages.reduce((total, message) => total + message.content.length, 0),
+      request.messages.reduce(
+        (total, message) => total + stripMessageMeta(String(message.content)).length,
+        0,
+      ),
   });
   try {
     const threadId = await createThread(fixture, '硬切与召回', 'create-recap-thread');
@@ -514,7 +524,7 @@ it('AT-07/AT-09/AT-10 preserves hard-cut evidence and recalls it after Server re
         role: 'system',
         content: expect.stringContaining('<workspace-resource path="AGENTS.md">'),
       }),
-      { role: 'user', content: original },
+      expect.objectContaining({ role: 'user', content: expect.stringContaining(original) }),
     ]);
     expect(recapRequest?.messages.at(-1)).toEqual({
       role: 'user',

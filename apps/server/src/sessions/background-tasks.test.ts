@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ModelEvent, ModelProvider, ModelRequest, ToolCall } from '@kairos/agent-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { stripMessageMeta } from '../context/model-input.js';
 import { controlledEnvironmentDependencies } from '../integration/environment-fixture.js';
 import { openDatabase } from '../storage/database.js';
 import { RunCoordinator } from './runtime.js';
@@ -25,12 +26,13 @@ function response(content: string, toolCalls?: ToolCall[]): ModelEvent[] {
 
 function requestKey(request: ModelRequest): string {
   const last = request.messages.at(-1);
+  const content = last === undefined ? undefined : stripMessageMeta(last.content);
   if (last?.role === 'tool') return `tool:${last.tool_call_id}`;
-  if (last?.role === 'user') {
-    if (last.content.includes('"kind":"bash"') && last.content.includes('task_id')) {
+  if (last?.role === 'user' && content !== undefined) {
+    if (content.includes('"kind":"bash"') && content.includes('task_id')) {
       return 'delivery:bash';
     }
-    return `user:${last.content}`;
+    return `user:${content}`;
   }
   return last?.role ?? 'empty';
 }

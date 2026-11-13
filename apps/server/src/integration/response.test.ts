@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { ModelEvent, ToolCall } from '@kairos/agent-core';
 import { MessageRole, MessageSource, RunStatus } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
+import { stripMessageMeta } from '../context/model-input.js';
 import {
   ControlledProvider,
   closeFixture,
@@ -371,7 +372,9 @@ it('delivers a current background source exactly once without an ordinary input'
       (request) => request.key === `delivery:${interaction.source_tool_call_id}`,
     )?.request;
     expect(
-      deliveryRequest?.messages.some((message) => message.content === 'new later answer'),
+      deliveryRequest?.messages.some(
+        (message) => stripMessageMeta(String(message.content)) === 'new later answer',
+      ),
     ).toBe(true);
     expect(JSON.stringify(deliveryRequest)).not.toContain('old later answer');
     expect(

@@ -100,6 +100,7 @@ const subagentInputSchema = z
   .object({
     task: z.string().min(1).max(100_000),
     mode: z.enum(['foreground', 'background']),
+    resume: z.string().min(1).max(200).optional(),
     ...optionalEnvironmentPolicySchema.shape,
   })
   .strict();
@@ -2075,7 +2076,7 @@ export class RunCoordinator {
     return {
       name: 'subagent',
       description:
-        'Delegate a bounded one-off task to a temporary Subagent with its own context; it does not appear in the task list. A lengthy one-off task still belongs here. Use a task Thread for ongoing work needing follow-ups or continued user conversation. Supply a self-contained task with relevant context, constraints, paths, environment needs, deliverable and completion checks. Prefer background for lengthy or independent work. Use foreground when the next step needs the result immediately; it waits and returns the terminal result. Background returns accepted, which is not completion. Its terminal result is persisted and injected automatically, with a root Run scheduled if needed. After acceptance, continue other work or finish this turn after stating that the task is still running. Use task_list and task_output for an explicit status check and task_stop to cancel; do not keep a Run alive to collect the result.',
+        'Delegate a bounded one-off task to a temporary Subagent with its own context; it does not appear in the task list. A lengthy one-off task still belongs here. Use a task Thread for ongoing work needing follow-ups or continued user conversation. Supply a self-contained task with relevant context, constraints, paths, environment needs, deliverable and completion checks. Prefer background for lengthy or independent work. Use foreground when the next step needs the result immediately; it waits and returns the terminal result. Background returns accepted, which is not completion. Its terminal result is persisted and injected automatically, with a root Run scheduled if needed. After acceptance, continue other work or finish this turn after stating that the task is still running. Use task_list and task_output for an explicit status check and task_stop to cancel; do not keep a Run alive to collect the result. Results include the Subagent agent_id; to follow up with the same Subagent and its saved context, call subagent again with resume set to that agent_id and only the follow-up task. The resumed Subagent keeps its environment policy, and a running Subagent cannot be resumed.',
       parameters: {
         type: 'object',
         additionalProperties: false,
@@ -2083,6 +2084,13 @@ export class RunCoordinator {
         properties: {
           task: { type: 'string', minLength: 1, maxLength: 100_000 },
           mode: { type: 'string', enum: ['foreground', 'background'] },
+          resume: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 200,
+            description:
+              'Optional agent_id of an existing Subagent in this Thread to resume instead of creating a new instance. The resumed Subagent keeps its context and environment policy; pass only the follow-up task. Cannot be combined with allowed_env, and a running Subagent cannot be resumed.',
+          },
           allowed_env: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 32 },
         },
       },
@@ -2099,6 +2107,32 @@ export class RunCoordinator {
             'Only a persistent Thread root Agent can create a background Subagent.',
           );
         }
+        if (input.resume !== undefined) {
+          if (input.allowed_env !== undefined) {
+            throw new SessionError(
+              'invalid_argument',
+              'allowed_env cannot be combined with resume; the resumed Subagent keeps its environment policy.',
+            );
+          }
+          if (
+            !input.resume.startsWith('subagent-') ||
+            !this.store.agentEnvironments.getPolicy(parent.threadId, input.resume)
+          ) {
+            throw new SessionError(
+              'not_found',
+              'The Subagent to resume does not exist in this Thread.',
+            );
+          }
+          const running = this.store
+            .listRuns(parent.ownerId, parent.threadId)
+            .some((run) => run.agentId === input.resume && !isTerminal(run.status));
+          if (running) {
+            throw new SessionError(
+              'failed_precondition',
+              'The Subagent is still running and cannot be resumed.',
+            );
+          }
+        }
         if (createdChildren >= (this.#options.maxChildrenPerRun ?? 2)) {
           throw new Error('The maximum number of Subagents for this Run has been reached.');
         }
@@ -2106,7 +2140,7 @@ export class RunCoordinator {
         const environmentPolicy = environmentPolicyInput(input, (envIds) =>
           this.#environmentRuntime.resolveEnvironmentIds(parent.ownerId, envIds),
         );
-        const requestedAgentId = `subagent-${this.#createId()}`;
+        const requestedAgentId = input.resume ?? `subagent-${this.#createId()}`;
         let interaction: InteractionRecord | undefined;
         if (parent.agentId === 'thread') {
           interaction = this.store.createSubagentInteraction({
@@ -2137,6 +2171,7 @@ export class RunCoordinator {
           return {
             content: JSON.stringify({
               tool_call_id: call.id,
+              agent_id: requestedAgentId,
               status: 'accepted',
               automatic_delivery: true,
               next_step: BACKGROUND_ACCEPTED_NEXT_STEP,
@@ -2175,6 +2210,7 @@ export class RunCoordinator {
         return {
           content: JSON.stringify({
             ...(currentInteraction ? { tool_call_id: currentInteraction.sourceToolCallId } : {}),
+            agent_id: child.agentId,
             status,
             result: response,
             usage: {

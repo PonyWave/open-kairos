@@ -5,6 +5,7 @@ import { Code } from '@connectrpc/connect';
 import { InputMode, InputStatus, MessageRole, RunStatus } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
 import { ContextStore } from '../context/context-store.js';
+import { stripMessageMeta } from '../context/model-input.js';
 import {
   ControlledProvider,
   closeFixture,
@@ -293,7 +294,9 @@ it('continues a failed Run with only the latest revision and no repeated unknown
     expect(continuedRequests).toHaveLength(2);
     const recovered = continuedRequests[1]?.request;
     expect(
-      recovered?.messages.filter((message) => message.content === 'latest revision'),
+      recovered?.messages.filter(
+        (message) => stripMessageMeta(String(message.content)) === 'latest revision',
+      ),
     ).toHaveLength(1);
     expect(JSON.stringify(recovered)).not.toContain('original question');
     expect(JSON.stringify(recovered)).not.toContain('intermediate revision');
@@ -461,10 +464,16 @@ it('applies queue edit, reorder and removal across steer and follow-up boundarie
     const steerRequest = provider.requests.find(
       (request) => request.key === 'user:steer input',
     )?.request;
-    expect(steerRequest?.messages.some((message) => message.content === 'steer input')).toBe(true);
-    expect(steerRequest?.messages.some((message) => message.content === 'follow-up edited')).toBe(
-      false,
-    );
+    expect(
+      steerRequest?.messages.some(
+        (message) => stripMessageMeta(String(message.content)) === 'steer input',
+      ),
+    ).toBe(true);
+    expect(
+      steerRequest?.messages.some(
+        (message) => stripMessageMeta(String(message.content)) === 'follow-up edited',
+      ),
+    ).toBe(false);
     provider.resolve('user:steer input');
     await waitRequest(provider, 'user:follow-up edited');
     await waitRun(fixture, threadId, sent.runId, RunStatus.COMPLETED);
@@ -507,7 +516,7 @@ it('reruns only the latest anchor after a hard cut and rejects older anchors', a
     contextWindowTokens: 1000,
     outputReserveTokens: 0,
     countTokens: (request) => {
-      const contents = request.messages.map((message) => message.content);
+      const contents = request.messages.map((message) => stripMessageMeta(String(message.content)));
       return contents.includes('old answer') && contents.includes('old branch user') ? 900 : 10;
     },
   });
@@ -776,7 +785,9 @@ it('invalidates periodic Recaps on Rerun and revision before Agent recall', asyn
       (request) => request.key === 'user:periodic latest',
     )?.request;
     expect(
-      currentRequest?.messages.filter((message) => message.content === 'periodic latest'),
+      currentRequest?.messages.filter(
+        (message) => stripMessageMeta(String(message.content)) === 'periodic latest',
+      ),
     ).toHaveLength(1);
     expect(JSON.stringify(currentRequest)).not.toContain('periodic anchor');
     expect(JSON.stringify(currentRequest)).not.toContain('periodic old answer');

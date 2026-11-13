@@ -5,6 +5,7 @@ import { Code } from '@connectrpc/connect';
 import { CompactContextStatus, RunStatus } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { stripMessageMeta } from '../context/model-input.js';
 import {
   ModelInputService,
   runtimeSpecFingerprintFromRequest,
@@ -671,7 +672,11 @@ it.each(['preparing', 'prepared'] as const)(
       expect(actual.tools.map((tool) => tool.name)).toContain('bash');
       expect(actual.tools.map((tool) => tool.name)).not.toContain('code_v1_only_tool');
       expect(actual.tools).not.toEqual(seed.prepared.request.tools);
-      expect(actual.messages.filter((message) => message.content === seed.text)).toHaveLength(1);
+      expect(
+        actual.messages.filter(
+          (message) => stripMessageMeta(String(message.content)) === seed.text,
+        ),
+      ).toHaveLength(1);
       expect(runtimeSpecFingerprintFromRequest(actual)).toBe(reloaded.runtimeFingerprint);
 
       const records = z

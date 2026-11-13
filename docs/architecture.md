@@ -26,6 +26,8 @@ Server 首次启动时自动注册主环境：写入环境记录、完成设备�
 
 bash 工具的 `run_in_background` 参数把命令作为后台任务执行：Server 在 `background_tasks` 表登记后立即返回 `task_id`，操作经设备通道异步执行；终态结果先持久化，再绑定回复 Thread 的持久根 Run 直接注入模型输入，不创建普通 `follow_up`。`task_list`、`task_output`、`task_stop`、`task_wait` 管理后台任务（含 Subagent 任务），取代已移除的 `subagent_status` 与 `subagent_cancel`。
 
+`subagent` 工具的结果携带 `agent_id`；再次调用 `subagent` 并传 `resume=<agent_id>` 可在同一 Thread 内续跑该 Subagent：续跑复用其上下文与环境策略，只追加新的任务消息，运行中的 Subagent 不能被续跑，`resume` 不能与 `allowed_env` 同传。
+
 ### 2.1 MCP 工具桥接
 
 `KAIROS_MCP_CONFIG` 指定 MCP server 配置 JSON（`servers` 数组，`transport` 为 `stdio`（`command`/`args`/`env`）或 `http`/`sse`（`url`/`headers`））。每个 server 绑定一个环境：`env_id` 缺省为 `main`（主环境），也可填其他已授权设备的环境 UUID。Server 经设备通道在对应环境的 Daemon 上打开 MCP 会话并桥接工具，命名 `mcp__<server>__<tool>`：只在一个环境注册的 server 在工具描述中说明注册环境、不提供 `env_id` 参数；两个及以上环境同时注册的 server 在描述中列出环境，调用必须提供 `env_id`。
@@ -69,6 +71,10 @@ bash 工具的 `run_in_background` 参数把命令作为后台任务执行：Ser
 - 工作空间 main 注册 `thread_notify`，目标固定 `global`。
 - 全局 main 向工作空间 main 发消息复用 `thread_call`，response 按委派三元组交付。
 
+### 4.2 模型视图元信息
+
+构建模型请求时，每条 user 与 assistant 消息的正文前注入一个 `<system-reminder>` 元信息块（`<msg seq time from/>`）：`seq` 为 Context 消息序号，`time` 为带时区的本地时间，`from` 仅标注用户消息来源（`app` 为 GUI 直发，`wechat`/`feishu` 为 IM 渠道）。元信息只在投影层拼接，不写入库存 `content`，GUI、修订、Recap 与侧栏预览均不受影响；tool 结果消息不注入。`send_to_user` 的工具结果携带 `message_seq`（对应 assistant 消息序号），供模型引用自己发出的消息。
+
 ## 5. 召回与 Automation
 
 - recall 只开放 `thread`、`context`、`recap` 三张查询表。`thread` 表包含 `workspace_id` 列，临时对话该列为 `NULL`。可见范围按调用方 Run 分级：全局 main 根 Run 覆盖本用户全部 Thread，工作空间 main 根 Run 覆盖本工作空间，其余限当前 Thread，矩阵见[数据定义与运行状态](domain-and-state.md#6-recall-查询表)。
@@ -87,7 +93,7 @@ Server 内置渠道适配层，把微信与飞书接入全局 main。渠道凭�
 
 - 微信：腾讯微信团队维护的 ClawBot 通道（协议见 `Tencent/openclaw-weixin` 的 protocol 文档）。用户在设置页扫码绑定，Server 保存 `bot_token` 后以长轮询 `getupdates` 收消息；只接受绑定用户的私聊消息。绑定过程触发微信风控要求数字验证码（`need_verifycode`）时，设置页展示输入框，提交的 `verify_code` 随下一次状态轮询上报，验证码错误或锁定（`verify_code_blocked`）按协议重新输入或刷新二维码。入站消息入队后开启「正在输入」状态（`getconfig` 获取 `typing_ticket` 并缓存，每 5 秒刷新），该用户首条投递成功后取消；输入状态为尽力而为，接口失败不影响消息链路。
 - 飞书：自建应用机器人，Server 使用官方 SDK 的长连接订阅 `im.message.receive_v1`，不需要公网入口。保存 App ID/Secret 后生成六位配对码，用户在飞书里把配对码发给机器人完成绑定。
-- 入站消息追加到全局 main 的输入队列，`source` 为 `channel` 并携带 `channel` 引用（渠道、类型、外部消息 ID）；文本前注入 `<system-reminder>` 来源标记（注明渠道），GUI 气泡按引用显示渠道角标并隐藏该标记。平台消息 ID 用于去重；入站图片、文件等媒体在 v1 降级为占位文本。
+- 入站消息追加到全局 main 的输入队列，`source` 为 `channel` 并携带 `channel` 引用（渠道、类型、外部消息 ID），正文为原文；渠道来源经模型视图的 `<msg from/>` 元信息表达（见 4.2），GUI 气泡按引用显示渠道角标。平台消息 ID 用于去重；入站图片、文件等媒体在 v1 降级为占位文本。
 
 ### 6.2 出站与投递失败
 
@@ -106,6 +112,7 @@ Server 内置渠道适配层，把微信与飞书接入全局 main。渠道凭�
 - 入站渠道消息渲染为平台配色的用户气泡（微信绿、飞书蓝），平台图标角标位于气泡右上角（气泡靠右对齐的外侧一角）；投递失败通知渲染为系统通知卡片；`redeliver_of` 重投不产生新气泡。
 - `send_to_user` 成功结果在精简视图与完整视图中均渲染为不折叠的气泡卡片，不再计入普通工具调用分组；完整视图在气泡内左上角展示「回复用户」胶囊（仅边框、无底色）。
 - 排队中的直接输入在两种视图均展示等待指示（精简视图为三点脉冲气泡，完整视图为 spinner）；输入被消费后，若 Run 仍在执行且尚未产生 `send_to_user` 回复，精简视图继续展示三点脉冲气泡，回复出现或 Run 结束后自动消失，完整视图不额外展示。
+- 助手消息开头的 `<system-reminder>` 注入段在展示层剥离：不渲染文本、不影响工具调用分组合并；仅剩注入段的消息不渲染空文本行，其工具调用并入前一组。
 - 携带 `channels` 的 `send_to_user` 气泡展示投递角标：投递中半透明、成功后实色；失败的渠道在角标旁显示「i」标记，悬停查看失败原因（错误详情不直接展示给用户，Agent 通过投递失败通知感知）。气泡的投递状态经 `ListChannelDeliveries` 批量查询并轮询至终态。
 
 ## 7. GUI 结构

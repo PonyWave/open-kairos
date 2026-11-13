@@ -12,6 +12,7 @@ import {
   type RunStatus,
 } from '@kairos/contracts';
 import { vi } from 'vitest';
+import { stripMessageMeta } from '../context/model-input.js';
 import { systemReminderContent } from '../sessions/system-reminder.js';
 import { openDatabase } from '../storage/database.js';
 import {
@@ -98,13 +99,14 @@ export function deferred() {
 
 export function requestKey(request: ModelRequest): string {
   const last = request.messages.at(-1);
-  if (last?.role === 'user' && last.content.startsWith('Kairos internal Recap operation;')) {
+  const content = last === undefined ? undefined : stripMessageMeta(last.content);
+  if (last?.role === 'user' && content?.startsWith('Kairos internal Recap operation;')) {
     return 'recap:generate';
   }
   if (last?.role === 'tool') return `tool:${last.tool_call_id}`;
-  if (last?.role === 'user') {
-    if (last.content.startsWith('recap_id:')) return 'prepared:recap';
-    const reminder = systemReminderContent(last.content);
+  if (last?.role === 'user' && content !== undefined) {
+    if (content.startsWith('recap_id:')) return 'prepared:recap';
+    const reminder = systemReminderContent(content);
     if (reminder !== undefined) {
       try {
         const parsed: unknown = JSON.parse(reminder.slice(reminder.indexOf('\n') + 1));
@@ -122,7 +124,7 @@ export function requestKey(request: ModelRequest): string {
         // A system reminder without a delivery payload is ordinary user text.
       }
     }
-    return `user:${last.content}`;
+    return `user:${content}`;
   }
   return last?.role ?? 'empty';
 }

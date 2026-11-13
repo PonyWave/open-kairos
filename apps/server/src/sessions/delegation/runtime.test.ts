@@ -9,6 +9,7 @@ import type {
   ToolMessage,
 } from '@kairos/agent-core';
 import { expect, it, vi } from 'vitest';
+import { stripMessageMeta } from '../../context/model-input.js';
 import {
   controlledEnvironmentDependencies,
   seedTestEnvironment,
@@ -48,11 +49,12 @@ function deferred() {
 
 function requestKey(request: ModelRequest): string {
   const last = request.messages.at(-1);
+  const content = last === undefined ? undefined : stripMessageMeta(last.content);
   if (last?.role === 'tool') return `tool:${last.tool_call_id}`;
-  if (last?.role === 'user') {
-    if (last.content.includes('"kind":"thread_call"')) return 'delivery:thread';
-    if (last.content.includes('"kind":"subagent"')) return 'delivery:subagent';
-    return `user:${last.content}`;
+  if (last?.role === 'user' && content !== undefined) {
+    if (content.includes('"kind":"thread_call"')) return 'delivery:thread';
+    if (content.includes('"kind":"subagent"')) return 'delivery:subagent';
+    return `user:${content}`;
   }
   return last?.role ?? 'empty';
 }
@@ -320,9 +322,11 @@ it.each(['main', 'task'] as const)(
       expect(childSystem).not.toContain('You are the main Agent');
       expect(childSystem).not.toContain('You are the root Agent of a persistent task Thread');
       expect(childRequest.tools.some((tool) => tool.name === 'thread_call')).toBe(false);
-      expect(childRequest.messages.filter((message) => message.role !== 'system')).toEqual([
-        { role: 'user', content: 'inspect delegated scope' },
-      ]);
+      expect(
+        childRequest.messages
+          .filter((message) => message.role !== 'system')
+          .map((message) => ({ ...message, content: stripMessageMeta(message.content) })),
+      ).toEqual([{ role: 'user', content: 'inspect delegated scope' }]);
     } finally {
       await cleanup(coordinator, database, directory);
     }
@@ -833,12 +837,14 @@ it('keeps a background Subagent alive after parent cancellation and delivers it 
     await waitRequest(provider, 'user:background work');
     const accepted = JSON.parse(toolMessage(store, main.threadId, 'bg-create').content) as {
       tool_call_id: string;
+      agent_id: string;
       status: string;
       automatic_delivery: boolean;
       next_step: string;
     };
     expect(accepted).toEqual({
       tool_call_id: 'bg-create',
+      agent_id: expect.any(String),
       status: 'accepted',
       automatic_delivery: true,
       next_step: expect.stringMatching(

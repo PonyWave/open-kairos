@@ -113,6 +113,7 @@ export function createTaskTools(
           .map((interaction) => ({
             task_id: interaction.sourceToolCallId,
             kind: 'subagent',
+            agent_id: interaction.targetAgentId,
             description: interaction.prompt,
             status: interaction.status,
             created_at: interaction.createdAt,

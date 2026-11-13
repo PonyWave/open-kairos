@@ -13,6 +13,7 @@ import { ScriptedProvider } from '@kairos/agent-core/testing';
 import { expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { AutomationService } from '../automation/service.js';
+import { stripMessageMeta } from '../context/model-input.js';
 import {
   controlledEnvironmentDependencies,
   seedTestEnvironment,
@@ -285,17 +286,21 @@ it('enters steer input at a safe boundary and holds follow-up input until natura
     await coordinator.deliver(followUp.input, followUp.runId);
     provider.gates[0]?.resolve();
     await vi.waitFor(() => expect(provider.requests).toHaveLength(2));
-    expect(provider.requests[1]?.messages.some((message) => message.content === 'steer')).toBe(
-      true,
-    );
+    expect(
+      provider.requests[1]?.messages.some(
+        (message) => stripMessageMeta(String(message.content)) === 'steer',
+      ),
+    ).toBe(true);
     expect(provider.requests[1]?.messages.some((message) => message.content === 'follow up')).toBe(
       false,
     );
     provider.gates[1]?.resolve();
     await vi.waitFor(() => expect(provider.requests).toHaveLength(3));
-    expect(provider.requests[2]?.messages.some((message) => message.content === 'follow up')).toBe(
-      true,
-    );
+    expect(
+      provider.requests[2]?.messages.some(
+        (message) => stripMessageMeta(String(message.content)) === 'follow up',
+      ),
+    ).toBe(true);
     provider.gates[2]?.resolve();
     await waitStatus(store, sent.runId, 'completed');
     expect(
@@ -350,10 +355,14 @@ it('uses edited, removed and reordered follow-up inputs while a Run is active', 
 
     provider.gates[0]?.resolve();
     await vi.waitFor(() => expect(provider.requests).toHaveLength(2));
-    expect(provider.requests[1]?.messages.at(-1)?.content).toBe('second edited');
+    expect(stripMessageMeta(String(provider.requests[1]?.messages.at(-1)?.content))).toBe(
+      'second edited',
+    );
     provider.gates[1]?.resolve();
     await vi.waitFor(() => expect(provider.requests).toHaveLength(3));
-    expect(provider.requests[2]?.messages.at(-1)?.content).toBe('first queued');
+    expect(stripMessageMeta(String(provider.requests[2]?.messages.at(-1)?.content))).toBe(
+      'first queued',
+    );
     provider.gates[2]?.resolve();
     await waitStatus(store, sent.runId, 'completed');
 
@@ -417,7 +426,7 @@ it('uses edited, removed and reordered steer inputs while a Run is active', asyn
     expect(
       provider.requests[1]?.messages
         .filter((message) => message.role === 'user')
-        .map((message) => message.content),
+        .map((message) => stripMessageMeta(String(message.content))),
     ).toEqual(['initial', 'second steer edited', 'first steer']);
     provider.gates[1]?.resolve();
     await waitStatus(store, sent.runId, 'completed');
@@ -462,14 +471,16 @@ it('keeps follow-up and steer bodies bound to their own input records', async ()
     expect(
       provider.requests[1]?.messages
         .filter((message) => message.role === 'user')
-        .map((message) => message.content),
+        .map((message) => stripMessageMeta(String(message.content))),
     ).toEqual(['initial', 'steer body']);
     expect(store.getInput(ownerId, followUp.input.inputId).status).toBe('queued');
     expect(store.getInput(ownerId, steer.input.inputId).status).toBe('consumed');
 
     provider.gates[1]?.resolve();
     await vi.waitFor(() => expect(provider.requests).toHaveLength(3));
-    expect(provider.requests[2]?.messages.at(-1)?.content).toBe('follow-up body');
+    expect(stripMessageMeta(String(provider.requests[2]?.messages.at(-1)?.content))).toBe(
+      'follow-up body',
+    );
     provider.gates[2]?.resolve();
     await waitStatus(store, sent.runId, 'completed');
 
@@ -548,11 +559,13 @@ it('keeps edited, removed and reordered mixed inputs aligned', async () => {
     expect(
       provider.requests[1]?.messages
         .filter((message) => message.role === 'user')
-        .map((message) => message.content),
+        .map((message) => stripMessageMeta(String(message.content))),
     ).toEqual(['initial', 'steer two', 'steer one']);
     provider.gates[1]?.resolve();
     await vi.waitFor(() => expect(provider.requests).toHaveLength(3));
-    expect(provider.requests[2]?.messages.at(-1)?.content).toBe('follow-up edited');
+    expect(stripMessageMeta(String(provider.requests[2]?.messages.at(-1)?.content))).toBe(
+      'follow-up edited',
+    );
     provider.gates[2]?.resolve();
     await waitStatus(store, sent.runId, 'completed');
 
@@ -860,6 +873,149 @@ it('runs a Subagent in an isolated Context and returns its result to the parent'
       true,
     );
     expect(parentContext.some((message) => message.message.content === 'child task')).toBe(false);
+  } finally {
+    await cleanup(coordinator, database, directory);
+  }
+});
+
+it('resumes a finished Subagent with its saved context by agent id', async () => {
+  let resumeAgentId = '';
+  const script: Array<() => ModelEvent[]> = [
+    () =>
+      response('', [
+        {
+          id: 'child-call',
+          name: 'subagent',
+          arguments: { task: 'first task', mode: 'foreground' },
+        },
+      ]),
+    () => response('first answer'),
+    () => response('parent one done'),
+    () =>
+      response('', [
+        {
+          id: 'resume-call',
+          name: 'subagent',
+          arguments: { task: 'follow-up task', mode: 'foreground', resume: resumeAgentId },
+        },
+      ]),
+    () => response('second answer'),
+    () => response('parent two done'),
+  ];
+  const provider: ModelProvider & { requests: ModelRequest[] } = {
+    requests: [],
+    async *stream(request, signal) {
+      signal.throwIfAborted();
+      const step = script[this.requests.length];
+      this.requests.push(structuredClone(request));
+      if (!step) throw new Error('No scripted model response remains.');
+      for (const event of step()) {
+        signal.throwIfAborted();
+        yield event;
+      }
+    },
+  };
+  const { database, store, coordinator, thread, directory } = await fixture(provider);
+  try {
+    const first = send(store, thread.threadId, 'parent task one', 'send-1');
+    await coordinator.deliver(first.input, first.runId);
+    await waitStatus(store, first.runId, 'completed');
+    const child = store
+      .listRuns(ownerId, thread.threadId)
+      .find((run) => run.parentRunId === first.runId);
+    if (!child) throw new Error('Missing child run.');
+    resumeAgentId = child.agentId;
+    const firstToolResult = store
+      .listContext(ownerId, thread.threadId, 'thread')
+      .find(
+        (message) =>
+          message.message.role === 'tool' &&
+          'tool_call_id' in message.message &&
+          message.message.tool_call_id === 'child-call',
+      );
+    expect(firstToolResult?.message.content).toContain(`"agent_id":"${child.agentId}"`);
+
+    const second = send(store, thread.threadId, 'parent task two', 'send-2');
+    await coordinator.deliver(second.input, second.runId);
+    await waitStatus(store, second.runId, 'completed');
+
+    const resumed = store
+      .listRuns(ownerId, thread.threadId)
+      .find((run) => run.parentRunId === second.runId);
+    expect(resumed?.agentId).toBe(child.agentId);
+    expect(resumed?.status).toBe('completed');
+    expect(
+      store.listContext(ownerId, thread.threadId, child.agentId).map((m) => m.message.content),
+    ).toEqual(['first task', 'first answer', 'follow-up task', 'second answer']);
+    const resumeRequest = provider.requests.find((request) =>
+      request.messages.some((message) => message.content.includes('follow-up task')),
+    );
+    expect(resumeRequest?.messages.some((message) => message.content.includes('first task'))).toBe(
+      true,
+    );
+    expect(
+      resumeRequest?.messages.some((message) => message.content.includes('first answer')),
+    ).toBe(true);
+  } finally {
+    await cleanup(coordinator, database, directory);
+  }
+});
+
+it('rejects resuming an unknown Subagent, a running Subagent or a resume with allowed_env', async () => {
+  const provider = new ScriptedProvider([
+    response('', [
+      {
+        id: 'unknown-call',
+        name: 'subagent',
+        arguments: { task: 'task', mode: 'foreground', resume: 'subagent-missing' },
+      },
+      {
+        id: 'busy-call',
+        name: 'subagent',
+        arguments: { task: 'task', mode: 'foreground', resume: 'subagent-busy' },
+      },
+      {
+        id: 'env-call',
+        name: 'subagent',
+        arguments: {
+          task: 'task',
+          mode: 'foreground',
+          resume: 'subagent-busy',
+          allowed_env: ['main'],
+        },
+      },
+    ]),
+    response('parent answer'),
+  ]);
+  const { database, store, coordinator, thread, directory } = await fixture(provider);
+  try {
+    const busyRoot = send(store, thread.threadId, 'busy root', 'send-busy');
+    store.appendModelMessage({
+      runId: busyRoot.runId,
+      inputId: busyRoot.input.inputId,
+      message: { role: 'user', content: busyRoot.input.text },
+    });
+    store.updateRunStatus(busyRoot.runId, 'completed');
+    store.createChildRun(ownerId, busyRoot.runId, 'subagent-busy');
+
+    const sent = send(store, thread.threadId, 'parent task', 'send-1');
+    await coordinator.deliver(sent.input, sent.runId);
+    await waitStatus(store, sent.runId, 'completed');
+    const toolResults = new Map(
+      store
+        .listContext(ownerId, thread.threadId, 'thread')
+        .filter((message) => message.message.role === 'tool')
+        .map((message) => [
+          'tool_call_id' in message.message ? message.message.tool_call_id : '',
+          message.message.content,
+        ]),
+    );
+    expect(toolResults.get('unknown-call')).toContain('does not exist');
+    expect(toolResults.get('busy-call')).toContain('still running');
+    expect(toolResults.get('env-call')).toContain('cannot be combined with resume');
+    expect(
+      store.listRuns(ownerId, thread.threadId).filter((run) => run.parentRunId === sent.runId),
+    ).toEqual([]);
   } finally {
     await cleanup(coordinator, database, directory);
   }
@@ -1711,13 +1867,19 @@ it('includes original tool semantics in actual recap generation requests', async
     const secondRecapRequest = provider.requests[1];
     const completePrefix = firstRecapRequest?.messages.slice(0, -1);
     expect(completePrefix).toEqual(secondRecapRequest?.messages.slice(0, -1));
-    expect(completePrefix?.filter((message) => message.role !== 'system')).toEqual([
+    expect(
+      completePrefix
+        ?.filter((message) => message.role !== 'system')
+        .map((message) => ({ ...message, content: stripMessageMeta(String(message.content)) })),
+    ).toEqual([
       { role: 'user', content: 'inspect command results' },
       storedAssistant.message,
       ...toolResults,
     ]);
     const sourceStart = completePrefix?.findIndex(
-      (message) => message.role === 'user' && message.content === 'inspect command results',
+      (message) =>
+        message.role === 'user' &&
+        stripMessageMeta(String(message.content)) === 'inspect command results',
     );
     expect(sourceStart).toBeGreaterThan(0);
     expect(firstRecapRequest?.messages.at(-1)?.content).toContain(

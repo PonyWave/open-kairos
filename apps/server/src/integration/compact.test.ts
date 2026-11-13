@@ -5,6 +5,7 @@ import { Code } from '@connectrpc/connect';
 import { CompactContextStatus, RecapValidity, RunStatus } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { stripMessageMeta } from '../context/model-input.js';
 import {
   ControlledSlashProvider,
   closeSlashFixture,
@@ -229,7 +230,7 @@ it('manually compacts below 80%, reuses and merges Recaps, and preserves audit a
       1,
     );
     expect(next?.messages.some((message) => message.content === 'first original')).toBe(false);
-    expect(next?.messages.at(-1)).toEqual({ role: 'user', content: 'after compact' });
+    expect(stripMessageMeta(String(next?.messages.at(-1)?.content))).toBe('after compact');
     expect(
       fixture.database
         .prepare('SELECT COUNT(*) AS count FROM context_messages WHERE thread_id = ?')
@@ -722,9 +723,24 @@ it('keeps normal requests unchanged below and at 80%, and auto-compacts only abo
     provider,
     workspaceDirectory: workspace,
     countTokens: (request) => {
-      if (request.messages.some((message) => message.content === 'boundary above')) return 801;
-      if (request.messages.some((message) => message.content === 'boundary exact')) return 800;
-      if (request.messages.some((message) => message.content === 'boundary below')) return 799;
+      if (
+        request.messages.some(
+          (message) => stripMessageMeta(String(message.content)) === 'boundary above',
+        )
+      )
+        return 801;
+      if (
+        request.messages.some(
+          (message) => stripMessageMeta(String(message.content)) === 'boundary exact',
+        )
+      )
+        return 800;
+      if (
+        request.messages.some(
+          (message) => stripMessageMeta(String(message.content)) === 'boundary below',
+        )
+      )
+        return 799;
       return 100;
     },
   });

@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { RunStatus } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { stripMessageMeta } from '../context/model-input.js';
 import { closeFixture, deferred, sendMessage, waitRun } from './delegation-fixture.js';
 import {
   type ControlledSseServer,
@@ -121,7 +122,11 @@ it('applies X at the exact message count, preserves request bytes and cache usag
       maxMessages: 20,
       countTokens: (request) => {
         if (!forceHardCut) return 100;
-        return request.messages.some((message) => message.content === 'first') ? 801 : 800;
+        return request.messages.some(
+          (message) => stripMessageMeta(String(message.content)) === 'first',
+        )
+          ? 801
+          : 800;
       },
     });
     const threadId = await createPeriodicThread(fixture, 'periodic-x-thread');
@@ -187,11 +192,10 @@ it('applies X at the exact message count, preserves request bytes and cache usag
     const fallback = modelServer.byKind('recap')[1];
     if (!fallback) throw new Error('Expected a hard-cut fallback Recap request.');
     expectCompletePrefix(normal, fallback, 3);
-    expect(fallback.body.messages.at(-3)).toMatchObject({
-      role: 'assistant',
-      content: 'second answer',
-    });
-    expect(fallback.body.messages.at(-2)).toEqual({ role: 'user', content: 'third' });
+    expect(fallback.body.messages.at(-3)?.role).toBe('assistant');
+    expect(stripMessageMeta(String(fallback.body.messages.at(-3)?.content))).toBe('second answer');
+    expect(fallback.body.messages.at(-2)?.role).toBe('user');
+    expect(stripMessageMeta(String(fallback.body.messages.at(-2)?.content))).toBe('third');
     expect(recapMappings(fallback)).toEqual([{ seq: 5, message_index: 8 }]);
     expect(recapRows(fixture).map((recap) => recap.source_message_seqs)).toEqual([
       '[1,2,3,4]',

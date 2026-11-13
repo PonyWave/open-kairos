@@ -10,6 +10,7 @@ import { OperationStatus } from '@kairos/contracts/device';
 import { expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { pngBytes } from '../attachments/fixtures.js';
+import { stripMessageMeta } from '../context/model-input.js';
 import {
   type EnvironmentOperationAction,
   type EnvironmentOperationOutcome,
@@ -460,7 +461,8 @@ it('writes clipboard images into the unified sandbox without exposing env_id', a
     ).toEqual({ count: 1 });
     const rerunUser = provider.requests[2]?.messages.find(
       (message) =>
-        message.role === 'user' && message.content === 'Revise without replacing my file.',
+        message.role === 'user' &&
+        stripMessageMeta(String(message.content)) === 'Revise without replacing my file.',
     );
     if (rerunUser?.role !== 'user') throw new Error('The Rerun image message is missing.');
     expect(JSON.stringify(rerunUser.content_parts)).toContain(target.path);

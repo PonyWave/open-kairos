@@ -2328,7 +2328,17 @@ export class SessionStore {
       if (parent.agentId !== 'thread' && !parent.agentId.startsWith('subagent-')) {
         throw new SessionError('failed_precondition', 'Invalid parent agent.');
       }
-      if (!this.agentEnvironments.getPolicy(parent.threadId, agentId)) {
+      if (this.agentEnvironments.getPolicy(parent.threadId, agentId)) {
+        const running = this.listRuns(ownerId, parent.threadId).some(
+          (run) => run.agentId === agentId && !isTerminalStatus(run.status),
+        );
+        if (running) {
+          throw new SessionError(
+            'failed_precondition',
+            'A running Subagent cannot start another Run.',
+          );
+        }
+      } else {
         this.#createSubagentPolicy(parent.ownerId, parent, agentId, environmentPolicy);
       }
       const run = this.#insertRun(
@@ -2901,13 +2911,15 @@ export class SessionStore {
         targetInputId: null,
         acceptedRunId: null,
       });
-      this.#createSubagentPolicy(
-        input.ownerId,
-        this.getRunById(input.sourceRunId),
-        targetAgentId,
-        input.environmentPolicy,
-        interaction,
-      );
+      if (!this.agentEnvironments.getPolicy(input.sourceThreadId, targetAgentId)) {
+        this.#createSubagentPolicy(
+          input.ownerId,
+          this.getRunById(input.sourceRunId),
+          targetAgentId,
+          input.environmentPolicy,
+          interaction,
+        );
+      }
       return interaction;
     });
   }

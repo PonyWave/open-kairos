@@ -7,9 +7,9 @@ import { describe, expect, it } from 'vitest';
 import { RecapStore } from '../recap/recap-store.js';
 import { openDatabase } from '../storage/database.js';
 import { ContextStore } from './context-store.js';
+import { stripMessageMeta } from './model-input.js';
 import type { PrepareModelInput, RecapGenerationInput } from './model-input-service.js';
 import { ModelInputService } from './model-input-service.js';
-import { stripMessageMeta } from './model-input.js';
 
 function contentTokens(request: ModelRequest): number {
   return (

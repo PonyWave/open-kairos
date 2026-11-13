@@ -5,9 +5,9 @@ import type { AssistantMessage, ModelRequest, ToolMessage } from '@kairos/agent-
 import { expect, it } from 'vitest';
 import { openDatabase } from '../storage/database.js';
 import { ContextStore } from './context-store.js';
+import { stripMessageMeta } from './model-input.js';
 import type { RecapGenerationInput } from './model-input-service.js';
 import { ModelInputService } from './model-input-service.js';
-import { stripMessageMeta } from './model-input.js';
 import { RecallService } from './recall-service.js';
 import { currentModelMessage } from './types.js';
 

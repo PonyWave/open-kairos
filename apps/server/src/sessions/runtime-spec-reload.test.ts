@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { ModelEvent, ModelProvider, ModelRequest } from '@kairos/agent-core';
 import { ScriptedProvider } from '@kairos/agent-core/testing';
 import { expect, it, vi } from 'vitest';
+import { stripMessageMeta } from '../context/model-input.js';
 import {
   ModelInputService,
   runtimeSpecFingerprint,
@@ -284,7 +285,9 @@ it('invalidates a prepared undispatched request after reopen and rebuilds it onl
       ...before,
       status: 'cancelled',
     });
-    expect(prepared.request.messages.at(-1)?.content).toBe('input old-safe-ready');
+    expect(stripMessageMeta(String(prepared.request.messages.at(-1)?.content))).toBe(
+      'input old-safe-ready',
+    );
     expect(
       new ModelInputService(database, { countTokens: () => 100 }).getState(
         thread.threadId,

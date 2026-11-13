@@ -17,6 +17,7 @@ import {
   ThreadType,
 } from '@kairos/contracts';
 import { expect, it, vi } from 'vitest';
+import { stripMessageMeta } from '../context/model-input.js';
 import { AgentEnvironmentRuntime } from '../sessions/environment-runtime.js';
 import { SessionStore } from '../sessions/store.js';
 import { openDatabase } from '../storage/database.js';
@@ -472,7 +473,7 @@ it('REQ-05 creates a Thread with its first call and resumes it across main Runs 
     expect(
       continuedRequest?.request.messages
         .filter((message) => message.role !== 'system')
-        .map((message) => message.content),
+        .map((message) => stripMessageMeta(message.content)),
     ).toEqual(['prompt one', 'response one', 'prompt two']);
     expect(interactionRow(fixture.database, firstToolCallId)?.consumed_run_id).not.toBe(
       interactionRow(fixture.database, secondToolCallId)?.consumed_run_id,
@@ -618,6 +619,7 @@ it('REQ-05 preserves background progress, tool boundaries and cancellation at mi
     if (!backgroundToolCallId) throw new Error('Background interaction is missing.');
     expect(parsedTool(await mainContext(fixture, mainId), 'bg-create')).toEqual({
       tool_call_id: backgroundToolCallId,
+      agent_id: expect.any(String),
       status: 'accepted',
       automatic_delivery: true,
       next_step: expect.stringMatching(
@@ -1414,7 +1416,9 @@ it('REQ-05 isolates target tools, temporary Subagents and hard cuts while reusin
     contextWindowTokens: 1000,
     outputReserveTokens: 100,
     countTokens: (request) =>
-      request.messages.some((message) => message.content === longPrompt) ? 1000 : 10,
+      request.messages.some((message) => stripMessageMeta(message.content) === longPrompt)
+        ? 1000
+        : 10,
   });
   try {
     const mainId = (await fixture.clients.thread.getOrCreateMain({})).thread?.threadId ?? '';
@@ -1451,7 +1455,11 @@ it('REQ-05 isolates target tools, temporary Subagents and hard cuts while reusin
 
     const generatedTarget = provider.requests.find((request) => request.key === 'recap:generate');
     const preparedTarget = provider.requests.find((request) => request.key === 'prepared:recap');
-    expect(generatedTarget?.request.messages.slice(0, -1)).toEqual([
+    expect(
+      generatedTarget?.request.messages
+        .slice(0, -1)
+        .map((message) => ({ ...message, content: stripMessageMeta(message.content) })),
+    ).toEqual([
       expect.objectContaining({
         role: 'system',
         content: expect.stringContaining('You are Kairos'),
@@ -1491,9 +1499,11 @@ it('REQ-05 isolates target tools, temporary Subagents and hard cuts while reusin
         message.content.includes('TARGET_RECAP_SECRET'),
       ),
     ).toHaveLength(1);
-    expect(preparedTarget?.request.messages.some((message) => message.content === longPrompt)).toBe(
-      false,
-    );
+    expect(
+      preparedTarget?.request.messages.some(
+        (message) => stripMessageMeta(message.content) === longPrompt,
+      ),
+    ).toBe(false);
     expect(provider.requests.filter((request) => request.key === 'recap:generate')).toHaveLength(1);
     expect(
       fixture.database
@@ -1627,7 +1637,9 @@ it('REQ-05 isolates target tools, temporary Subagents and hard cuts while reusin
     expect(
       continuedTarget?.request.messages.some((message) => message.content === longPrompt),
     ).toBe(false);
-    expect(continuedTarget?.request.messages.at(-1)?.content).toBe('second target prompt');
+    expect(stripMessageMeta(continuedTarget?.request.messages.at(-1)?.content ?? '')).toBe(
+      'second target prompt',
+    );
     expect(provider.requests.filter((request) => request.key === 'recap:generate')).toHaveLength(1);
     expect(interactionRow(fixture.database, secondToolCallId)?.consumed_run_id).not.toBe(
       interactionRow(fixture.database, firstToolCallId)?.consumed_run_id,
