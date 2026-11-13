@@ -23,6 +23,8 @@ class StubClient implements WechatClientApi {
   qrCount = 0;
   polls: { qrcode: string; verifyCode: string | undefined }[] = [];
   script: QrStatus[] = [];
+  sentTexts: string[] = [];
+  typingCalls: { userId: string; ticket: string; status: 1 | 2 }[] = [];
 
   async getBotQrcode() {
     this.qrCount += 1;
@@ -39,12 +41,32 @@ class StubClient implements WechatClientApi {
     throw new Error('not used in login tests');
   }
 
-  async sendText(): Promise<void> {}
+  async sendText(
+    _botToken: string,
+    _toUserId: string,
+    _contextToken: string | null,
+    text: string,
+  ): Promise<void> {
+    this.sentTexts.push(text);
+  }
+
+  async getConfig(): Promise<string | null> {
+    return 'ticket-1';
+  }
+
+  async sendTyping(
+    _botToken: string,
+    userId: string,
+    ticket: string,
+    status: 1 | 2,
+  ): Promise<void> {
+    this.typingCalls.push({ userId, ticket, status });
+  }
 
   async notifyLifecycle(): Promise<void> {}
 }
 
-function fixture() {
+function fixture(onInbound: (message: { text: string }) => void = () => {}) {
   const database = openDatabase(':memory:');
   new SessionStore(database);
   const store = new ChannelStore(database, secret);
@@ -52,7 +74,7 @@ function fixture() {
   const channel = new WechatChannel({
     ownerId: () => ownerId,
     store,
-    onInbound: () => {},
+    onInbound,
     client,
   });
   return { database, store, client, channel };
@@ -124,6 +146,40 @@ it('rejects PIN submission when the session is not waiting for one', async () =>
     expect(() => channel.submitLoginPin(sessionId, '12ab')).toThrowError(/不需要数字验证码/);
     client.script = [confirmedStatus];
     await vi.waitFor(() => expect(channel.pollLogin(sessionId).status).toBe('confirmed'));
+  } finally {
+    database.close();
+  }
+});
+
+it('shows typing on inbound wechat messages and cancels it after the first delivery', async () => {
+  const inbound: string[] = [];
+  const { database, store, client, channel } = fixture((message) => {
+    inbound.push(message.text);
+  });
+  try {
+    store.completeWechatLogin(ownerId, {
+      kind: 'wechat',
+      botToken: 'token-1',
+      baseUrl: 'https://ilinkai.weixin.qq.com',
+      botId: 'bot-1',
+      ilinkUserId: 'user-1',
+    });
+    channel.handleInboundMessage(ownerId, 'user-1', {
+      message_type: 1,
+      from_user_id: 'user-1',
+      message_id: 42,
+      context_token: 'ctx-1',
+      item_list: [{ type: 1, text_item: { text: '你好' } }],
+    });
+    expect(inbound).toEqual(['你好']);
+    await vi.waitFor(() => expect(client.typingCalls.some((call) => call.status === 1)).toBe(true));
+    expect(store.getState(ownerId, 'wechat').contextToken).toBe('ctx-1');
+    await channel.send(
+      { externalUserId: 'user-1', contextToken: 'ctx-1', markdown: '回复内容' },
+      new AbortController().signal,
+    );
+    expect(client.sentTexts).toEqual(['回复内容']);
+    expect(client.typingCalls.some((call) => call.status === 2)).toBe(true);
   } finally {
     database.close();
   }

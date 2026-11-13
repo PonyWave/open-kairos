@@ -22,6 +22,7 @@ export interface WechatLoginSession {
 }
 
 const pinWaitTimeoutMs = 300_000;
+const typingRefreshMs = 5_000;
 
 export class WechatChannel implements OutboundChannel {
   readonly #ownerId: () => string;
@@ -32,6 +33,10 @@ export class WechatChannel implements OutboundChannel {
   readonly #loginSessions = new Map<string, WechatLoginSession>();
   readonly #pendingPins = new Map<string, string>();
   readonly #pinWaiters = new Map<string, () => void>();
+  #typingActive = false;
+  #typingTimer: ReturnType<typeof setInterval> | undefined;
+  #typingTicket: string | null = null;
+  #typingUserId: string | null = null;
 
   constructor(options: {
     ownerId: () => string;
@@ -56,6 +61,7 @@ export class WechatChannel implements OutboundChannel {
 
   stop(): void {
     this.#stopMonitor();
+    this.#stopTyping();
   }
 
   async startLogin(): Promise<{ sessionId: string; qrContent: string }> {
@@ -226,6 +232,7 @@ export class WechatChannel implements OutboundChannel {
         signal,
       );
     }
+    this.#stopTyping();
   }
 
   #startMonitor(): void {
@@ -277,7 +284,7 @@ export class WechatChannel implements OutboundChannel {
             this.#store.updateInboundCursor(ownerId, 'wechat', response.get_updates_buf);
           }
           for (const message of response.msgs ?? []) {
-            this.#handleMessage(ownerId, state.externalUserId, message);
+            this.handleInboundMessage(ownerId, state.externalUserId, message);
           }
         } catch (error) {
           if (signal.aborted) return;
@@ -294,7 +301,7 @@ export class WechatChannel implements OutboundChannel {
     }
   }
 
-  #handleMessage(
+  handleInboundMessage(
     ownerId: string,
     boundUserId: string | null,
     message: Parameters<typeof inboundMessageText>[0],
@@ -316,6 +323,53 @@ export class WechatChannel implements OutboundChannel {
       externalUserId: boundUserId,
       text,
     });
+    void this.#startTyping(boundUserId, message.context_token);
+  }
+
+  async #startTyping(userId: string, contextToken: string | undefined): Promise<void> {
+    this.#typingActive = true;
+    this.#typingUserId = userId;
+    try {
+      const credentials = this.#store.getCredentials(this.#ownerId(), 'wechat');
+      if (credentials === null || credentials.kind !== 'wechat') return;
+      if (this.#typingTicket === null) {
+        this.#typingTicket = await this.#client.getConfig(
+          credentials.botToken,
+          userId,
+          contextToken,
+        );
+        if (this.#typingTicket === null) return;
+      }
+      if (!this.#typingActive) return;
+      await this.#client.sendTyping(credentials.botToken, userId, this.#typingTicket, 1);
+    } catch {
+      return;
+    }
+    if (this.#typingTimer !== undefined) return;
+    this.#typingTimer = setInterval(() => {
+      if (!this.#typingActive || this.#typingTicket === null || this.#typingUserId === null) return;
+      const credentials = this.#store.getCredentials(this.#ownerId(), 'wechat');
+      if (credentials === null || credentials.kind !== 'wechat') return;
+      void this.#client
+        .sendTyping(credentials.botToken, this.#typingUserId, this.#typingTicket, 1)
+        .catch(() => undefined);
+    }, typingRefreshMs);
+    this.#typingTimer.unref();
+  }
+
+  #stopTyping(): void {
+    this.#typingActive = false;
+    if (this.#typingTimer !== undefined) {
+      clearInterval(this.#typingTimer);
+      this.#typingTimer = undefined;
+    }
+    const userId = this.#typingUserId;
+    this.#typingUserId = null;
+    const ticket = this.#typingTicket;
+    if (userId === null || ticket === null) return;
+    const credentials = this.#store.getCredentials(this.#ownerId(), 'wechat');
+    if (credentials === null || credentials.kind !== 'wechat') return;
+    void this.#client.sendTyping(credentials.botToken, userId, ticket, 2).catch(() => undefined);
   }
 }
 

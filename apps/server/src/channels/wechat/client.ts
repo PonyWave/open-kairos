@@ -77,6 +77,11 @@ const sendMessageResponseSchema = z.object({
   errmsg: z.string().optional(),
 });
 
+const getConfigResponseSchema = z.object({
+  ret: z.number().optional(),
+  typing_ticket: z.string().optional(),
+});
+
 export interface WechatClientApi {
   baseUrl: string;
   getBotQrcode(signal?: AbortSignal): Promise<z.infer<typeof qrCodeResponseSchema>>;
@@ -96,6 +101,13 @@ export interface WechatClientApi {
     contextToken: string | null,
     text: string,
     signal: AbortSignal,
+  ): Promise<void>;
+  getConfig(botToken: string, ilinkUserId: string, contextToken?: string): Promise<string | null>;
+  sendTyping(
+    botToken: string,
+    ilinkUserId: string,
+    typingTicket: string,
+    status: 1 | 2,
   ): Promise<void>;
   notifyLifecycle(botToken: string, action: 'start' | 'stop'): Promise<void>;
 }
@@ -252,6 +264,43 @@ export class WechatClient implements WechatClientApi {
           : `微信发送失败（${code}）。`,
       );
     }
+  }
+
+  async getConfig(
+    botToken: string,
+    ilinkUserId: string,
+    contextToken?: string,
+  ): Promise<string | null> {
+    const response = await this.#post(
+      '/ilink/bot/getconfig',
+      {
+        ilink_user_id: ilinkUserId,
+        ...(contextToken === undefined ? {} : { context_token: contextToken }),
+        base_info: this.#baseInfo(),
+      },
+      getConfigResponseSchema,
+      { botToken, timeoutMs: 10_000 },
+    );
+    return response.typing_ticket ?? null;
+  }
+
+  async sendTyping(
+    botToken: string,
+    ilinkUserId: string,
+    typingTicket: string,
+    status: 1 | 2,
+  ): Promise<void> {
+    await this.#post(
+      '/ilink/bot/sendtyping',
+      {
+        ilink_user_id: ilinkUserId,
+        typing_ticket: typingTicket,
+        status,
+        base_info: this.#baseInfo(),
+      },
+      sendMessageResponseSchema,
+      { botToken, timeoutMs: 10_000 },
+    );
   }
 
   async notifyLifecycle(botToken: string, action: 'start' | 'stop'): Promise<void> {

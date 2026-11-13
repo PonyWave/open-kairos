@@ -71,7 +71,7 @@ Server 内置渠道适配层，把微信与飞书接入全局 main。渠道凭�
 
 ### 6.1 入站
 
-- 微信：腾讯微信团队维护的 ClawBot 通道（协议见 `Tencent/openclaw-weixin` 的 protocol 文档）。用户在设置页扫码绑定，Server 保存 `bot_token` 后以长轮询 `getupdates` 收消息；只接受绑定用户的私聊消息。绑定过程触发微信风控要求数字验证码（`need_verifycode`）时，设置页展示输入框，提交的 `verify_code` 随下一次状态轮询上报，验证码错误或锁定（`verify_code_blocked`）按协议重新输入或刷新二维码。
+- 微信：腾讯微信团队维护的 ClawBot 通道（协议见 `Tencent/openclaw-weixin` 的 protocol 文档）。用户在设置页扫码绑定，Server 保存 `bot_token` 后以长轮询 `getupdates` 收消息；只接受绑定用户的私聊消息。绑定过程触发微信风控要求数字验证码（`need_verifycode`）时，设置页展示输入框，提交的 `verify_code` 随下一次状态轮询上报，验证码错误或锁定（`verify_code_blocked`）按协议重新输入或刷新二维码。入站消息入队后开启「正在输入」状态（`getconfig` 获取 `typing_ticket` 并缓存，每 5 秒刷新），该用户首条投递成功后取消；输入状态为尽力而为，接口失败不影响消息链路。
 - 飞书：自建应用机器人，Server 使用官方 SDK 的长连接订阅 `im.message.receive_v1`，不需要公网入口。保存 App ID/Secret 后生成六位配对码，用户在飞书里把配对码发给机器人完成绑定。
 - 入站消息追加到全局 main 的输入队列，`source` 为 `channel` 并携带 `channel` 引用（渠道、类型、外部消息 ID）；文本前缀 `[来自微信]` 或 `[来自飞书]`，GUI 气泡按引用显示「来自微信/飞书」。平台消息 ID 用于去重；入站图片、文件等媒体在 v1 降级为占位文本。
 
