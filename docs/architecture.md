@@ -22,6 +22,16 @@ Server 首次启动时自动注册主环境：写入环境记录、完成设备�
 
 环境之间的文件与目录复制由 `env_sync` 工具执行：在两个已授权环境之间复制普通文件或目录，冲突策略为 `fail`（默认值）、`skip` 或 `overwrite`，内容相同的文件始终跳过。同步意图、进度与结果保存在 `environment_operations` 命名空间。
 
+`glob` 与 `grep` 工具经设备通道的 `FILE_SEARCH` 能力下发，Daemon spawn 内置的 ripgrep 15.0.0 子进程执行（随 Daemon 发布物打包并校验哈希与平台），输出行数与字节数有上限，超时中止。bash 工具的结果携带字节数有限的输出预览；完整输出超过预览时，执行端 Daemon 把完整输出写入本机 `<身份目录>/logs/<operation_id>.log`（默认 `~/.kairos/daemon/logs/`，保留 7 天，单文件上限 64 MiB），结果 JSON 的 `output_file` 给出路径并附 `hint`，Agent 用 `read` 或 `grep` 以同一 `env_id` 继续读取。Server 的 SQLite 输出分块只保留与预览一致的 16 KiB 头部，完整日志不进入 Server 数据库。
+
+bash 工具的 `run_in_background` 参数把命令作为后台任务执行：Server 在 `background_tasks` 表登记后立即返回 `task_id`，操作经设备通道异步执行；终态结果先持久化，再绑定回复 Thread 的持久根 Run 直接注入模型输入，不创建普通 `follow_up`。`task_list`、`task_output`、`task_stop`、`task_wait` 管理后台任务（含 Subagent 任务），取代已移除的 `subagent_status` 与 `subagent_cancel`。
+
+### 2.1 MCP 工具桥接
+
+`KAIROS_MCP_CONFIG` 指定 MCP server 配置 JSON（`servers` 数组，`transport` 为 `stdio`（`command`/`args`/`env`）或 `http`/`sse`（`url`/`headers`））。每个 server 绑定一个环境：`env_id` 缺省为 `main`（主环境），也可填其他已授权设备的环境 UUID。Server 经设备通道在对应环境的 Daemon 上打开 MCP 会话并桥接工具，命名 `mcp__<server>__<tool>`：只在一个环境注册的 server 在工具描述中说明注册环境、不提供 `env_id` 参数；两个及以上环境同时注册的 server 在描述中列出环境，调用必须提供 `env_id`。
+
+需要 OAuth 的远程 server 由 Daemon 上的认证流程宿主处理：工具列表返回 needs-auth 时，Server 合成 `mcp__<server>__authenticate` 工具，调用后经工具进度事件把授权 URL 推到 GUI（授权卡片带复制按钮），用户在浏览器完成授权，回调命中 Server 的 `/mcp/oauth/callback`；访问令牌与刷新令牌保存在 `mcp_oauth_credentials` 表，到期前自动刷新。
+
 ## 3. 工作空间与执行默认值
 
 工作空间由名称、`env_id` 和规范化工作目录组成，`(env_id, path)` 在租户内唯一。创建工作空间时在同一事务创建其工作空间 main。
@@ -64,6 +74,7 @@ Server 首次启动时自动注册主环境：写入环境记录、完成设备�
 - recall 只开放 `thread`、`context`、`recap` 三张查询表。`thread` 表包含 `workspace_id` 列，临时对话该列为 `NULL`。可见范围按调用方 Run 分级：全局 main 根 Run 覆盖本用户全部 Thread，工作空间 main 根 Run 覆盖本工作空间，其余限当前 Thread，矩阵见[数据定义与运行状态](domain-and-state.md#6-recall-查询表)。
 - `workspace_list` 工具供 Agent 查询合法工作空间。
 - Automation 定义包含可选 `workspace_id`。fire 创建新 Thread 时写入对应工作空间，为空时落入临时对话列表。
+- 存储的触发时间带确定性 jitter：周期触发按 scheduleId 哈希延后至多 min(周期 × 10%, 15 分钟)，恰好落在整点或半点的 once 触发提前至多 90 秒；`automation_read` 展示实际触发时间。Server 停机期间错过的触发在恢复后合并为一次立即触发，投递的输入注明原定时间与合并次数。
 - automation_only Thread 根 Run 的 recall 可见范围为本用户全部 Thread，dream 依赖该能力读取历史。
 - 记忆目录存在时，根 Agent 的系统指令注入 Memory Wiki 索引（`MEMORY.md`，缺失或超限降级处理），全局 main 额外获得写策略；内置 `记忆整理 (dream)` Automation 按固定 client action 幂等播种，`new_automation_only` 目标每日触发，约定见[数据定义与运行状态](domain-and-state.md#8-memory-wiki-与-dream)。
 
