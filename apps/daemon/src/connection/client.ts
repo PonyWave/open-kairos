@@ -108,6 +108,7 @@ export interface DaemonClientOptions {
   maxOutputChunkBytes?: number;
   resourceHomeDirectory?: string;
   status?: Pick<DaemonStatus, 'connection' | 'operation'>;
+  allowInsecureWs?: boolean;
   onError?: (error: unknown) => void;
   onFatalError?: (error: Error) => void;
   platformPod?: { uid: string; name: string };
@@ -125,6 +126,7 @@ export class DaemonClient {
   private readonly controlOnly: boolean;
   private identity: DaemonIdentity | undefined;
   private readonly serverUrl: string;
+  private readonly allowInsecureWs: boolean;
   private readonly envId: string;
   private readonly daemonVersion: string;
   private readonly os: string;
@@ -167,7 +169,9 @@ export class DaemonClient {
     }
     const serverUrl = this.identity?.serverUrl ?? options.serverUrl;
     if (serverUrl === undefined) throw new Error('Daemon Server URL is required for pairing.');
-    this.serverUrl = validateServerUrl(serverUrl);
+    this.allowInsecureWs =
+      options.allowInsecureWs === true || this.identity?.allowInsecureWs === true;
+    this.serverUrl = validateServerUrl(serverUrl, this.allowInsecureWs);
     const envId = this.identity?.envId ?? options.envId;
     if (!envId) throw new Error('Environment ID is required for pairing.');
     this.envId = envId;
@@ -770,6 +774,7 @@ export class DaemonClient {
         deviceName: this.deviceName,
         grantedCapabilities,
         daemonVersion: this.daemonVersion,
+        ...(this.allowInsecureWs ? { allowInsecureWs: true } : {}),
       };
       this.options.identityStore.save(identity);
       this.identity = identity;

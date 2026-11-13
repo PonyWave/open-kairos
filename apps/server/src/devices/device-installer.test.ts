@@ -118,6 +118,19 @@ describe('device installation download and bootstrap', () => {
     );
   });
 
+  it('appends --allow-insecure-ws only for non-loopback HTTP device origins', async () => {
+    const test = await fixture();
+    const secure = new DeviceInstaller(test.root, 'https://kairos.example.test');
+    expect(secure.command(test.issue)).toContain('wss://kairos.example.test/devices/wss');
+    expect(secure.command(test.issue)).not.toContain('--allow-insecure-ws');
+    const loopback = new DeviceInstaller(test.root, 'http://127.0.0.1:4317');
+    expect(loopback.command(test.issue)).not.toContain('--allow-insecure-ws');
+    const direct = new DeviceInstaller(test.root, 'http://192.0.2.10:4317');
+    const command = direct.command(test.issue);
+    expect(command).toContain('ws://192.0.2.10:4317/devices/wss');
+    expect(command).toContain('--allow-insecure-ws');
+  });
+
   it.runIf(
     process.platform === 'darwin' || (process.platform === 'linux' && process.getuid?.() === 0),
   )('downloads a checksum-verified release and passes the credential on stdin', async () => {

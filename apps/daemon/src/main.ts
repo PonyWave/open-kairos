@@ -67,6 +67,7 @@ function environmentClient(
     deviceName?: string;
     initialDirectory?: string;
     bashEnabled?: boolean;
+    allowInsecureWs?: boolean;
     status?: DaemonStatus;
     controlOnly?: boolean;
     onFatalError?: (error: Error) => void;
@@ -91,6 +92,7 @@ function environmentClient(
     ...(options.initialDirectory === undefined
       ? {}
       : { initialDirectory: options.initialDirectory }),
+    ...(options.allowInsecureWs === undefined ? {} : { allowInsecureWs: options.allowInsecureWs }),
     ...(options.status === undefined ? {} : { status: options.status }),
     ...(options.onFatalError === undefined ? {} : { onFatalError: options.onFatalError }),
     onError: () => undefined,
@@ -98,7 +100,8 @@ function environmentClient(
 }
 
 async function pairOnce(args: string[]): Promise<void> {
-  assertKnownOptions(args, [
+  const allowInsecureWs = args.includes('--allow-insecure-ws');
+  assertKnownOptions(allowInsecureWs ? args.filter((arg) => arg !== '--allow-insecure-ws') : args, [
     '--env-id',
     '--server-url',
     '--directory',
@@ -128,6 +131,7 @@ async function pairOnce(args: string[]): Promise<void> {
     ...(pairingCredential === undefined ? {} : { pairingCredential }),
     ...(envId === undefined ? {} : { envId }),
     ...(serverUrl === undefined ? {} : { serverUrl }),
+    ...(allowInsecureWs ? { allowInsecureWs: true } : {}),
     deviceName: optionValue(args, '--device-name') ?? process.env.KAIROS_DEVICE_NAME ?? hostname(),
     ...(directory === undefined ? {} : { initialDirectory: directory }),
   });

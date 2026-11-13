@@ -9,6 +9,7 @@ source "$RELEASE_ROOT/lib/platform.sh"
 ENV_ID=
 SERVER_URL=
 DIRECTORY=/home/kairos/projects
+ALLOW_INSECURE_WS=0
 while [[ $# -gt 0 ]]; do
   case $1 in
     --env-id)
@@ -26,8 +27,12 @@ while [[ $# -gt 0 ]]; do
       DIRECTORY=$2
       shift 2
       ;;
+    --allow-insecure-ws)
+      ALLOW_INSECURE_WS=1
+      shift
+      ;;
     *)
-      kairos_fail 'usage: install.sh --env-id ID --server-url WSS_URL --directory ABSOLUTE_PATH'
+      kairos_fail 'usage: install.sh --env-id ID --server-url WSS_URL --directory ABSOLUTE_PATH [--allow-insecure-ws]'
       ;;
   esac
 done
@@ -42,8 +47,9 @@ VERSION=$(kairos_release_version "$RELEASE_ROOT")
 [[ $SERVER_URL != *[$' \t\r\n\'"\\#']* ]] ||
   kairos_fail 'Server URL contains unsupported characters.'
 if [[ $SERVER_URL != wss://* && $SERVER_URL != ws://127.0.0.1:* &&
-      $SERVER_URL != ws://localhost:* && $SERVER_URL != 'ws://[::1]:'* ]]; then
-  kairos_fail 'Server URL must use WSS, except for loopback development.'
+      $SERVER_URL != ws://localhost:* && $SERVER_URL != 'ws://[::1]:'* &&
+      $ALLOW_INSECURE_WS != 1 ]]; then
+  kairos_fail 'Server URL must use WSS, except for loopback development or an explicit --allow-insecure-ws pairing.'
 fi
 
 PREFIX=/opt/kairos-daemon
@@ -116,11 +122,13 @@ systemctl daemon-reload
 systemctl stop kairos-daemon.service 2>/dev/null || true
 
 set +e
+INSECURE_FLAG=
+if [[ $ALLOW_INSECURE_WS == 1 ]]; then INSECURE_FLAG=--allow-insecure-ws; fi
 printf '%s' "$PAIRING_CREDENTIAL" |
   runuser -u kairos -- "$PREFIX/current/bin/kairos-daemon" pair-once \
     --identity-path "$IDENTITY_PATH" \
     --env-id "$ENV_ID" --server-url "$SERVER_URL" --directory "$DIRECTORY" \
-    --device-name "$(hostname)"
+    --device-name "$(hostname)" $INSECURE_FLAG
 PAIR_STATUS=$?
 set -e
 unset PAIRING_CREDENTIAL

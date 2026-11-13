@@ -95,4 +95,21 @@ describe('DaemonIdentityStore', () => {
     expect(validateServerUrl('ws://127.0.0.1:3000/devices/wss')).toContain('ws://');
     expect(() => validateServerUrl('ws://server.example.test/devices/wss')).toThrow('WSS');
   });
+
+  it('accepts a non-loopback ws:// URL only with the explicit insecure permission', () => {
+    expect(validateServerUrl('ws://server.example.test/devices/wss', true)).toContain('ws://');
+    const path = join(temporaryDirectory(), 'identity.json');
+    const store = new DaemonIdentityStore(path);
+    expect(() =>
+      store.save({ ...identity(), serverUrl: 'ws://server.example.test/devices/wss' }),
+    ).toThrow('WSS');
+    store.save({
+      ...identity(),
+      serverUrl: 'ws://server.example.test/devices/wss',
+      allowInsecureWs: true,
+    });
+    const loaded = store.load();
+    expect(loaded?.serverUrl).toContain('ws://server.example.test');
+    expect(loaded?.allowInsecureWs).toBe(true);
+  });
 });

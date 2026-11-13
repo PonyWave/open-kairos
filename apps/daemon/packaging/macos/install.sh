@@ -9,6 +9,7 @@ ENV_ID=
 SERVER_URL=
 DIRECTORY=$HOME
 NO_SERVICE=0
+ALLOW_INSECURE_WS=0
 while [[ $# -gt 0 ]]; do
   case $1 in
     --env-id) ENV_ID=$2; shift 2 ;;
@@ -16,6 +17,7 @@ while [[ $# -gt 0 ]]; do
     --directory) DIRECTORY=$2; shift 2 ;;
     --prefix) BASE_PREFIX=$2; shift 2 ;;
     --no-service) NO_SERVICE=1; shift ;;
+    --allow-insecure-ws) ALLOW_INSECURE_WS=1; shift ;;
     *) kairos_macos_fail 'unsupported installer argument.' ;;
   esac
 done
@@ -25,7 +27,7 @@ kairos_macos_require
 [[ ! -L $PREFIX ]] || kairos_macos_fail 'environment installation prefix is a symlink.'
 kairos_macos_verify "$RELEASE_ROOT"
 [[ $DIRECTORY == /* && $DIRECTORY != *$'\n'* ]] || kairos_macos_fail 'working directory is invalid.'
-[[ $SERVER_URL == wss://* || $SERVER_URL == ws://127.0.0.1:* || $SERVER_URL == ws://localhost:* || $SERVER_URL == 'ws://[::1]:'* ]] || kairos_macos_fail 'remote connections require WSS.'
+[[ $SERVER_URL == wss://* || $SERVER_URL == ws://127.0.0.1:* || $SERVER_URL == ws://localhost:* || $SERVER_URL == 'ws://[::1]:'* || $ALLOW_INSECURE_WS == 1 ]] || kairos_macos_fail 'remote connections require WSS, except for an explicit --allow-insecure-ws pairing.'
 VERSION=$(cat "$RELEASE_ROOT/VERSION")
 [[ $VERSION =~ ^[0-9A-Za-z][0-9A-Za-z.+-]{0,99}$ ]] || kairos_macos_fail 'release version is invalid.'
 if [[ -d $PREFIX && ! -f $PREFIX/INSTALLATION && -n $(ls -A "$PREFIX") ]]; then kairos_macos_fail 'refusing to replace an unmanaged directory.'; fi
@@ -58,7 +60,9 @@ fi
 kairos_macos_link "$TARGET"
 kairos_macos_control_link
 set +e
-printf '%s\n' "$PAIRING_CREDENTIAL" | "$PREFIX/current/bin/kairos-daemon" pair-once --identity-path "$IDENTITY_PATH" --env-id "$ENV_ID" --server-url "$SERVER_URL" --directory "$DIRECTORY" --device-name "$(hostname)"
+INSECURE_FLAG=
+if [[ $ALLOW_INSECURE_WS == 1 ]]; then INSECURE_FLAG=--allow-insecure-ws; fi
+printf '%s\n' "$PAIRING_CREDENTIAL" | "$PREFIX/current/bin/kairos-daemon" pair-once --identity-path "$IDENTITY_PATH" --env-id "$ENV_ID" --server-url "$SERVER_URL" --directory "$DIRECTORY" --device-name "$(hostname)" $INSECURE_FLAG
 PAIR_STATUS=$?
 set -e
 unset PAIRING_CREDENTIAL

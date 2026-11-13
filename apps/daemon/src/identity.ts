@@ -22,6 +22,7 @@ export interface DaemonIdentity {
   deviceName: string;
   grantedCapabilities: DaemonCapability[];
   daemonVersion: string;
+  allowInsecureWs?: boolean;
 }
 
 export type DaemonIdentityErrorCode = 'INVALID_IDENTITY' | 'REAUTHORIZATION_REQUIRED';
@@ -43,11 +44,13 @@ function requiredString(value: unknown, field: string, maximum: number): string 
   return value;
 }
 
-export function validateServerUrl(value: string): string {
+export function validateServerUrl(value: string, allowInsecureRemote = false): string {
   const url = new URL(value);
   const loopback = ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
-  if (url.protocol !== 'wss:' && !(url.protocol === 'ws:' && loopback)) {
-    throw new Error('Daemon Server URL must use WSS, except for loopback development.');
+  if (url.protocol !== 'wss:' && !(url.protocol === 'ws:' && (loopback || allowInsecureRemote))) {
+    throw new Error(
+      'Daemon Server URL must use WSS, except for loopback development or an explicit --allow-insecure-ws pairing.',
+    );
   }
   if (url.username || url.password || url.search || url.hash) {
     throw new Error('Daemon Server URL must not contain credentials, query, or fragment.');
@@ -103,16 +106,27 @@ function parseIdentity(value: unknown): DaemonIdentity {
       'Daemon identity must not contain an instance ID or pairing credential.',
     );
   }
+  if (record.allowInsecureWs !== undefined && typeof record.allowInsecureWs !== 'boolean') {
+    throw new DaemonIdentityError(
+      'INVALID_IDENTITY',
+      'Daemon identity field allowInsecureWs is invalid.',
+    );
+  }
+  const allowInsecureWs = record.allowInsecureWs === true;
   return {
     version: 2,
     envId: requiredString(record.envId, 'envId', 200),
     deviceId: requiredString(record.deviceId, 'deviceId', 200),
     deviceBindingId: requiredString(record.deviceBindingId, 'deviceBindingId', 200),
     deviceCredential: requiredString(record.deviceCredential, 'deviceCredential', 512),
-    serverUrl: validateServerUrl(requiredString(record.serverUrl, 'serverUrl', 2048)),
+    serverUrl: validateServerUrl(
+      requiredString(record.serverUrl, 'serverUrl', 2048),
+      allowInsecureWs,
+    ),
     deviceName: requiredString(record.deviceName, 'deviceName', 200),
     grantedCapabilities: parseCapabilities(record.grantedCapabilities),
     daemonVersion: requiredString(record.daemonVersion, 'daemonVersion', 100),
+    ...(allowInsecureWs ? { allowInsecureWs: true } : {}),
   };
 }
 

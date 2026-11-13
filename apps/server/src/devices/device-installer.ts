@@ -84,10 +84,12 @@ export class DeviceInstaller {
   }
 
   command(issued: EnvironmentPairingIssue): string {
-    const websocket = new URL('/devices/wss', this.#origin());
+    const origin = new URL(this.#origin());
+    const websocket = new URL('/devices/wss', origin);
     websocket.protocol = websocket.protocol === 'https:' ? 'wss:' : 'ws:';
-    const script =
-      'set -eu; file=$(mktemp); trap \'rm -f "$file"\' EXIT; curl --fail --silent --show-error --location "$1" -o "$file"; bash "$file" --env-id "$2" --server-url "$3" --directory "$4"';
+    const loopback = ['127.0.0.1', 'localhost', '[::1]'].includes(origin.hostname);
+    const insecureRemote = origin.protocol === 'http:' && !loopback;
+    const script = `set -eu; file=$(mktemp); trap 'rm -f "$file"' EXIT; curl --fail --silent --show-error --location "$1" -o "$file"; bash "$file" --env-id "$2" --server-url "$3" --directory "$4"${insecureRemote ? ' --allow-insecure-ws' : ''}`;
     return `printf '%s\\n' ${quote(issued.pairingCredential)} | bash -c ${quote(script)} -- ${quote(`${this.#origin()}/api/daemon/install.sh`)} ${quote(issued.environment.envId)} ${quote(websocket.toString())} ${quote(issued.environment.autoDetect ? '' : issued.environment.recommendedPwd)}`;
   }
 
@@ -145,11 +147,13 @@ BASE=${quote(`${this.#origin()}/api/daemon`)}
 ENV_ID=
 SERVER_URL=
 DIRECTORY=
+ALLOW_INSECURE_WS=0
 while [[ $# -gt 0 ]]; do
   case $1 in
     --env-id) ENV_ID=$2; shift 2 ;;
     --server-url) SERVER_URL=$2; shift 2 ;;
     --directory) DIRECTORY=$2; shift 2 ;;
+    --allow-insecure-ws) ALLOW_INSECURE_WS=1; shift ;;
     *) printf 'Unsupported installer argument.\n' >&2; exit 78 ;;
   esac
 done
@@ -180,6 +184,7 @@ mkdir "$WORK/release"
 tar -xzf "$WORK/release.tar.gz" -C "$WORK/release"
 set -- --env-id "$ENV_ID" --server-url "$SERVER_URL"
 if [[ -n $DIRECTORY ]]; then set -- "$@" --directory "$DIRECTORY"; fi
+if [[ $ALLOW_INSECURE_WS == 1 ]]; then set -- "$@" --allow-insecure-ws; fi
 if [[ $PLATFORM == linux && $EUID -ne 0 ]]; then
   sudo -v
   printf '%s\n' "$PAIRING_CREDENTIAL" | sudo bash "$WORK/release/install.sh" "$@"
