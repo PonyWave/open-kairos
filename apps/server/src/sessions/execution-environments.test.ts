@@ -49,7 +49,6 @@ function fixture(script: ModelEvent[][] = [response('done')]) {
       contextWindowTokens: 128000,
       outputReserveTokens: 4096,
     },
-    browser: false,
   });
   const close = async () => {
     await coordinator.close();
@@ -80,7 +79,6 @@ function standaloneFixture(script: ModelEvent[][] = [response('done')]) {
       contextWindowTokens: 128000,
       outputReserveTokens: 4096,
     },
-    browser: false,
   });
   const close = async () => {
     await coordinator.close();

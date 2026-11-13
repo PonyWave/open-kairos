@@ -675,8 +675,8 @@ it('REQ-05 preserves background progress, tool boundaries and cancellation at mi
       response('', [
         {
           id: 'bg-status',
-          name: 'subagent_status',
-          arguments: { tool_call_id: backgroundToolCallId, wait_ms: 20 },
+          name: 'task_output',
+          arguments: { task_id: backgroundToolCallId, wait_ms: 20 },
         },
       ]),
     );
@@ -852,8 +852,8 @@ it('REQ-05 preserves background progress, tool boundaries and cancellation at mi
       response('', [
         {
           id: 'cancel-bg-stop',
-          name: 'subagent_cancel',
-          arguments: { tool_call_id: cancelToolCallId },
+          name: 'task_stop',
+          arguments: { task_id: cancelToolCallId },
         },
       ]),
     );
@@ -1220,8 +1220,8 @@ it('REQ-05 waits for exact Thread and Subagent results within the 30000 ms bound
       response('', [
         {
           id: 'subagent-status-finish',
-          name: 'subagent_status',
-          arguments: { tool_call_id: subagentToolCallId, wait_ms: 30_000 },
+          name: 'task_output',
+          arguments: { task_id: subagentToolCallId, wait_ms: 30_000 },
         },
       ]),
     );
@@ -1265,8 +1265,8 @@ it('REQ-05 waits for exact Thread and Subagent results within the 30000 ms bound
         },
         {
           id: 'subagent-status-over',
-          name: 'subagent_status',
-          arguments: { tool_call_id: subagentToolCallId, wait_ms: 30_001 },
+          name: 'task_output',
+          arguments: { task_id: subagentToolCallId, wait_ms: 30_001 },
         },
       ]),
     );

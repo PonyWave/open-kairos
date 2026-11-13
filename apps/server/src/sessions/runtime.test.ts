@@ -20,7 +20,6 @@ import {
 } from '../integration/environment-fixture.js';
 import { MemoryWiki } from '../memory/index.js';
 import { openDatabase } from '../storage/database.js';
-import { BrowserRuntime } from '../tools/browser.js';
 import type { RunStatus } from './records.js';
 import {
   RunCoordinator,
@@ -111,7 +110,6 @@ async function fixture(
     environmentPolicy?: typeof testEnvironmentPolicyInput;
     periodicRecap?: RunCoordinatorOptions['periodicRecap'];
     sqlRecall?: RunCoordinatorOptions['sqlRecall'];
-    browser?: BrowserRuntime | false;
     memory?: MemoryWiki;
   } = {},
 ) {
@@ -267,50 +265,6 @@ it('persists every final tool result before the next model request', async () =>
           message.message.role === 'tool' && message.message.content.includes('tool-content'),
       ),
     ).toBe(true);
-  } finally {
-    await cleanup(coordinator, database, directory);
-  }
-});
-
-it('bounds browser validation errors in the persisted and forwarded tool message', async () => {
-  const unknownField = 'x'.repeat(100_000);
-  const provider = new ScriptedProvider([
-    response('', [
-      {
-        id: 'browser-invalid-field',
-        name: 'browser',
-        arguments: { action: 'navigate', url: 'https://example.com', [unknownField]: true },
-      },
-    ]),
-    response('done'),
-  ]);
-  const { database, store, coordinator, thread, directory } = await fixture(provider);
-  try {
-    const sent = send(store, thread.threadId, 'reject malformed browser input');
-    await coordinator.deliver(sent.input, sent.runId);
-    await waitStatus(store, sent.runId, 'completed');
-
-    const stored = store
-      .listContext(ownerId, thread.threadId, 'thread')
-      .find(
-        (record) =>
-          record.message.role === 'tool' && record.message.tool_call_id === 'browser-invalid-field',
-      )?.message;
-    if (stored?.role !== 'tool') throw new Error('Browser tool message is missing.');
-    expect(stored).toMatchObject({
-      status: 'error',
-      error: { code: 'invalid_arguments' },
-    });
-    expect(stored.content.length).toBeLessThanOrEqual(1000);
-    expect(stored.error?.message.length).toBeLessThanOrEqual(1000);
-    expect(stored.content).not.toContain(unknownField);
-    expect(stored.error?.message).toBe(stored.content);
-
-    const forwarded = provider.requests[1]?.messages.find(
-      (message) => message.role === 'tool' && message.tool_call_id === 'browser-invalid-field',
-    );
-    expect(forwarded?.content).toBe(stored.content);
-    expect(provider.requests).toHaveLength(2);
   } finally {
     await cleanup(coordinator, database, directory);
   }
@@ -906,56 +860,6 @@ it('runs a Subagent in an isolated Context and returns its result to the parent'
       true,
     );
     expect(parentContext.some((message) => message.message.content === 'child task')).toBe(false);
-  } finally {
-    await cleanup(coordinator, database, directory);
-  }
-});
-
-it('registers browser for main, task Thread and Subagent and closes each Run session', async () => {
-  const provider = new ScriptedProvider([
-    response('main answer'),
-    response('task answer'),
-    response('', [
-      {
-        id: 'browser-child',
-        name: 'subagent',
-        arguments: { task: 'child task', mode: 'foreground' },
-      },
-    ]),
-    response('child answer'),
-    response('parent answer'),
-  ]);
-  const browser = new BrowserRuntime();
-  const closeRun = vi.spyOn(browser, 'closeRun');
-  const close = vi.spyOn(browser, 'close');
-  const { database, store, coordinator, thread, directory } = await fixture(provider, undefined, {
-    browser,
-  });
-  try {
-    const main = store.getOrCreateMainThread(ownerId);
-    const mainInput = send(store, main.threadId, 'main browser', 'main-browser');
-    await coordinator.deliver(mainInput.input, mainInput.runId);
-    await waitStatus(store, mainInput.runId, 'completed');
-
-    const taskInput = send(store, thread.threadId, 'task browser', 'task-browser');
-    await coordinator.deliver(taskInput.input, taskInput.runId);
-    await waitStatus(store, taskInput.runId, 'completed');
-
-    const parentInput = send(store, main.threadId, 'parent browser', 'parent-browser');
-    await coordinator.deliver(parentInput.input, parentInput.runId);
-    await waitStatus(store, parentInput.runId, 'completed');
-
-    for (const requestIndex of [0, 1, 3]) {
-      const tools = provider.requests[requestIndex]?.tools ?? [];
-      expect(tools.some((tool) => tool.name === 'browser')).toBe(true);
-      expect(tools.some((tool) => tool.name === 'device_screenshot')).toBe(false);
-    }
-    for (const runId of [mainInput.runId, taskInput.runId, parentInput.runId]) {
-      expect(closeRun).toHaveBeenCalledWith(runId);
-    }
-    expect(browser.activeSessionCount).toBe(0);
-    await coordinator.close();
-    expect(close).toHaveBeenCalledTimes(1);
   } finally {
     await cleanup(coordinator, database, directory);
   }

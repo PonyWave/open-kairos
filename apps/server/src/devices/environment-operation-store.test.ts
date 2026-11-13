@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { DeviceErrorCode, OperationStatus, OutputStream } from '@kairos/contracts/device';
+import { DeviceErrorCode, GrepMode, OperationStatus, OutputStream } from '@kairos/contracts/device';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { sizedJpegBytes } from '../attachments/fixtures.js';
 import { contextRecapMigrations } from '../storage/migrations.js';
@@ -130,6 +130,24 @@ describe('EnvironmentOperationStore', () => {
         },
       },
       bashAction(),
+      {
+        case: 'glob',
+        value: { pattern: '**/*.ts', path: '/workspace/src', cwd: '/workspace', headLimit: 50 },
+      },
+      {
+        case: 'grep',
+        value: {
+          pattern: 'needle',
+          path: '/workspace',
+          cwd: '/workspace',
+          include: '*.ts',
+          caseInsensitive: true,
+          mode: GrepMode.FILES_WITH_MATCHES,
+          lineNumbers: true,
+          headLimit: 20,
+          offset: 5,
+        },
+      },
     ];
     for (const [index, action] of actions.entries()) {
       const { database, store, input } = fixture(action);
@@ -140,7 +158,7 @@ describe('EnvironmentOperationStore', () => {
       expect(
         database
           .prepare(
-            'SELECT action, path, cwd, binding_version FROM environment_operations WHERE operation_id = ?',
+            'SELECT action, path, cwd, binding_version, search_action FROM environment_operations WHERE operation_id = ?',
           )
           .get(input.operationId),
       ).toMatchObject({
@@ -149,13 +167,16 @@ describe('EnvironmentOperationStore', () => {
             ? 'directory_check'
             : action.case === 'readImage'
               ? 'read_image'
-              : action.case,
+              : action.case === 'glob' || action.case === 'grep'
+                ? 'read'
+                : action.case,
         path: action.case === 'bash' ? null : action.value.path,
         cwd:
           action.case === 'directoryCheck' || action.case === 'directoryList'
             ? null
             : action.value.cwd,
         binding_version: action.case === 'directoryCheck' ? null : '7',
+        search_action: action.case === 'glob' || action.case === 'grep' ? action.case : null,
       });
       expect(() =>
         store.createIntent({

@@ -156,7 +156,8 @@ export type MessageSource =
   | 'thread_response'
   | 'subagent_response'
   | 'automation'
-  | 'thread_notification';
+  | 'thread_notification'
+  | 'background_task';
 
 export interface AutomationReference {
   scheduleId: string;

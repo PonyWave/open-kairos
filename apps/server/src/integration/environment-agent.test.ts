@@ -311,7 +311,18 @@ class FakeOperations implements EnvironmentOperationGateway {
     }
     return {
       case: 'bash',
-      value: { exitCode: 0, outputComplete: true, endOffset: 14n },
+      value: {
+        exitCode: 0,
+        outputComplete: true,
+        endOffset: 14n,
+        ...(this.truncateBashOutput
+          ? {
+              logFile: '/home/device/.kairos/daemon/logs/mock.log',
+              logSizeBytes: 14n,
+              logTruncated: false,
+            }
+          : {}),
+      },
     };
   }
 }
@@ -712,19 +723,21 @@ it('gives all Agents execution tools and loads main and task resources from the 
   if (!routerRequest || !taskRequest) throw new Error('Provider requests are missing.');
   expect(toolNames(routerRequest)).toEqual([
     'bash',
-    'browser',
     'edit',
     'env_list',
     'env_sync',
+    'glob',
+    'grep',
     'read',
     'read_image',
-    'read_output',
     'recall',
     'send_to_user',
     'skill',
     'subagent',
-    'subagent_cancel',
-    'subagent_status',
+    'task_list',
+    'task_output',
+    'task_stop',
+    'task_wait',
     'thread_call',
     'thread_cancel',
     'thread_list',
@@ -737,18 +750,20 @@ it('gives all Agents execution tools and loads main and task resources from the 
   expect(toolNames(taskRequest)).toEqual(
     [
       'bash',
-      'browser',
       'edit',
       'env_list',
       'env_sync',
+      'glob',
+      'grep',
       'read',
       'read_image',
-      'read_output',
       'recall',
       'skill',
       'subagent',
-      'subagent_cancel',
-      'subagent_status',
+      'task_list',
+      'task_output',
+      'task_stop',
+      'task_wait',
       'thread_notify',
       'web_fetch',
       'web_search',
@@ -821,7 +836,7 @@ it('reminds once about a nested AGENTS.md after writes in its directory tree', a
   expect(results[1]?.message.content).not.toContain('agents_md_hint');
 });
 
-it('adds a read_output hint when the bash output preview is truncated', async () => {
+it('points to the device log file when the bash output preview is truncated', async () => {
   const provider = new ScriptedProvider([
     response('', [{ id: 'bash-1', name: 'bash', arguments: { env_id: 'env-1', command: 'pwd' } }]),
     response('done'),
@@ -841,9 +856,11 @@ it('adds a read_output hint when the bash output preview is truncated', async ()
   const bashResult = store
     .listContext(ownerId, task.thread.threadId, 'thread')
     .find((message) => message.message.role === 'tool' && message.message.tool_name === 'bash');
-  expect(bashResult?.message.content).toContain('The output preview is truncated');
-  expect(bashResult?.message.content).toContain('read_output');
-  expect(bashResult?.message.content).toContain('output_gap');
+  expect(bashResult?.message.content).toContain('"output_truncated":true');
+  expect(bashResult?.message.content).toContain('"output_file"');
+  expect(bashResult?.message.content).toContain('/home/device/.kairos/daemon/logs/mock.log');
+  expect(bashResult?.message.content).toContain('read or grep');
+  expect(bashResult?.message.content).not.toContain('read_output');
 });
 
 it('routes remote operations by binding and preserves cwd and output authorization', async () => {
@@ -855,10 +872,9 @@ it('routes remote operations by binding and preserves cwd and output authorizati
         arguments: { env_id: 'env-1', command: 'pwd', cwd: '/srv/once' },
       },
     ]),
-    response('', [{ id: 'output-1', name: 'read_output', arguments: { operation_id: 'missing' } }]),
     response('done'),
   ]);
-  const { store, coordinator, operations, environments } = await fixture(provider);
+  const { store, coordinator, operations } = await fixture(provider);
   const task = store.createThread(
     action('CreateThread', 'operation-task', {
       title: 'operations',
@@ -880,22 +896,6 @@ it('routes remote operations by binding and preserves cwd and output authorizati
   expect(store.agentEnvironments.requirePolicy(task.thread.threadId, 'thread').current.pwd).toBe(
     '/workspace',
   );
-  const operationId = bash?.operationId;
-  expect(operationId).toBeDefined();
-  if (!operationId) throw new Error('The Bash operation ID is missing.');
-  const run = store.getRunById(task.runId);
-  const runtime = new AgentEnvironmentRuntime({
-    store,
-    environments,
-    operations,
-    environmentUse: new ControlledEnvironmentUseGateway(store.database),
-  });
-  const output = runtime.readOutput(run, { operationId: operationId, offset: 0n, limit: 5 });
-  expect(output).toContain('remote output'.slice(0, 5));
-  const otherRun = store.createChildRun(ownerId, task.runId, 'subagent-other');
-  expect(() =>
-    runtime.readOutput(otherRun, { operationId: operationId, offset: 0n, limit: 5 }),
-  ).toThrow(/not available/);
 });
 
 it('creates Subagents with execution tools but without Router delegation tools', async () => {
@@ -938,15 +938,19 @@ it('creates Subagents with execution tools but without Router delegation tools',
   expect(childSystem).not.toContain('You are the root Agent of a persistent task Thread');
   expect(toolNames(childRequest)).toEqual([
     'bash',
-    'browser',
     'edit',
     'env_list',
     'env_sync',
+    'glob',
+    'grep',
     'read',
     'read_image',
-    'read_output',
     'recall',
     'skill',
+    'task_list',
+    'task_output',
+    'task_stop',
+    'task_wait',
     'web_fetch',
     'web_search',
     'write',

@@ -7,6 +7,7 @@ import type { ModelRequest } from '@kairos/agent-core';
 import { ModelApiType } from '@kairos/contracts';
 import { z } from 'zod';
 import { DEFAULT_MEMORY_INDEX_MAX_BYTES, type MemoryConfiguration } from './memory/index.js';
+import { loadMcpServerConfigs, type McpServerConfig } from './mcp/config.js';
 import type { EstimatingModelProvider } from './providers/base.js';
 import { createModelProvider, providerIdForApiType } from './providers/factory.js';
 import { DEFAULT_SQL_RECALL_LIMITS, type SqlRecallLimits } from './recall/types.js';
@@ -217,6 +218,7 @@ const environmentSchema = z.object({
     .min(0)
     .max(10)
     .default(DEFAULT_WEB_FETCH_LIMITS.maxRedirects),
+  KAIROS_MCP_CONFIG: z.string().min(1).optional(),
   KAIROS_WEB_SEARCH_PROVIDER: z.enum(['searxng', 'brave']).optional(),
   KAIROS_WEB_SEARCH_SEARXNG_URL: z.string().min(1).optional(),
   KAIROS_WEB_SEARCH_BRAVE_URL: z.string().min(1).optional(),
@@ -400,6 +402,12 @@ export function readSqlRecallConfig(environment: NodeJS.ProcessEnv = process.env
   };
 }
 
+export function readMcpConfig(environment: NodeJS.ProcessEnv = process.env): McpServerConfig[] {
+  const config = environmentSchema.parse(environment);
+  if (config.KAIROS_MCP_CONFIG === undefined) return [];
+  return loadMcpServerConfigs(config.KAIROS_MCP_CONFIG);
+}
+
 export function readWebConfig(environment: NodeJS.ProcessEnv = process.env): WebToolOptions {
   const config = environmentSchema.parse(environment);
   const web: WebToolOptions = {
@@ -572,6 +580,7 @@ export function readServerConfig(environment: NodeJS.ProcessEnv = process.env) {
     periodicRecap: readPeriodicRecapConfig(environment),
     sqlRecall: readSqlRecallConfig(environment),
     web: readWebConfig(environment),
+    mcp: readMcpConfig(environment),
     model: model.model,
     modelStatus: model.status,
     modelAllowedOrigins: config.KAIROS_MODEL_ALLOWED_ORIGINS,

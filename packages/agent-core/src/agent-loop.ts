@@ -16,9 +16,21 @@ import type {
 
 export const DEFAULT_MAX_STEPS = 32;
 
+export interface ToolProgressAuthorization {
+  serverName: string;
+  authorizationUrl: string;
+  expiresAt: string;
+}
+
+export interface ToolProgressUpdate {
+  text: string;
+  authorization?: ToolProgressAuthorization;
+}
+
 export interface ToolExecutionContext {
   call: ToolCall;
   signal: AbortSignal;
+  progress?: (update: ToolProgressUpdate) => void;
 }
 
 export interface ToolExecutionResult {
@@ -61,6 +73,7 @@ export interface AgentLoopOptions {
   executionId?: string;
   readInputs?: (mode: 'steer' | 'follow_up') => readonly AgentLoopInput[];
   readInjections?: () => readonly AgentLoopInput[];
+  onToolProgress?: (toolCallId: string, update: ToolProgressUpdate) => void;
 }
 
 export interface AgentLoopRunOptions {
@@ -155,6 +168,7 @@ export class AgentLoop {
   private readonly executionId: string;
   private readonly readInputs: AgentLoopOptions['readInputs'];
   private readonly readInjections: AgentLoopOptions['readInjections'];
+  private readonly onToolProgress: AgentLoopOptions['onToolProgress'];
   private readonly finalizedToolCallIds = new Set<string>();
   private readonly listeners = new Set<(event: AgentLoopEvent) => void>();
   private readonly controller = new AbortController();
@@ -185,6 +199,7 @@ export class AgentLoop {
     this.executionId = executionId;
     this.readInputs = options.readInputs;
     this.readInjections = options.readInjections;
+    this.onToolProgress = options.onToolProgress;
   }
 
   subscribe(listener: (event: AgentLoopEvent) => void): () => void {
@@ -622,6 +637,13 @@ export class AgentLoop {
       const result = await tool.execute(validatedArguments, {
         call: structuredClone(call),
         signal: this.controller.signal,
+        ...(this.onToolProgress === undefined
+          ? {}
+          : {
+              progress: (update: ToolProgressUpdate) => {
+                this.onToolProgress?.(call.id, update);
+              },
+            }),
       });
       const normalized = typeof result === 'string' ? { content: result } : result;
       if (typeof normalized.content !== 'string') {

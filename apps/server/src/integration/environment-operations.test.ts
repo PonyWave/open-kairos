@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import {
   mkdtempSync,
   readdirSync,
@@ -23,11 +23,22 @@ import {
   DeviceErrorCode,
   decodeServerMessage,
   encodeDaemonMessage,
+  GrepMode,
   OperationStatus,
 } from '@kairos/contracts/device';
 import type { FastifyInstance } from 'fastify';
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
+
+function rgAvailable(): boolean {
+  try {
+    execFileSync(process.env.KAIROS_RG_PATH ?? 'rg', ['--version'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 import WebSocket from 'ws';
 import { z } from 'zod';
 import type { StartEnvironmentOperationInput } from '../devices/channel.js';
@@ -280,6 +291,7 @@ describe('real environment Operation execution', () => {
       DeviceCapability.FILE_EDIT,
       DeviceCapability.DIRECTORY_CHECK,
       DeviceCapability.DIRECTORY_LIST,
+      DeviceCapability.FILE_SEARCH,
     ]);
     const directoryRow = database
       .prepare(
@@ -361,6 +373,38 @@ describe('real environment Operation execution', () => {
     expect(edited.outcome.value.replacements).toBe(2);
     expect(readFileSync(path, 'utf8')).toBe('alpha new new\n');
     expect(readdirSync(workspace).sort()).toEqual(['.agents', 'AGENTS.md', 'remote.txt']);
+
+    if (rgAvailable()) {
+      const canonicalPath = join(realpathSync(workspace), 'remote.txt');
+      const glob = await startAndWait(
+        fixture,
+        operationInput(fixture, 'glob-1', {
+          case: 'glob',
+          value: { pattern: '*.txt', path: workspace, cwd: workspace },
+        }),
+      );
+      if (glob.outcome?.case !== 'glob') throw new Error('Glob outcome is missing.');
+      expect(glob.outcome.value.files).toEqual([canonicalPath]);
+
+      const grep = await startAndWait(
+        fixture,
+        operationInput(fixture, 'grep-1', {
+          case: 'grep',
+          value: {
+            pattern: 'new',
+            path: workspace,
+            cwd: workspace,
+            caseInsensitive: false,
+            mode: GrepMode.CONTENT,
+            lineNumbers: true,
+          },
+        }),
+      );
+      if (grep.outcome?.case !== 'grep') throw new Error('Grep outcome is missing.');
+      expect(grep.outcome.value.matches).toEqual([
+        expect.objectContaining({ file: canonicalPath, line: 1, text: 'alpha new new' }),
+      ]);
+    }
 
     const appendPath = join(workspace, 'append.txt');
     const bashInput = operationInput(fixture, 'bash-1', {
@@ -830,14 +874,11 @@ it('executes Agent tools through the real Server channel and isolates two enviro
       ]);
     }
     if (index === 7) {
-      const operationId = z
-        .object({ operation_id: z.string() })
-        .parse(toolResult(request, 'agent-bash')).operation_id;
       return agentResponse('', [
         {
-          id: 'agent-read-output',
-          name: 'read_output',
-          arguments: { operation_id: operationId, offset: 0, limit: 1024 },
+          id: 'agent-glob',
+          name: 'glob',
+          arguments: { env_id: primaryEnvId, pattern: '*.txt' },
         },
         {
           id: 'agent-read-primary-again',
@@ -904,18 +945,20 @@ it('executes Agent tools through the real Server channel and isolates two enviro
     expect(provider.requests[0]?.tools.map((tool) => tool.name).sort()).toEqual(
       [
         'bash',
-        'browser',
         'edit',
         'env_list',
         'env_sync',
+        'glob',
+        'grep',
         'read',
         'read_image',
-        'read_output',
         'recall',
         'skill',
         'subagent',
-        'subagent_cancel',
-        'subagent_status',
+        'task_list',
+        'task_output',
+        'task_stop',
+        'task_wait',
         'thread_notify',
         'web_fetch',
         'web_search',
@@ -970,12 +1013,17 @@ it('executes Agent tools through the real Server channel and isolates two enviro
     expect(readFileSync(firstPath, 'utf8')).toBe('alpha new new\n');
     expect(readFileSync(join(second.workspace, 'agent.txt'), 'utf8')).toBe('second environment\n');
     expect(readFileSync(join(fixture.workspace, 'bash.txt'), 'utf8')).toBe('agent-bash');
-    const outputResult = toolResult(
-      provider.requests[8] ?? { messages: [], tools: [] },
-      'agent-read-output',
+    const bashToolResult = toolResult(
+      provider.requests[4] ?? { messages: [], tools: [] },
+      'agent-bash',
     );
-    expect(outputResult.content).toContain('agent-output');
-    expect(outputResult.output_complete).toBe(true);
+    expect(bashToolResult.output).toContain('agent-output');
+    expect(bashToolResult.output_truncated).toBe(false);
+    const globResult = toolResult(
+      provider.requests[8] ?? { messages: [], tools: [] },
+      'agent-glob',
+    );
+    expect(globResult.files).toEqual(expect.arrayContaining([expect.stringContaining('bash.txt')]));
     expect(
       toolResult(provider.requests[8] ?? { messages: [], tools: [] }, 'agent-read-primary-again'),
     ).toMatchObject({

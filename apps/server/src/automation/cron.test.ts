@@ -1,5 +1,53 @@
 import { describe, expect, it } from 'vitest';
-import { countOccurrences, nextOccurrence, normalizeSchedule, previousOccurrence } from './cron.js';
+import {
+  countOccurrences,
+  jitteredNextOccurrence,
+  jitterFraction,
+  nextOccurrence,
+  normalizeSchedule,
+  previousOccurrence,
+} from './cron.js';
+
+describe('Automation cron jitter', () => {
+  it('shifts recurring fires later by a deterministic capped offset', () => {
+    const schedule = { kind: 'cron', expression: '0 9 * * *', timeZone: 'Asia/Shanghai' } as const;
+    const first = jitteredNextOccurrence(schedule, '2026-01-01T00:00:00.000Z', 'schedule-a');
+    const again = jitteredNextOccurrence(schedule, '2026-01-01T00:00:00.000Z', 'schedule-a');
+    const other = jitteredNextOccurrence(
+      schedule,
+      '2026-01-01T00:00:00.000Z',
+      'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+    );
+    expect(first).toBe(again);
+    const ideal = Date.parse(nextOccurrence(schedule, '2026-01-01T00:00:00.000Z') ?? '');
+    const shifted = Date.parse(first ?? '');
+    expect(shifted).toBeGreaterThanOrEqual(ideal);
+    expect(shifted - ideal).toBeLessThanOrEqual(15 * 60_000);
+    expect(shifted - ideal).toBe(Math.round(15 * 60_000 * jitterFraction('schedule-a')));
+    expect(Date.parse(other ?? '')).not.toBe(shifted);
+  });
+
+  it('shifts on-the-hour one-shot fires earlier by up to 90 seconds', () => {
+    const onHour = {
+      kind: 'once',
+      runAt: '2026-01-01T09:00:00.000Z',
+      timeZone: 'Asia/Shanghai',
+    } as const;
+    const shifted = jitteredNextOccurrence(onHour, '2026-01-01T00:00:00.000Z', 'once-a');
+    expect(Date.parse(shifted ?? '')).toBe(
+      Date.parse(onHour.runAt) - Math.round(90_000 * jitterFraction('once-a')),
+    );
+    const offHour = {
+      kind: 'once',
+      runAt: '2026-01-01T09:17:00.000Z',
+      timeZone: 'Asia/Shanghai',
+    } as const;
+    expect(jitteredNextOccurrence(offHour, '2026-01-01T00:00:00.000Z', 'once-a')).toBe(
+      offHour.runAt,
+    );
+    expect(jitteredNextOccurrence(onHour, '2026-01-01T08:59:55.000Z', 'once-a')).toBe(onHour.runAt);
+  });
+});
 
 describe('Automation cron', () => {
   it('evaluates five-field cron in its explicit time zone', () => {

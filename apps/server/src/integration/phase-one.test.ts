@@ -340,24 +340,13 @@ async function filesUnder(directory: string): Promise<string[]> {
   const files: string[] = [];
   for (const entry of entries) {
     const path = join(directory, entry.name);
-    if (entry.isDirectory()) files.push(...(await filesUnder(path)));
-    else files.push(relative(directory, path));
+    if (entry.isDirectory()) {
+      files.push(...(await filesUnder(path)).map((name) => `${entry.name}/${name}`));
+    } else {
+      files.push(relative(directory, path));
+    }
   }
   return files.sort();
-}
-
-function toolResultField(request: ModelRequest, toolName: string, field: string): string {
-  const message = request.messages.find(
-    (candidate) => candidate.role === 'tool' && candidate.tool_name === toolName,
-  );
-  if (message?.role !== 'tool') throw new Error(`Missing ${toolName} tool result.`);
-  const parsed: unknown = JSON.parse(message.content);
-  if (typeof parsed !== 'object' || parsed === null || !(field in parsed)) {
-    throw new Error(`Missing ${field} in ${toolName} tool result.`);
-  }
-  const value = parsed[field as keyof typeof parsed];
-  if (typeof value !== 'string') throw new Error(`${field} is not a string.`);
-  return value;
 }
 
 it('AT-02/AT-12 uses real Connect streams for message control and reconnection', async () => {
@@ -674,15 +663,14 @@ it('AT-04/AT-11 overlaps Subagents and propagates parent cancellation through Co
   }
 }, 20_000);
 
-it('AT-04/AT-13/AT-14/AT-16 runs a real Daemon, cancels Bash and pages logs offline', async () => {
+it('AT-04/AT-13/AT-14/AT-16 runs a real Daemon, cancels Bash and pages stored logs', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'kairos-acceptance-device-'));
   const workDirectory = directory;
   const effect = join(workDirectory, 'device-effect.txt');
   const cancelStarted = join(workDirectory, 'cancel-started.txt');
   const cancelFinished = join(workDirectory, 'cancel-finished.txt');
-  let stopForOfflineRead: (() => Promise<void>) | undefined;
   let targetEnvId = '';
-  const provider = new CallbackProvider(async (request, index) => {
+  const provider = new CallbackProvider(async (_request, index) => {
     if (index === 0) {
       return response('', [
         {
@@ -712,19 +700,6 @@ it('AT-04/AT-13/AT-14/AT-16 runs a real Daemon, cancels Bash and pages logs offl
         },
       ]);
     }
-    if (index === 3) {
-      if (!stopForOfflineRead) throw new Error('The real Daemon stop hook is missing.');
-      await stopForOfflineRead();
-      const operationId = toolResultField(request, 'bash', 'operation_id');
-      return response('', [
-        {
-          id: 'grep-offline-log',
-          name: 'read_output',
-          arguments: { operation_id: operationId, offset: 65536, limit: 16384 },
-        },
-      ]);
-    }
-    if (index === 4) return response('offline log retrieved');
     throw new Error(`Unexpected device test model request ${index}.`);
   });
   const fixture = await startFixture(directory, { provider, realEnvironment: true });
@@ -732,7 +707,6 @@ it('AT-04/AT-13/AT-14/AT-16 runs a real Daemon, cancels Bash and pages logs offl
   if (!environment) throw new Error('The real environment fixture is required.');
   targetEnvId = environment.envId;
   const daemon = environment.daemon;
-  stopForOfflineRead = () => daemon.stop();
   const identityDirectory = environment.identityDirectory;
   try {
     const threadId = await createThread(fixture, '真实设备', 'create-device-thread');
@@ -747,7 +721,8 @@ it('AT-04/AT-13/AT-14/AT-16 runs a real Daemon, cancels Bash and pages logs offl
       limit: 100,
     });
     const deviceResult = firstContext.messages.find((message) => message.toolName === 'bash');
-    expect(deviceResult?.content).toContain('"next_offset":"16384"');
+    expect(deviceResult?.content).toContain('"output_truncated":true');
+    expect(deviceResult?.content).toContain('"output_file"');
     expect(deviceResult?.content).not.toContain('HIDDEN_MARKER');
     const parsedResult: unknown = JSON.parse(deviceResult?.content ?? '{}');
     if (typeof parsedResult !== 'object' || parsedResult === null) {
@@ -757,6 +732,18 @@ it('AT-04/AT-13/AT-14/AT-16 runs a real Daemon, cancels Bash and pages logs offl
     if (typeof operationId !== 'string') {
       throw new Error('Device tool result is missing its operation ID.');
     }
+    const outputFile = Reflect.get(parsedResult, 'output_file') as unknown;
+    if (typeof outputFile !== 'object' || outputFile === null) {
+      throw new Error('Device tool result is missing its output file.');
+    }
+    const logPath = Reflect.get(outputFile, 'path') as unknown;
+    if (typeof logPath !== 'string' || !logPath.endsWith('.log')) {
+      throw new Error('The device output log path is invalid.');
+    }
+    expect(logPath).toContain(join(identityDirectory, 'logs'));
+    const fullLog = await readFile(logPath, 'utf8');
+    expect(fullLog.length).toBeGreaterThan(64 * 1024);
+    expect(fullLog).toContain('HIDDEN_MARKER');
 
     const cancelRunId = await sendMessage(fixture, threadId, 'cancel command', 'send-cancel');
     await vi.waitFor(async () => {
@@ -780,18 +767,6 @@ it('AT-04/AT-13/AT-14/AT-16 runs a real Daemon, cancels Bash and pages logs offl
     ).toEqual([{ status: OperationStatus.CANCELLED }]);
     await expect(readFile(cancelFinished, 'utf8')).rejects.toThrow();
 
-    const offlineRunId = await sendMessage(fixture, threadId, 'read offline log', 'send-offline');
-    await waitRun(fixture, threadId, offlineRunId, RunStatus.COMPLETED);
-    const finalContext = await fixture.clients.context.readContext({
-      threadId,
-      agentId: 'thread',
-      afterSeq: 0n,
-      limit: 100,
-    });
-    expect(
-      finalContext.messages.find((message) => message.toolCallId === 'grep-offline-log')?.content,
-    ).toContain('HIDDEN_MARKER');
-
     const pages: Buffer[] = [];
     let offset = 0n;
     let outputComplete = false;
@@ -812,8 +787,21 @@ it('AT-04/AT-13/AT-14/AT-16 runs a real Daemon, cancels Bash and pages logs offl
     }
     expect(outputComplete).toBe(true);
     const output = Buffer.concat(pages).toString('utf8');
-    expect(output).toContain('HIDDEN_MARKER');
-    expect(output.length).toBeGreaterThan(16 * 1024);
+    expect(output.length).toBe(16 * 1024);
+    expect(output).toContain('0123456789');
+    expect(output).not.toContain('HIDDEN_MARKER');
+    const stored = fixture.database
+      .prepare(
+        'SELECT result_end_offset, output_complete, output_gap FROM environment_operations WHERE operation_id = ?',
+      )
+      .get(operationId) as {
+      result_end_offset: string;
+      output_complete: number;
+      output_gap: number;
+    };
+    expect(BigInt(stored.result_end_offset)).toBeGreaterThan(BigInt(16 * 1024));
+    expect(stored.output_complete).toBe(1);
+    expect(stored.output_gap).toBe(0);
     const operations = fixture.database
       .prepare(
         "SELECT operation_id, status FROM environment_operations WHERE action = 'bash' ORDER BY created_at",
@@ -826,7 +814,11 @@ it('AT-04/AT-13/AT-14/AT-16 runs a real Daemon, cancels Bash and pages logs offl
     expect(operations.some((operation) => operation.status === OperationStatus.CANCELLED)).toBe(
       true,
     );
-    expect(await filesUnder(identityDirectory)).toEqual(['identity.json']);
+    const persistedFiles = await filesUnder(identityDirectory);
+    expect(persistedFiles).toContain('identity.json');
+    expect(
+      persistedFiles.every((file) => file === 'identity.json' || /^logs\/[^/]+\.log$/.test(file)),
+    ).toBe(true);
   } finally {
     await daemon.stop();
     await closeFixture(fixture);
@@ -914,7 +906,11 @@ it('AT-15 does not repeat device side effects after a Daemon instance restart', 
         .prepare("SELECT COUNT(*) AS count FROM environment_operations WHERE action = 'bash'")
         .get(),
     ).toEqual({ count: 1 });
-    expect(await filesUnder(identityDirectory)).toEqual(['identity.json']);
+    const persistedFiles = await filesUnder(identityDirectory);
+    expect(persistedFiles).toContain('identity.json');
+    expect(
+      persistedFiles.every((file) => file === 'identity.json' || /^logs\/[^/]+\.log$/.test(file)),
+    ).toBe(true);
   } finally {
     await daemon.stop();
     await closeFixture(fixture);
@@ -992,7 +988,13 @@ it.skipIf(process.platform !== 'darwin')(
       });
       const identity: unknown = JSON.parse(await readFile(identityPath, 'utf8'));
       expect(Reflect.get(identity as object, 'serverUrl')).toBe(serverUrl);
-      expect(await filesUnder(identityDirectory)).toEqual(['identity.json']);
+      const persistedFiles = await filesUnder(identityDirectory);
+      expect(persistedFiles).toContain('identity.json');
+      expect(
+        persistedFiles.every(
+          (file) => file === 'identity.json' || /^logs\/[^/]+\.log$/.test(file),
+        ),
+      ).toBe(true);
       expect(new EnvironmentStore(fixture.database).get(ownerId, envId)).toMatchObject({
         bindingStatus: 'active',
         connectionStatus: 'online',

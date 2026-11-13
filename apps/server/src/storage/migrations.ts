@@ -58,7 +58,8 @@ CREATE TABLE agent_environment_operations (
         env_id TEXT NOT NULL,
         binding_version INTEGER NOT NULL CHECK(binding_version >= 0),
         action TEXT NOT NULL CHECK(action IN (
-          'read', 'read_image', 'write', 'edit', 'bash', 'directory_check', 'env_switch'
+          'read', 'read_image', 'write', 'edit', 'bash', 'directory_check', 'env_switch',
+          'glob', 'grep'
         )),
         result_content TEXT,
         result_status TEXT CHECK(result_status IN ('success', 'error')),
@@ -190,7 +191,7 @@ CREATE TABLE context_messages (
         superseded_by_run_id TEXT,
         source TEXT CHECK(source IN (
           'user', 'thread_call', 'thread_response', 'subagent_response', 'automation',
-          'thread_notification'
+          'thread_notification', 'background_task'
         )),
         delegation_source_thread_id TEXT,
         delegation_source_agent_id TEXT,
@@ -610,8 +611,12 @@ export function migrateDatabase(
     }
     previousVersion = migration.version;
   }
-  inTransaction(database, () => {
-    database.exec(`
+  // Foreign keys stay disabled while a namespace migrates: namespaces share one file but are
+  // migrated independently, so parent tables owned by another namespace may not exist yet.
+  database.exec('PRAGMA foreign_keys = OFF;');
+  try {
+    inTransaction(database, () => {
+      database.exec(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         namespace TEXT NOT NULL,
         version INTEGER NOT NULL,
@@ -620,23 +625,42 @@ export function migrateDatabase(
         PRIMARY KEY(namespace, version)
       );
     `);
-    for (const migration of migrations) {
-      database.exec(migration.sql);
-      database
-        .prepare(
-          'INSERT INTO schema_migrations(namespace, version, name, applied_at) VALUES (?, ?, ?, ?)',
-        )
-        .run(namespace, migration.version, migration.name, new Date().toISOString());
+      for (const migration of migrations) {
+        database.exec(migration.sql);
+        database
+          .prepare(
+            'INSERT INTO schema_migrations(namespace, version, name, applied_at) VALUES (?, ?, ?, ?)',
+          )
+          .run(namespace, migration.version, migration.name, new Date().toISOString());
+      }
+    });
+    const violations = database.prepare('PRAGMA foreign_key_check').all();
+    if (violations.length > 0) {
+      throw new Error(
+        `SQLite foreign_key_check reported ${violations.length} violation(s) after the ${namespace} migration.`,
+      );
     }
-  });
+  } finally {
+    database.exec('PRAGMA foreign_keys = ON;');
+  }
 }
 
 export function migrationTableNames(migrations: readonly Migration[]): Set<string> {
   const names = new Set<string>();
-  const pattern = /(?:CREATE TABLE(?: IF NOT EXISTS)?|ALTER TABLE)\s+([A-Za-z_][A-Za-z0-9_]*)/gi;
+  const pattern =
+    /(CREATE TABLE(?: IF NOT EXISTS)?|ALTER TABLE|DROP TABLE(?: IF EXISTS)?)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+RENAME\s+TO\s+([A-Za-z_][A-Za-z0-9_]*))?/gi;
   for (const migration of migrations) {
     for (const match of migration.sql.matchAll(pattern)) {
-      if (match[1]) names.add(match[1]);
+      if (match[1]?.toUpperCase().startsWith('DROP')) {
+        names.delete(match[2] ?? '');
+        continue;
+      }
+      if (match[3] !== undefined) {
+        names.delete(match[2] ?? '');
+        names.add(match[3]);
+        continue;
+      }
+      if (match[2]) names.add(match[2]);
     }
   }
   names.delete('schema_migrations');

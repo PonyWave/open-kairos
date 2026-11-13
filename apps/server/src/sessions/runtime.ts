@@ -27,6 +27,7 @@ import type { ContextMessage, DelegationKey } from '../context/types.js';
 import type { EnvironmentStore } from '../devices/environment-store.js';
 import type { EnvironmentUseGateway } from '../devices/environment-use.js';
 import type { MemoryWiki } from '../memory/index.js';
+import type { McpManager } from '../mcp/manager.js';
 import {
   type RecallVisibility,
   SqlRecallEngine,
@@ -36,11 +37,6 @@ import {
 import { RecapModelGenerator } from '../recap/generation.js';
 import { type PeriodicRecapConfiguration, PeriodicRecapService } from '../recap/periodic.js';
 import type { SettingsStore } from '../settings/store.js';
-import {
-  BrowserRuntime,
-  type BrowserRuntimeOptions,
-  browserOptionsFromEnvironment,
-} from '../tools/browser.js';
 import { BACKGROUND_ACCEPTED_NEXT_STEP } from '../tools/delegation.js';
 import {
   environmentPolicyInput,
@@ -52,7 +48,8 @@ import {
   createRecallTool,
   createSendToUserTool,
   createSkillTool,
-  createSubagentDelegationTools,
+  createSubagentTaskOps,
+  createTaskTools,
   createThreadDelegationTools,
   createThreadNotificationTool,
   createWorkspaceListTool,
@@ -76,6 +73,7 @@ import {
   type ManualCompactResult,
 } from './manual-compaction.js';
 import type {
+  BackgroundTaskRecord,
   InputRecord,
   InteractionDeliveryRecord,
   InteractionRecord,
@@ -137,7 +135,7 @@ export interface RunCoordinatorOptions {
   periodicRecap?: PeriodicRecapConfiguration;
   sqlRecall?: Partial<SqlRecallLimits>;
   web?: WebToolOptions;
-  browser?: BrowserRuntime | BrowserRuntimeOptions | false;
+  mcp?: McpManager;
   now?: () => Date;
   createId?: () => string;
   onError?: (error: unknown) => void;
@@ -214,7 +212,6 @@ export class RunCoordinator {
   readonly #manualCompaction: ManualCompactionService;
   readonly #environmentRuntime: AgentEnvironmentRuntime;
   readonly #webSearchQuota: WebSearchQuota;
-  readonly #browserRuntime: BrowserRuntime | undefined;
   readonly #memory: MemoryWiki | undefined;
   readonly #modelRuntimes = new Map<string, ModelRuntime>();
   readonly #activeByThread = new Map<string, ActiveExecution>();
@@ -245,18 +242,6 @@ export class RunCoordinator {
         DEFAULT_WEB_SEARCH_LIMITS.maxRequestsPerMinute,
       options.web?.now ?? Date.now,
     );
-    if (options.browser === false) {
-      this.#browserRuntime = undefined;
-    } else if (options.browser instanceof BrowserRuntime) {
-      this.#browserRuntime = options.browser;
-    } else {
-      const browserOptions = { ...browserOptionsFromEnvironment(), ...options.browser };
-      const onError = browserOptions.onError ?? options.onError;
-      this.#browserRuntime = new BrowserRuntime({
-        ...browserOptions,
-        ...(onError ? { onError } : {}),
-      });
-    }
     this.#environmentRuntime = new AgentEnvironmentRuntime({
       store: options.store,
       environments: options.environments,
@@ -576,8 +561,19 @@ export class RunCoordinator {
     }
     if (isTerminal(cancelled.interaction.status)) {
       await this.#deliverInteraction(interaction);
+      return this.store.getInteraction(interaction.ownerId, interaction);
     }
-    return this.store.getInteraction(interaction.ownerId, interaction);
+    // The child finishes asynchronously; wait briefly so the terminal state and its
+    // delivery are settled before the caller continues, keeping injection ordering
+    // deterministic for the requesting Run.
+    await this.waitForInteraction(interaction, 5_000, new AbortController().signal).catch(
+      () => undefined,
+    );
+    const current = this.store.getInteraction(interaction.ownerId, interaction);
+    if (isTerminal(current.status)) {
+      await this.#deliverInteraction(interaction);
+    }
+    return current;
   }
 
   resumeDeliveries(): void {
@@ -715,6 +711,11 @@ export class RunCoordinator {
       if (notification.replyThreadId !== active.threadId) continue;
       if (notification.runId === active.runId && finished.status !== 'completed') continue;
       this.#trackThreadNotification(notification);
+    }
+    for (const task of this.store.listUndeliveredBackgroundTaskDeliveries(finished.ownerId)) {
+      if (task.threadId !== active.threadId) continue;
+      if (task.deliveryRunId === active.runId && finished.status !== 'completed') continue;
+      this.#deliverBackgroundTask(task.ownerId, task.taskId);
     }
     if (finished.inputIds.length === 0 && finished.rerunFromMessageSeq === null) {
       this.schedule(active.threadId);
@@ -885,18 +886,14 @@ export class RunCoordinator {
       execution.preparationController.abort(new DOMException(execution.cancelReason, 'AbortError'));
       execution.loop?.cancel(execution.cancelReason);
     }
-    try {
-      await Promise.all([
-        ...active.map((execution) => execution.promise),
-        ...this.#deliveryPromises,
-        ...titleSummaries.map((summary) => summary.promise),
-        periodicClosing,
-        manualCompactionClosing,
-        this.#environmentRuntime.close(),
-      ]);
-    } finally {
-      await this.#browserRuntime?.close();
-    }
+    await Promise.all([
+      ...active.map((execution) => execution.promise),
+      ...this.#deliveryPromises,
+      ...titleSummaries.map((summary) => summary.promise),
+      periodicClosing,
+      manualCompactionClosing,
+      this.#environmentRuntime.close(),
+    ]);
   }
 
   async #execute(
@@ -931,11 +928,13 @@ export class RunCoordinator {
       depth === 0 ? this.store.listInteractionDeliveriesForRun(initialRun.runId) : [];
     const rootNotifications =
       depth === 0 ? this.store.listThreadNotificationsForRun(initialRun.runId) : [];
+    const rootTaskDeliveries =
+      depth === 0 ? this.store.listBackgroundTaskDeliveriesForRun(initialRun.runId) : [];
     if (
       depth === 0 &&
       initialRun.inputIds.length === 0 &&
       rootQueued.length === 0 &&
-      rootDeliveries.length + rootNotifications.length === 0 &&
+      rootDeliveries.length + rootNotifications.length + rootTaskDeliveries.length === 0 &&
       initialRun.rerunFromMessageSeq === null
     ) {
       this.store.updateRunStatus(active.runId, 'cancelled');
@@ -994,6 +993,17 @@ export class RunCoordinator {
             readInjections: () => this.#readInjections(active),
           }
         : {}),
+      onToolProgress: (toolCallId, update) => {
+        if (this.#closing) return;
+        this.store.publishToolProgress({
+          threadId: active.threadId,
+          agentId: active.agentId,
+          runId: active.runId,
+          toolCallId,
+          text: update.text,
+          ...(update.authorization === undefined ? {} : { authorization: update.authorization }),
+        });
+      },
     });
     active.loop = loop;
     const cancelReason =
@@ -1028,7 +1038,6 @@ export class RunCoordinator {
       unsubscribe();
       active.loop = null;
       active.streamingMessageId = null;
-      await this.#browserRuntime?.closeRun(active.runId);
     }
   }
 
@@ -1058,7 +1067,13 @@ export class RunCoordinator {
         id: `thread_notification:${delegationMapKey(notification)}`,
         content: notification.deliveryContent,
       }));
-    return [...interactions, ...notifications];
+    const tasks = this.store.listBackgroundTaskDeliveriesForRun(active.runId).map((task) => {
+      if (task.deliveryContent === null) {
+        throw new SessionError('internal', 'A queued background task delivery has no content.');
+      }
+      return { id: `background_task:${task.taskId}`, content: task.deliveryContent };
+    });
+    return [...interactions, ...notifications, ...tasks];
   }
 
   async #finish(active: ActiveExecution, result: AgentLoopResult): Promise<void> {
@@ -1274,6 +1289,12 @@ export class RunCoordinator {
             saved = this.store.appendThreadNotificationMessage({
               runId: active.runId,
               key: parseDelegationMapKey(deliveryId.slice('thread_notification:'.length)),
+              message: { role: 'user', content: message.content },
+            });
+          } else if (deliveryId.startsWith('background_task:')) {
+            saved = this.store.appendBackgroundTaskDeliveryMessage({
+              runId: active.runId,
+              taskId: deliveryId.slice('background_task:'.length),
               message: { role: 'user', content: message.content },
             });
           } else {
@@ -1516,6 +1537,146 @@ export class RunCoordinator {
     });
     this.#deliveryPromises.add(tracked);
     void tracked.then(() => this.#deliveryPromises.delete(tracked));
+  }
+
+  async #startBackgroundBash(
+    run: RunRecord,
+    input: { command: string; cwd?: string; timeoutSeconds: number; description: string },
+    envId: string | undefined,
+    toolCallId: string,
+    signal: AbortSignal,
+  ): Promise<string> {
+    const taskId = this.#createId();
+    const { operationId, expiresAt } = await this.#environmentRuntime.startBackgroundBash(
+      run,
+      input,
+      envId === undefined ? {} : { envId },
+      toolCallId,
+      signal,
+    );
+    this.store.createBackgroundTask({
+      taskId,
+      ownerId: run.ownerId,
+      threadId: run.threadId,
+      agentId: run.agentId,
+      runId: run.runId,
+      sourceToolCallId: toolCallId,
+      kind: 'bash',
+      description: input.description,
+      operationId,
+    });
+    this.#watchBackgroundBash(run, taskId, operationId, expiresAt);
+    return JSON.stringify({
+      task_id: taskId,
+      operation_id: operationId,
+      status: 'accepted',
+      automatic_delivery: true,
+      next_step: BACKGROUND_ACCEPTED_NEXT_STEP,
+    });
+  }
+
+  #watchBackgroundBash(
+    run: RunRecord,
+    taskId: string,
+    operationId: string,
+    expiresAt: string,
+  ): void {
+    if (this.#closing) return;
+    const tracked = (async () => {
+      try {
+        const { content, taskStatus } = await this.#environmentRuntime.awaitBackgroundBash(
+          run,
+          operationId,
+          expiresAt,
+        );
+        this.store.completeBackgroundTask({ taskId, status: taskStatus, resultText: content });
+      } catch (error) {
+        this.#options.onError?.(error);
+        try {
+          this.store.completeBackgroundTask({
+            taskId,
+            status: 'unknown',
+            resultText: JSON.stringify({
+              status: 'unknown',
+              error:
+                error instanceof Error ? error.message : 'The background Bash result is unknown.',
+            }),
+          });
+        } catch (completeError) {
+          this.#options.onError?.(completeError);
+          return;
+        }
+      }
+      try {
+        this.#deliverBackgroundTask(run.ownerId, taskId);
+      } catch (error) {
+        this.#options.onError?.(error);
+      }
+    })();
+    this.#deliveryPromises.add(tracked);
+    void tracked.then(() => this.#deliveryPromises.delete(tracked));
+  }
+
+  #backgroundTaskDeliveryText(task: BackgroundTaskRecord): string {
+    return JSON.stringify({
+      task_id: task.taskId,
+      kind: task.kind,
+      description: task.description,
+      status: task.status,
+      source_thread_id: task.threadId,
+      source_agent_id: task.agentId,
+      tool_call_id: task.sourceToolCallId,
+      result: task.resultText,
+    });
+  }
+
+  #deliverBackgroundTask(ownerId: string, taskId: string): void {
+    if (this.#closing) return;
+    const task = this.store.getBackgroundTask(ownerId, taskId);
+    if (task.status === 'running' || task.deliveryStatus === 'consumed') return;
+    const pending = this.store.enqueueBackgroundTaskDelivery({
+      ownerId,
+      taskId,
+      text: this.#backgroundTaskDeliveryText(task),
+    });
+    if (pending.runId !== null) this.#injectBackgroundTaskDelivery(pending.task, pending.runId);
+  }
+
+  #injectBackgroundTaskDelivery(task: BackgroundTaskRecord, runId: string): void {
+    if (this.#closing || task.deliveryStatus === 'consumed') return;
+    const run = this.store.getRunById(runId);
+    if (isTerminal(run.status)) {
+      const reassigned = this.store.enqueueBackgroundTaskDelivery({
+        ownerId: task.ownerId,
+        taskId: task.taskId,
+        text: this.#backgroundTaskDeliveryText(task),
+      });
+      if (reassigned.runId !== null && reassigned.runId !== runId) {
+        this.#injectBackgroundTaskDelivery(reassigned.task, reassigned.runId);
+      }
+      return;
+    }
+    if (this.#activeByThread.get(task.threadId)?.runId === runId) return;
+    this.schedule(task.threadId, runId);
+  }
+
+  recoverBackgroundTasks(): void {
+    for (const task of this.store.listRunningBackgroundTasks()) {
+      try {
+        this.store.completeBackgroundTask({
+          taskId: task.taskId,
+          status: 'unknown',
+          resultText: JSON.stringify({
+            status: 'unknown',
+            error:
+              'The Server restarted while this background task was running; its result is unknown and the command was not repeated.',
+          }),
+        });
+        this.#deliverBackgroundTask(task.ownerId, task.taskId);
+      } catch (error) {
+        this.#options.onError?.(error);
+      }
+    }
   }
 
   #notifyInteraction(key: DelegationKey): void {
@@ -1797,7 +1958,12 @@ export class RunCoordinator {
         this.#recallEngine(run, thread).execute(sql, options),
     };
     const tools: AgentTool[] = [createRecallTool({ engine: recall, scope, visibility })];
-    tools.push(...createEnvironmentTools(this.#environmentRuntime, run));
+    tools.push(
+      ...createEnvironmentTools(this.#environmentRuntime, run, {
+        start: (input, envId, call, signal) =>
+          this.#startBackgroundBash(run, input, envId, call.id, signal),
+      }),
+    );
     tools.push(createSkillTool(this.#environmentRuntime, run));
     tools.push(
       ...createWebTools({
@@ -1806,21 +1972,50 @@ export class RunCoordinator {
         quotaKey: run.ownerId,
       }),
     );
-    if (this.#browserRuntime) tools.push(this.#browserRuntime.createTool(run.runId));
-    if (depth === 0 && run.agentId === 'thread' && run.parentRunId === null) {
-      const delegation = {
+    if (this.#options.mcp) {
+      const specification = this.store.agentEnvironments.requireExecution(run);
+      tools.push(...this.#options.mcp.bridgedAgentTools(run.ownerId, specification.allowedEnv));
+    }
+    const taskDelegation = {
+      store: this.store,
+      source: run,
+      scheduleThreadCall: (accepted: AcceptedThreadCall) => this.scheduleThreadCall(accepted),
+      waitForInteraction: (key: DelegationKey, waitMs: number, signal: AbortSignal) =>
+        this.waitForInteraction(key, waitMs, signal),
+      cancelInteraction: (interaction: InteractionRecord, reason: string) =>
+        this.cancelInteraction(interaction, reason),
+      resolveEnvironmentIds: (envIds: readonly string[]) =>
+        this.#environmentRuntime.resolveEnvironmentIds(run.ownerId, envIds),
+      projectEnvironmentIds: (envIds: readonly string[]) =>
+        this.#environmentRuntime.projectEnvironmentIds(run.ownerId, envIds),
+    };
+    tools.push(
+      ...createTaskTools({
         store: this.store,
         source: run,
-        scheduleThreadCall: (accepted: AcceptedThreadCall) => this.scheduleThreadCall(accepted),
-        waitForInteraction: (key: DelegationKey, waitMs: number, signal: AbortSignal) =>
-          this.waitForInteraction(key, waitMs, signal),
-        cancelInteraction: (interaction: InteractionRecord, reason: string) =>
-          this.cancelInteraction(interaction, reason),
-        resolveEnvironmentIds: (envIds: readonly string[]) =>
-          this.#environmentRuntime.resolveEnvironmentIds(run.ownerId, envIds),
-        projectEnvironmentIds: (envIds: readonly string[]) =>
-          this.#environmentRuntime.projectEnvironmentIds(run.ownerId, envIds),
-      };
+        bash: {
+          snapshot: (operationId, limit) =>
+            this.#environmentRuntime.backgroundBashSnapshot(run, operationId, limit),
+          cancel: async (operationId, reason) => {
+            await this.#environmentRuntime.cancelBackgroundBash(run, operationId, reason);
+          },
+        },
+        subagent: createSubagentTaskOps(taskDelegation),
+        waitForBash: async (operationId, waitMs, signal) => {
+          const deadline = Date.now() + waitMs;
+          for (;;) {
+            const snapshot = this.#environmentRuntime.backgroundBashSnapshot(run, operationId, 1);
+            if (snapshot.terminal || Date.now() >= deadline) {
+              return { terminal: snapshot.terminal, status: snapshot.status };
+            }
+            signal.throwIfAborted();
+            await new Promise((resolve) => setTimeout(resolve, 200));
+          }
+        },
+      }),
+    );
+    if (depth === 0 && run.agentId === 'thread' && run.parentRunId === null) {
+      const delegation = taskDelegation;
       if (threadType === 'main') {
         tools.push(createSendToUserTool({ store: this.store, source: run }));
         tools.push(...createThreadDelegationTools(delegation));
@@ -1855,7 +2050,6 @@ export class RunCoordinator {
           }),
         );
       }
-      tools.push(...createSubagentDelegationTools(delegation));
     }
     if (depth < (this.#options.maxSubagentDepth ?? 1)) {
       tools.push(this.#subagentTool(run, depth));
@@ -1868,7 +2062,7 @@ export class RunCoordinator {
     return {
       name: 'subagent',
       description:
-        'Delegate a bounded one-off task to a temporary Subagent with its own context; it does not appear in the task list. A lengthy one-off task still belongs here. Use a task Thread for ongoing work needing follow-ups or continued user conversation. Supply a self-contained task with relevant context, constraints, paths, environment needs, deliverable and completion checks. Prefer background for lengthy or independent work. Use foreground when the next step needs the result immediately; it waits and returns the terminal result. Background returns accepted, which is not completion. Its terminal result is persisted and injected automatically, with a root Run scheduled if needed. After acceptance, continue other work or finish this turn after stating that the task is still running. Do not use subagent_status or wait_ms to keep a Run alive or collect the result.',
+        'Delegate a bounded one-off task to a temporary Subagent with its own context; it does not appear in the task list. A lengthy one-off task still belongs here. Use a task Thread for ongoing work needing follow-ups or continued user conversation. Supply a self-contained task with relevant context, constraints, paths, environment needs, deliverable and completion checks. Prefer background for lengthy or independent work. Use foreground when the next step needs the result immediately; it waits and returns the terminal result. Background returns accepted, which is not completion. Its terminal result is persisted and injected automatically, with a root Run scheduled if needed. After acceptance, continue other work or finish this turn after stating that the task is still running. Use task_list and task_output for an explicit status check and task_stop to cancel; do not keep a Run alive to collect the result.',
       parameters: {
         type: 'object',
         additionalProperties: false,

@@ -93,7 +93,11 @@ CREATE TABLE environment_operations (
         CHECK(sync_action IN ('sync_scan', 'sync_read', 'sync_write', 'sync_directory')), sync_offset TEXT, transfer_id TEXT, total_size TEXT, executable INTEGER
         CHECK(executable IN (0, 1)), create_directory INTEGER
         CHECK(create_directory IN (0, 1)), conflict_scan INTEGER
-        CHECK(conflict_scan IN (0, 1)), relative_paths_json TEXT);
+        CHECK(conflict_scan IN (0, 1)), relative_paths_json TEXT, search_action TEXT
+        CHECK(search_action IN ('glob', 'grep')), pattern TEXT, include_glob TEXT, grep_mode TEXT
+        CHECK(grep_mode IN ('content', 'files_with_matches', 'count')), case_insensitive INTEGER
+        CHECK(case_insensitive IN (0, 1)), line_numbers INTEGER
+        CHECK(line_numbers IN (0, 1)), search_offset INTEGER, search_limit INTEGER);
 CREATE TABLE environment_sync_files (
         sync_file_id TEXT PRIMARY KEY,
         sync_id TEXT NOT NULL REFERENCES environment_syncs(sync_id) ON DELETE CASCADE,

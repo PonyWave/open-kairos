@@ -20,6 +20,9 @@ importers:
       '@types/node':
         specifier: 26.6.6
         version: 26.6.6
+      playwright:
+        specifier: 1.65.0
+        version: 1.65.0
       tsx:
         specifier: 4.23.15
         version: 4.23.15
@@ -115,9 +118,6 @@ importers:
       nodemailer:
         specifier: 10.3.1
         version: 10.3.1
-      playwright:
-        specifier: 1.65.0
-        version: 1.65.0
       ws:
         specifier: 8.22.1
         version: 8.22.1

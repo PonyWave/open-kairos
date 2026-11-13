@@ -310,6 +310,7 @@ export class EnvironmentStore {
           DeviceCapability.FILE_EDIT,
           DeviceCapability.DIRECTORY_CHECK,
           DeviceCapability.DIRECTORY_LIST,
+          DeviceCapability.FILE_SEARCH,
         ];
         this.database
           .prepare(

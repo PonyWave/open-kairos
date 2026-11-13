@@ -9,9 +9,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const guiRequire = createRequire(join(root, 'apps/gui/package.json'));
-const serverRequire = createRequire(join(root, 'apps/server/package.json'));
+const rootRequire = createRequire(join(root, 'package.json'));
 const { createServer } = await import(pathToFileURL(guiRequire.resolve('vite')).href);
-const { chromium } = serverRequire('playwright');
+const { chromium } = rootRequire('playwright');
 const artifacts = await mkdtemp(join(tmpdir(), 'kairos-settings-browser-'));
 const child = spawn(
   process.execPath,

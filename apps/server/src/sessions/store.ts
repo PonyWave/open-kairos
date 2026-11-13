@@ -38,6 +38,9 @@ import {
 import { requireText, SessionError } from './errors.js';
 import { sessionMigrations } from './migrations.js';
 import type {
+  BackgroundTaskKind,
+  BackgroundTaskRecord,
+  BackgroundTaskStatus,
   InputMode,
   InputRecord,
   InteractionDeliveryRecord,
@@ -54,6 +57,7 @@ import type {
   ThreadEventRecord,
   ThreadNotificationRecord,
   ThreadRecord,
+  ToolProgressRecord,
   WorkspaceRecord,
 } from './records.js';
 import { threadNotificationDeliveryText } from './thread-notifications.js';
@@ -231,6 +235,27 @@ const threadNotificationRowSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   queued_at: z.string().nullable(),
+  consumed_at: z.string().nullable(),
+});
+const backgroundTaskRowSchema = z.object({
+  task_id: z.string(),
+  owner_id: z.string(),
+  thread_id: z.string(),
+  agent_id: z.string(),
+  run_id: z.string(),
+  source_tool_call_id: z.string(),
+  kind: z.enum(['bash', 'subagent']),
+  description: z.string(),
+  operation_id: z.string().nullable(),
+  status: z.enum(['running', 'completed', 'failed', 'timed_out', 'killed', 'unknown']),
+  result_text: z.string().nullable(),
+  delivery_content: z.string().nullable(),
+  delivery_run_id: z.string().nullable(),
+  delivery_status: z.enum(['pending', 'queued', 'consumed']),
+  context_message_seq: z.number().int().positive().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  ended_at: z.string().nullable(),
   consumed_at: z.string().nullable(),
 });
 const queueRowSchema = z.object({
@@ -510,7 +535,7 @@ export class SessionStore {
   readonly #maxQueuedInputs: number;
   readonly #listeners = new Map<
     string,
-    Set<(event: ThreadEventRecord | TextDeltaRecord) => void>
+    Set<(event: ThreadEventRecord | TextDeltaRecord | ToolProgressRecord) => void>
   >();
   readonly #pendingNotifications: PendingNotification[] = [];
   #transactionDepth = 0;
@@ -568,7 +593,7 @@ export class SessionStore {
 
   subscribe(
     threadId: string,
-    listener: (event: ThreadEventRecord | TextDeltaRecord) => void,
+    listener: (event: ThreadEventRecord | TextDeltaRecord | ToolProgressRecord) => void,
   ): () => void {
     const listeners = this.#listeners.get(threadId) ?? new Set();
     listeners.add(listener);
@@ -577,6 +602,54 @@ export class SessionStore {
       listeners.delete(listener);
       if (listeners.size === 0) this.#listeners.delete(threadId);
     };
+  }
+
+  getMcpOAuthCredentials(
+    credentialKey: string,
+  ): { accessToken: string; refreshToken: string; expiresAt: string | null } | undefined {
+    const row = this.database
+      .prepare('SELECT * FROM mcp_oauth_credentials WHERE credential_key = ?')
+      .get(credentialKey);
+    if (row === undefined) return undefined;
+    const parsed = z
+      .object({
+        access_token: z.string(),
+        refresh_token: z.string(),
+        expires_at: z.string().nullable(),
+      })
+      .parse(row);
+    return {
+      accessToken: parsed.access_token,
+      refreshToken: parsed.refresh_token,
+      expiresAt: parsed.expires_at,
+    };
+  }
+
+  saveMcpOAuthCredentials(input: {
+    credentialKey: string;
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: string | null;
+  }): void {
+    const now = isoTime(undefined, this.#clock);
+    this.database
+      .prepare(
+        `INSERT INTO mcp_oauth_credentials(credential_key, access_token, refresh_token, expires_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(credential_key) DO UPDATE SET access_token = excluded.access_token,
+           refresh_token = excluded.refresh_token, expires_at = excluded.expires_at, updated_at = excluded.updated_at`,
+      )
+      .run(input.credentialKey, input.accessToken, input.refreshToken, input.expiresAt, now, now);
+  }
+
+  deleteMcpOAuthCredentials(credentialKey: string): void {
+    this.database
+      .prepare('DELETE FROM mcp_oauth_credentials WHERE credential_key = ?')
+      .run(credentialKey);
+  }
+
+  publishToolProgress(progress: ToolProgressRecord): void {
+    this.#notify(progress);
   }
 
   publishTextDelta(delta: TextDeltaRecord): void {
@@ -3176,6 +3249,274 @@ export class SessionStore {
       .map((row) => this.#toDelivery(deliveryRowSchema.parse(row)));
   }
 
+  createBackgroundTask(input: {
+    taskId: string;
+    ownerId: string;
+    threadId: string;
+    agentId: string;
+    runId: string;
+    sourceToolCallId: string;
+    kind: BackgroundTaskKind;
+    description: string;
+    operationId?: string;
+  }): BackgroundTaskRecord {
+    const description = requireText(input.description, 'description', 2000);
+    return this.transaction(() => {
+      const now = isoTime(undefined, this.#clock);
+      this.database
+        .prepare(
+          `INSERT INTO background_tasks(
+            task_id, owner_id, thread_id, agent_id, run_id, source_tool_call_id, kind,
+            description, operation_id, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)`,
+        )
+        .run(
+          input.taskId,
+          input.ownerId,
+          input.threadId,
+          input.agentId,
+          input.runId,
+          input.sourceToolCallId,
+          input.kind,
+          description,
+          input.operationId ?? null,
+          now,
+          now,
+        );
+      return this.getBackgroundTask(input.ownerId, input.taskId);
+    });
+  }
+
+  getBackgroundTask(ownerId: string, taskId: string): BackgroundTaskRecord {
+    const row = this.database
+      .prepare('SELECT * FROM background_tasks WHERE task_id = ?')
+      .get(taskId);
+    if (row === undefined) {
+      throw new SessionError('not_found', 'The background task was not found.');
+    }
+    const task = this.#toBackgroundTask(backgroundTaskRowSchema.parse(row));
+    if (task.ownerId !== ownerId) {
+      throw new SessionError('not_found', 'The background task was not found.');
+    }
+    return task;
+  }
+
+  listBackgroundTasks(
+    ownerId: string,
+    threadId: string,
+    agentId: string,
+    limit = 50,
+  ): BackgroundTaskRecord[] {
+    return this.database
+      .prepare(
+        `SELECT * FROM background_tasks
+         WHERE owner_id = ? AND thread_id = ? AND agent_id = ?
+         ORDER BY created_at DESC, task_id DESC LIMIT ?`,
+      )
+      .all(ownerId, threadId, agentId, limit)
+      .map((row) => this.#toBackgroundTask(backgroundTaskRowSchema.parse(row)));
+  }
+
+  listRunningBackgroundTasks(): BackgroundTaskRecord[] {
+    return this.database
+      .prepare("SELECT * FROM background_tasks WHERE status = 'running' ORDER BY created_at")
+      .all()
+      .map((row) => this.#toBackgroundTask(backgroundTaskRowSchema.parse(row)));
+  }
+
+  completeBackgroundTask(input: {
+    taskId: string;
+    status: Exclude<BackgroundTaskStatus, 'running'>;
+    resultText: string;
+  }): BackgroundTaskRecord {
+    return this.transaction(() => {
+      const now = isoTime(undefined, this.#clock);
+      this.database
+        .prepare(
+          `UPDATE background_tasks SET status = ?, result_text = ?, ended_at = ?, updated_at = ?
+           WHERE task_id = ? AND status = 'running'`,
+        )
+        .run(input.status, input.resultText, now, now, input.taskId);
+      const row = this.database
+        .prepare('SELECT * FROM background_tasks WHERE task_id = ?')
+        .get(input.taskId);
+      if (row === undefined) {
+        throw new SessionError('not_found', 'The background task was not found.');
+      }
+      return this.#toBackgroundTask(backgroundTaskRowSchema.parse(row));
+    });
+  }
+
+  markBackgroundTaskKilled(taskId: string): BackgroundTaskRecord {
+    return this.transaction(() => {
+      const now = isoTime(undefined, this.#clock);
+      this.database
+        .prepare(
+          `UPDATE background_tasks SET status = 'killed', ended_at = COALESCE(ended_at, ?),
+           updated_at = ? WHERE task_id = ? AND status = 'running'`,
+        )
+        .run(now, now, taskId);
+      const row = this.database
+        .prepare('SELECT * FROM background_tasks WHERE task_id = ?')
+        .get(taskId);
+      if (row === undefined) {
+        throw new SessionError('not_found', 'The background task was not found.');
+      }
+      return this.#toBackgroundTask(backgroundTaskRowSchema.parse(row));
+    });
+  }
+
+  enqueueBackgroundTaskDelivery(input: { ownerId: string; taskId: string; text: string }): {
+    task: BackgroundTaskRecord;
+    runId: string | null;
+  } {
+    const text = requireText(input.text, 'text', 1_000_000, {
+      maximumBytes: this.#maxInputBytes,
+    });
+    return this.transaction(() => {
+      const task = this.getBackgroundTask(input.ownerId, input.taskId);
+      if (task.status === 'running') {
+        throw new SessionError(
+          'failed_precondition',
+          'Only a terminal background task can be delivered.',
+        );
+      }
+      if (task.deliveryStatus === 'consumed') {
+        return { task, runId: task.deliveryRunId };
+      }
+      if (task.deliveryContent !== null && task.deliveryContent !== text) {
+        throw new SessionError(
+          'action_conflict',
+          'The background task delivery was already created with different content.',
+        );
+      }
+      const replyThread = this.getThread(input.ownerId, task.threadId);
+      const run =
+        this.getActiveRun(replyThread.threadId) ??
+        this.#insertRun(input.ownerId, replyThread.threadId, 'thread');
+      const now = isoTime(undefined, this.#clock);
+      this.database
+        .prepare(
+          `UPDATE background_tasks SET delivery_status = 'queued', delivery_content = ?,
+           delivery_run_id = ?, updated_at = ?
+           WHERE task_id = ? AND delivery_status IN ('pending', 'queued')`,
+        )
+        .run(text, run.runId, now, input.taskId);
+      return { task: this.getBackgroundTask(input.ownerId, input.taskId), runId: run.runId };
+    });
+  }
+
+  listBackgroundSubagentInteractions(
+    ownerId: string,
+    threadId: string,
+    agentId: string,
+    limit: number,
+  ): InteractionRecord[] {
+    return this.database
+      .prepare(
+        `SELECT * FROM interactions
+         WHERE owner_id = ? AND source_thread_id = ? AND source_agent_id = ?
+           AND kind = 'subagent' AND execution_mode = 'background'
+         ORDER BY created_at DESC, source_tool_call_id DESC LIMIT ?`,
+      )
+      .all(ownerId, threadId, agentId, limit)
+      .map((row) => this.#toInteraction(interactionRowSchema.parse(row)));
+  }
+
+  listBackgroundTaskDeliveriesForRun(runId: string): BackgroundTaskRecord[] {
+    return this.database
+      .prepare(
+        `SELECT * FROM background_tasks
+         WHERE delivery_run_id = ? AND delivery_status = 'queued'
+         ORDER BY created_at, task_id`,
+      )
+      .all(runId)
+      .map((row) => this.#toBackgroundTask(backgroundTaskRowSchema.parse(row)));
+  }
+
+  listUndeliveredBackgroundTaskDeliveries(ownerId: string): BackgroundTaskRecord[] {
+    return this.database
+      .prepare(
+        `SELECT * FROM background_tasks
+         WHERE owner_id = ? AND status <> 'running' AND delivery_status <> 'consumed'
+         ORDER BY created_at, task_id`,
+      )
+      .all(ownerId)
+      .map((row) => this.#toBackgroundTask(backgroundTaskRowSchema.parse(row)));
+  }
+
+  appendBackgroundTaskDeliveryMessage(input: {
+    runId: string;
+    taskId: string;
+    message: { role: 'user'; content: string };
+  }): ContextMessage {
+    return this.transaction(() => {
+      const run = this.getRunById(input.runId);
+      if (run.agentId !== 'thread' || run.parentRunId !== null) {
+        throw new SessionError(
+          'failed_precondition',
+          'A background task delivery can only be injected into a persistent Thread root Run.',
+        );
+      }
+      const task = this.getBackgroundTask(run.ownerId, input.taskId);
+      if (task.deliveryContent !== input.message.content) {
+        throw new SessionError(
+          'action_conflict',
+          'The injected background task delivery content does not match.',
+        );
+      }
+      if (task.deliveryStatus === 'consumed') {
+        if (task.deliveryRunId !== run.runId || task.contextMessageSeq === null) {
+          throw new SessionError('internal', 'The consumed delivery state is inconsistent.');
+        }
+        const existing = this.context.get(task.threadId, 'thread', task.contextMessageSeq);
+        if (!existing || existing.message.content !== input.message.content) {
+          throw new SessionError('internal', 'The consumed delivery Context is missing.');
+        }
+        return existing;
+      }
+      if (task.deliveryStatus !== 'queued' || task.deliveryRunId !== run.runId) {
+        throw new SessionError(
+          'failed_precondition',
+          'The background task delivery is not queued for this root Run.',
+        );
+      }
+      const record = this.context.append({
+        threadId: task.threadId,
+        agentId: 'thread',
+        runId: run.runId,
+        source: 'background_task',
+        delegation: {
+          sourceThreadId: task.threadId,
+          sourceAgentId: task.agentId,
+          sourceToolCallId: task.sourceToolCallId,
+        },
+        sourceThreadId: task.threadId,
+        sourceAgentId: task.agentId,
+        message: input.message,
+      });
+      this.agentEnvironments.recordMessageBinding(run.threadId, run.agentId, record.seq, run);
+      const now = isoTime(undefined, this.#clock);
+      const consumed = this.database
+        .prepare(
+          `UPDATE background_tasks SET delivery_status = 'consumed', context_message_seq = ?,
+           consumed_at = ?, updated_at = ?
+           WHERE task_id = ? AND delivery_run_id = ? AND delivery_status = 'queued'`,
+        )
+        .run(record.seq, now, now, input.taskId, run.runId);
+      if (consumed.changes !== 1) {
+        throw new SessionError(
+          'internal',
+          'The background task delivery state changed during injection.',
+        );
+      }
+      if (record.supersededByRunId === null) {
+        this.#insertEvent(run.threadId, { case: 'messageCommitted', value: { message: record } });
+      }
+      return record;
+    });
+  }
+
   listInteractionDeliveriesForRun(runId: string): InteractionDeliveryRecord[] {
     return this.database
       .prepare(
@@ -4084,7 +4425,7 @@ export class SessionStore {
     return event;
   }
 
-  #notify(event: ThreadEventRecord | TextDeltaRecord): void {
+  #notify(event: ThreadEventRecord | TextDeltaRecord | ToolProgressRecord): void {
     for (const listener of [...(this.#listeners.get(event.threadId) ?? [])]) listener(event);
   }
 
@@ -4249,6 +4590,30 @@ export class SessionStore {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       finishedAt: row.finished_at,
+    };
+  }
+
+  #toBackgroundTask(row: z.infer<typeof backgroundTaskRowSchema>): BackgroundTaskRecord {
+    return {
+      taskId: row.task_id,
+      ownerId: row.owner_id,
+      threadId: row.thread_id,
+      agentId: row.agent_id,
+      runId: row.run_id,
+      sourceToolCallId: row.source_tool_call_id,
+      kind: row.kind,
+      description: row.description,
+      operationId: row.operation_id,
+      status: row.status,
+      resultText: row.result_text,
+      deliveryContent: row.delivery_content,
+      deliveryRunId: row.delivery_run_id,
+      deliveryStatus: row.delivery_status,
+      contextMessageSeq: row.context_message_seq,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      endedAt: row.ended_at,
+      consumedAt: row.consumed_at,
     };
   }
 

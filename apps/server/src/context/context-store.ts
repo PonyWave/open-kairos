@@ -51,6 +51,7 @@ const contextRowSchema = z.object({
       'subagent_response',
       'automation',
       'thread_notification',
+      'background_task',
     ])
     .nullable(),
   delegation_source_thread_id: z.string().nullable(),
@@ -451,7 +452,7 @@ export class ContextStore {
         clauses.push(`(
           context_messages.source IS NULL
           OR context_messages.source NOT IN (
-            'thread_response', 'subagent_response', 'thread_notification'
+            'thread_response', 'subagent_response', 'thread_notification', 'background_task'
           )
           OR context_messages.source_tool_call_id IS NULL
           OR NOT EXISTS (

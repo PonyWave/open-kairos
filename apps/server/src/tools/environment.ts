@@ -1,6 +1,8 @@
 import type { AgentTool } from '@kairos/agent-core';
+import { GrepMode } from '@kairos/contracts/device';
 import { z } from 'zod';
 import type { AgentEnvironmentRuntime } from '../sessions/environment-runtime.js';
+import { SessionError } from '../sessions/errors.js';
 import type { RunRecord } from '../sessions/records.js';
 
 const envListSchema = z.object({}).strict();
@@ -59,16 +61,25 @@ const envSyncSchema = z
     on_conflict: z.enum(['fail', 'skip', 'overwrite']).default('fail'),
   })
   .strict();
-const readOutputSchema = z
+const globSchema = z
   .object({
-    operation_id: z.string().min(1).max(200),
-    offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).default(0),
-    limit: z
-      .number()
-      .int()
-      .positive()
-      .max(64 * 1024)
-      .default(16 * 1024),
+    ...envTarget,
+    pattern: z.string().min(1).max(4096),
+    path: pathSchema.optional(),
+    head_limit: z.number().int().positive().max(1000).optional(),
+    offset: z.number().int().nonnegative().max(100_000).optional(),
+  })
+  .strict();
+const grepSchema = z
+  .object({
+    ...envTarget,
+    pattern: z.string().min(1).max(4096),
+    path: pathSchema.optional(),
+    include: z.string().min(1).max(4096).optional(),
+    case_insensitive: z.boolean().optional(),
+    mode: z.enum(['content', 'files_with_matches', 'count']).default('content'),
+    head_limit: z.number().int().positive().max(1000).optional(),
+    offset: z.number().int().nonnegative().max(100_000).optional(),
   })
   .strict();
 
@@ -79,21 +90,37 @@ function createBashSchema(defaultTimeoutSeconds: number) {
       command: z.string().min(1).max(1_000_000),
       cwd: z.string().min(1).max(4096).optional(),
       timeoutSeconds: z.number().int().positive().max(3600).default(defaultTimeoutSeconds),
+      run_in_background: z.boolean().default(false),
+      description: z.string().min(1).max(2000).optional(),
     })
-    .strict();
+    .strict()
+    .refine((value) => !value.run_in_background || value.description !== undefined, {
+      message: 'description is required when run_in_background is true.',
+    });
+}
+
+export interface BackgroundBashStarter {
+  start(
+    input: { command: string; cwd?: string; timeoutSeconds: number; description: string },
+    envId: string | undefined,
+    call: { id: string },
+    signal: AbortSignal,
+  ): Promise<string>;
 }
 
 export function createEnvironmentTools(
   runtime: AgentEnvironmentRuntime,
   run: RunRecord,
+  background?: BackgroundBashStarter,
 ): [
   AgentTool<z.infer<typeof envListSchema>>,
   AgentTool<z.infer<typeof readSchema>>,
   AgentTool<z.infer<typeof readImageSchema>>,
   AgentTool<z.infer<typeof writeSchema>>,
   AgentTool<z.infer<typeof editSchema>>,
+  AgentTool<z.infer<typeof globSchema>>,
+  AgentTool<z.infer<typeof grepSchema>>,
   AgentTool<z.infer<ReturnType<typeof createBashSchema>>>,
-  AgentTool<z.infer<typeof readOutputSchema>>,
   AgentTool<z.infer<typeof envSyncSchema>>,
 ] {
   const bashSchema = createBashSchema(runtime.bashDefaultTimeoutSeconds);
@@ -290,9 +317,125 @@ export function createEnvironmentTools(
         ),
     },
     {
+      name: 'glob',
+      description:
+        'Find files in the selected environment whose names match a glob pattern, most recently modified first. Hidden files are included; version-control directories are excluded.',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['pattern'],
+        properties: {
+          ...envTargetParameters,
+          pattern: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 4096,
+            description: 'Glob pattern matched against file paths, for example "**/*.ts".',
+          },
+          path: {
+            type: 'string',
+            maxLength: 4096,
+            description: 'Directory to search; omission searches the working directory.',
+          },
+          head_limit: { type: 'integer', minimum: 1, maximum: 1000, default: 250 },
+          offset: { type: 'integer', minimum: 0, maximum: 100000, default: 0 },
+        },
+      },
+      concurrent: true,
+      validate: (value) => globSchema.parse(value),
+      execute: async (input, { call, signal }) =>
+        runtime.execute(
+          run,
+          {
+            case: 'glob',
+            value: {
+              pattern: input.pattern,
+              path: input.path ?? '.',
+              cwd: '',
+              ...(input.head_limit === undefined ? {} : { headLimit: input.head_limit }),
+              ...(input.offset === undefined ? {} : { offset: input.offset }),
+            },
+          },
+          call.id,
+          signal,
+          {
+            ...(input.env_id === undefined ? {} : { envId: input.env_id }),
+            ...('cwd' in input && typeof input.cwd === 'string' ? { cwd: input.cwd } : {}),
+          },
+        ),
+    },
+    {
+      name: 'grep',
+      description:
+        'Search file contents in the selected environment with a regular expression. Returns matching lines with file and line number by default; mode selects files_with_matches or per-file count instead. Hidden files are included; version-control directories are excluded.',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['pattern'],
+        properties: {
+          ...envTargetParameters,
+          pattern: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 4096,
+            description: 'Regular expression understood by ripgrep.',
+          },
+          path: {
+            type: 'string',
+            maxLength: 4096,
+            description: 'File or directory to search; omission searches the working directory.',
+          },
+          include: {
+            type: 'string',
+            maxLength: 4096,
+            description: 'Optional glob restricting searched files, for example "*.{ts,tsx}".',
+          },
+          case_insensitive: { type: 'boolean', default: false },
+          mode: {
+            type: 'string',
+            enum: ['content', 'files_with_matches', 'count'],
+            default: 'content',
+          },
+          head_limit: { type: 'integer', minimum: 1, maximum: 1000, default: 250 },
+          offset: { type: 'integer', minimum: 0, maximum: 100000, default: 0 },
+        },
+      },
+      concurrent: true,
+      validate: (value) => grepSchema.parse(value),
+      execute: async (input, { call, signal }) =>
+        runtime.execute(
+          run,
+          {
+            case: 'grep',
+            value: {
+              pattern: input.pattern,
+              path: input.path ?? '.',
+              cwd: '',
+              ...(input.include === undefined ? {} : { include: input.include }),
+              caseInsensitive: input.case_insensitive ?? false,
+              mode:
+                input.mode === 'files_with_matches'
+                  ? GrepMode.FILES_WITH_MATCHES
+                  : input.mode === 'count'
+                    ? GrepMode.COUNT
+                    : GrepMode.CONTENT,
+              lineNumbers: true,
+              ...(input.head_limit === undefined ? {} : { headLimit: input.head_limit }),
+              ...(input.offset === undefined ? {} : { offset: input.offset }),
+            },
+          },
+          call.id,
+          signal,
+          {
+            ...(input.env_id === undefined ? {} : { envId: input.env_id }),
+            ...('cwd' in input && typeof input.cwd === 'string' ? { cwd: input.cwd } : {}),
+          },
+        ),
+    },
+    {
       name: 'bash',
       description:
-        'Execute a /bin/bash command in the selected environment and return the exit code with a bounded output preview. Each call runs in a fresh shell: variables, cd and shell history do not persist, so pass cwd or use absolute paths. The default working directory is the workspace of the selected environment. Do not run interactive commands or commands that never exit; give long-running commands a realistic timeoutSeconds and prefer delegating lengthy builds or watchers. When the preview is truncated, the full log stays on the Server: continue reading it with read_output using the returned operation_id.',
+        'Execute a /bin/bash command in the selected environment and return the exit code with a bounded output preview. Each call runs in a fresh shell: variables, cd and shell history do not persist, so pass cwd or use absolute paths. The default working directory is the workspace of the selected environment. Do not run interactive commands or commands that never exit; give long-running commands a realistic timeoutSeconds and prefer delegating lengthy builds or watchers. When the preview is truncated, the full output is written to a log file on the executing environment and the result points to that file for read or grep with the same env_id.',
       parameters: {
         type: 'object',
         additionalProperties: false,
@@ -316,11 +459,42 @@ export function createEnvironmentTools(
             maximum: 3600,
             description: 'Timeout in seconds; a server default applies when omitted.',
           },
+          run_in_background: {
+            type: 'boolean',
+            default: false,
+            description:
+              'Run the command as a background task and return a task_id immediately; the terminal result is persisted and delivered automatically.',
+          },
+          description: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 2000,
+            description: 'Required with run_in_background: a short summary of the command.',
+          },
         },
       },
       validate: (value) => bashSchema.parse(value),
-      execute: async (input, { call, signal }) =>
-        runtime.execute(
+      execute: async (input, { call, signal }) => {
+        if (input.run_in_background) {
+          if (!background) {
+            throw new SessionError(
+              'permission_denied',
+              'Background execution is not available for this Agent.',
+            );
+          }
+          return background.start(
+            {
+              command: input.command,
+              ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
+              timeoutSeconds: input.timeoutSeconds,
+              description: input.description ?? '',
+            },
+            input.env_id,
+            call,
+            signal,
+          );
+        }
+        return runtime.execute(
           run,
           {
             case: 'bash',
@@ -336,45 +510,8 @@ export function createEnvironmentTools(
             ...(input.env_id === undefined ? {} : { envId: input.env_id }),
             ...('cwd' in input && typeof input.cwd === 'string' ? { cwd: input.cwd } : {}),
           },
-        ),
-    },
-    {
-      name: 'read_output',
-      description:
-        'Read a Server-stored operation output log by byte offset. Use it to continue reading bash output that was truncated in the tool result: pass the operation_id and follow next_offset until output_complete is true. output_gap marks output that could not be recovered.',
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['operation_id'],
-        properties: {
-          operation_id: {
-            type: 'string',
-            maxLength: 200,
-            description: 'The operation_id returned by the bash call.',
-          },
-          offset: {
-            type: 'integer',
-            minimum: 0,
-            default: 0,
-            description: 'Byte offset to start reading from; defaults to 0.',
-          },
-          limit: {
-            type: 'integer',
-            minimum: 1,
-            maximum: 65536,
-            default: 16384,
-            description: 'Maximum bytes to return; defaults to 16384.',
-          },
-        },
+        );
       },
-      concurrent: true,
-      validate: (value) => readOutputSchema.parse(value),
-      execute: async (input) =>
-        runtime.readOutput(run, {
-          operationId: input.operation_id,
-          offset: BigInt(input.offset),
-          limit: input.limit,
-        }),
     },
     {
       name: 'env_sync',

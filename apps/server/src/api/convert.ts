@@ -44,6 +44,7 @@ import type {
   ThreadEventRecord,
   ThreadNotificationRecord,
   ThreadRecord,
+  ToolProgressRecord,
 } from '../sessions/records.js';
 import type {
   ThreadCallPreviewProjection,
@@ -93,6 +94,8 @@ function toMessageSource(source: NonNullable<InputRecord['source']>): MessageSou
       return MessageSource.AUTOMATION;
     case 'thread_notification':
       return MessageSource.THREAD_NOTIFICATION;
+    case 'background_task':
+      return MessageSource.BACKGROUND_TASK;
   }
 }
 
@@ -689,13 +692,36 @@ export function toThinkingDelta(record: ThinkingDeltaRecord) {
   };
 }
 
-export function toWatchEvent(record: ThreadEventRecord | StreamDeltaRecord) {
+export function toWatchEvent(record: ThreadEventRecord | StreamDeltaRecord | ToolProgressRecord) {
   if ('seq' in record) {
     return { payload: { case: 'event' as const, value: toThreadEvent(record) } };
   }
   if ('thinking' in record) {
     return {
       payload: { case: 'thinkingDelta' as const, value: toThinkingDelta(record) },
+    };
+  }
+  if ('toolCallId' in record) {
+    return {
+      payload: {
+        case: 'toolProgress' as const,
+        value: {
+          threadId: record.threadId,
+          runId: record.runId,
+          agentId: record.agentId,
+          toolCallId: record.toolCallId,
+          text: record.text,
+          ...(record.authorization === undefined
+            ? {}
+            : {
+                authorization: {
+                  serverName: record.authorization.serverName,
+                  authorizationUrl: record.authorization.authorizationUrl,
+                  expiresAt: timestamp(record.authorization.expiresAt),
+                },
+              }),
+        },
+      },
     };
   }
   return { payload: { case: 'textDelta' as const, value: toTextDelta(record) } };
@@ -715,6 +741,8 @@ function toEnvironmentCapability(capability: DeviceCapability): EnvironmentCapab
       return EnvironmentCapability.DIRECTORY_CHECK;
     case DeviceCapability.DIRECTORY_LIST:
       return EnvironmentCapability.DIRECTORY_LIST;
+    case DeviceCapability.FILE_SEARCH:
+      return EnvironmentCapability.FILE_SEARCH;
     default:
       throw new Error('Stored environment capability is invalid.');
   }
