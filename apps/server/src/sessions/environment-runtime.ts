@@ -1417,11 +1417,7 @@ export class AgentEnvironmentRuntime {
     const run = this.store.getRunById(runId);
     const operation = this.operations.getEnvironmentOperation(run.ownerId, association.operationId);
     if (!terminal(operation)) return undefined;
-    const result = await this.#toolResult(
-      run,
-      association.bindingVersion,
-      operation,
-    );
+    const result = await this.#toolResult(run, association.bindingVersion, operation);
     this.store.transaction(() => {
       result.commit?.();
     });

@@ -28,12 +28,12 @@ import {
   MainEnvironmentUseGateway,
 } from './devices/main-environment.js';
 import { registerDeviceWebSocket } from './devices/websocket.js';
+import { McpManager } from './mcp/manager.js';
 import {
   ensureMemoryDreamAutomation,
   type MemoryConfiguration,
   MemoryWiki,
 } from './memory/index.js';
-import { McpManager } from './mcp/manager.js';
 import type { SqlRecallLimits } from './recall/index.js';
 import type { PeriodicRecapConfiguration } from './recap/periodic.js';
 import type { EnvironmentOperationGateway } from './sessions/environment-runtime.js';
@@ -153,11 +153,11 @@ export function createServer(
       ? new McpManager({
           configs: serverConfig.mcp,
           channel: deviceChannel,
-          resolveMainEnvId: (ownerId: string) => store.agentEnvironments.mainEnvironmentIdFor(ownerId),
+          resolveMainEnvId: (ownerId: string) =>
+            store.agentEnvironments.mainEnvironmentIdFor(ownerId),
           credentials: store,
           publicOrigin:
-            serverConfig.auth.allowedOrigin ??
-            `http://${serverConfig.host}:${serverConfig.port}`,
+            serverConfig.auth.allowedOrigin ?? `http://${serverConfig.host}:${serverConfig.port}`,
           onError: (error: unknown) => server.log.error(error),
         })
       : undefined;

@@ -301,9 +301,7 @@ export class EnvironmentOperationManager {
       ...(options.killGraceMilliseconds === undefined
         ? {}
         : { killGraceMilliseconds: options.killGraceMilliseconds }),
-      ...(options.bashLogDirectory === undefined
-        ? {}
-        : { logDirectory: options.bashLogDirectory }),
+      ...(options.bashLogDirectory === undefined ? {} : { logDirectory: options.bashLogDirectory }),
       send: (event) => this.sendBashEvent(event),
       onTransportError: options.onTransportError,
       onRetired: (operationId) => this.retireBash(operationId),
@@ -876,12 +874,8 @@ export class EnvironmentOperationManager {
               outputComplete: event.outputComplete,
               ...(event.endOffset === undefined ? {} : { endOffset: event.endOffset }),
               ...(event.logFile === undefined ? {} : { logFile: event.logFile }),
-              ...(event.logSizeBytes === undefined
-                ? {}
-                : { logSizeBytes: event.logSizeBytes }),
-              ...(event.logTruncated === undefined
-                ? {}
-                : { logTruncated: event.logTruncated }),
+              ...(event.logSizeBytes === undefined ? {} : { logSizeBytes: event.logSizeBytes }),
+              ...(event.logTruncated === undefined ? {} : { logTruncated: event.logTruncated }),
             },
           },
         };

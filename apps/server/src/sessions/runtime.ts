@@ -26,8 +26,8 @@ import {
 import type { ContextMessage, DelegationKey } from '../context/types.js';
 import type { EnvironmentStore } from '../devices/environment-store.js';
 import type { EnvironmentUseGateway } from '../devices/environment-use.js';
-import type { MemoryWiki } from '../memory/index.js';
 import type { McpManager } from '../mcp/manager.js';
+import type { MemoryWiki } from '../memory/index.js';
 import {
   type RecallVisibility,
   SqlRecallEngine,

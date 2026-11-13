@@ -991,9 +991,7 @@ it.skipIf(process.platform !== 'darwin')(
       const persistedFiles = await filesUnder(identityDirectory);
       expect(persistedFiles).toContain('identity.json');
       expect(
-        persistedFiles.every(
-          (file) => file === 'identity.json' || /^logs\/[^/]+\.log$/.test(file),
-        ),
+        persistedFiles.every((file) => file === 'identity.json' || /^logs\/[^/]+\.log$/.test(file)),
       ).toBe(true);
       expect(new EnvironmentStore(fixture.database).get(ownerId, envId)).toMatchObject({
         bindingStatus: 'active',
