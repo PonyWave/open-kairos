@@ -104,7 +104,7 @@ export function DelegationCallCard({
     >
       <div className="delegation-tool-title">
         <Icon name="chat" className="i-sm" />
-        <code>call</code>
+        <span className="delegation-kind">委派</span>
         <span>{title ?? '等待话题接受回执'}</span>
         <small>{isNewThread(call) ? '新话题' : '继续话题'}</small>
         <span className="receipt-label">
@@ -239,7 +239,7 @@ export function ReplyPreviews({
             <span className="preview-reply-content">
               <strong>{sender.label}</strong>
               <span>
-                {reply.content}
+                {plainPreviewText(reply.content)}
                 {reply.truncated ? '…' : ''}
               </span>
               <AttachmentMetadataList attachments={reply.attachments ?? []} />
@@ -249,6 +249,22 @@ export function ReplyPreviews({
       })}
     </span>
   );
+}
+
+const automationTriggerPrefix =
+  /^Kairos Automation trigger;[^\n]*\nThe configured Automation prompt follows; it is not a new human instruction:\n\n/;
+
+export function plainPreviewText(text: string): string {
+  return text
+    .replace(automationTriggerPrefix, '')
+    .replace(/```[^\n]*\n?/g, '')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/\*\*([^*]*)\*\*/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^>\s?/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export function originFromDelegation(

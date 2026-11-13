@@ -1,9 +1,22 @@
-import type { Environment, EnvironmentDirectoryEntry } from '@kairos/contracts';
+import {
+  type Environment,
+  EnvironmentConnectionStatus,
+  type EnvironmentDirectoryEntry,
+} from '@kairos/contracts';
 import { useEffect, useState } from 'react';
 import type { KairosClients } from './client.js';
 import { FailureNotice } from './failure-notice.js';
 import { Icon } from './icon.js';
 import type { WorkspaceGroup } from './use-workspaces.js';
+
+function pickDefaultEnvironment(environments: readonly Environment[]): string {
+  const main = environments.find((environment) => environment.envId === 'main');
+  if (main) return main.envId;
+  const online = environments.find(
+    (environment) => environment.connectionStatus === EnvironmentConnectionStatus.ONLINE,
+  );
+  return online?.envId ?? environments[0]?.envId ?? '';
+}
 
 export function WorkspacesPage({
   clients,
@@ -38,7 +51,7 @@ export function WorkspacesPage({
       .then((result) => {
         if (cancelled) return;
         setEnvironments(result.environments);
-        setEnvId((current) => current || (result.environments[0]?.envId ?? ''));
+        setEnvId((current) => current || pickDefaultEnvironment(result.environments));
       })
       .catch(() => {
         if (!cancelled) setFormError('设备列表加载失败。');
@@ -269,7 +282,10 @@ export function WorkspacesPage({
                     className="workspace-item-path"
                     title={`${group.workspace?.envId} · ${group.workspace?.path}`}
                   >
-                    {group.workspace?.envId} · {group.workspace?.path}
+                    {environments.find(
+                      (environment) => environment.envId === group.workspace?.envId,
+                    )?.name ?? group.workspace?.envId}{' '}
+                    · {group.workspace?.path}
                   </span>
                   <button
                     type="button"

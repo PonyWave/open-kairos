@@ -115,6 +115,7 @@ describe('Dropdown controls', () => {
         onSort: () => {},
         onLoadMore: async () => {},
         onReload: async () => {},
+        onManageWorkspaces: () => {},
       }),
     );
     expect(html).not.toContain('<select');

@@ -24,14 +24,20 @@ export function parseToolContent(content: string): ToolContentView {
   };
   try {
     const value: unknown = JSON.parse(content);
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
+    if (!value || typeof value !== 'object') {
+      return Array.isArray(value) ? { ...fallback, output: prettyJson(value) } : fallback;
+    }
+    if (Array.isArray(value)) return { ...fallback, output: prettyJson(value) };
     const status = stringField(value, 'status');
     return {
       output:
         stringField(value, 'output') ??
         stringField(value, 'response') ??
         stringField(value, 'error') ??
-        content,
+        stringField(value, 'text') ??
+        stringField(value, 'content') ??
+        nestedOutcomeText(value) ??
+        prettyJson(value),
       toolCallId: stringField(value, 'tool_call_id'),
       threadId: stringField(value, 'thread_id'),
       status,
@@ -46,6 +52,33 @@ export function parseToolContent(content: string): ToolContentView {
     };
   } catch {
     return fallback;
+  }
+}
+
+function nestedOutcomeText(value: object): string | null {
+  const outcome = Reflect.get(value, 'outcome');
+  if (!outcome || typeof outcome !== 'object' || Array.isArray(outcome)) return null;
+  return (
+    stringField(outcome, 'content') ??
+    stringField(outcome, 'output') ??
+    stringField(outcome, 'text') ??
+    stringField(outcome, 'error')
+  );
+}
+
+export function prettyJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+export function formatToolArguments(argumentsJson: string): string {
+  try {
+    return prettyJson(JSON.parse(argumentsJson));
+  } catch {
+    return argumentsJson;
   }
 }
 

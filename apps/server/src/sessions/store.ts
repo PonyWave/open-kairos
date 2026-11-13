@@ -58,6 +58,7 @@ import type {
   RunRecord,
   RunStatus,
   ServerBashOperationRecord,
+  StreamDeltaRecord,
   TextDeltaRecord,
   ThreadEventPayload,
   ThreadEventRecord,
@@ -67,6 +68,8 @@ import type {
   WorkspaceRecord,
 } from './records.js';
 import { threadNotificationDeliveryText } from './thread-notifications.js';
+
+const maxBufferedStreamDeltaTextLength = 256 * 1024;
 
 const messageSourceSchema = z.enum([
   'user',
@@ -547,6 +550,10 @@ export class SessionStore {
     Set<(event: ThreadEventRecord | TextDeltaRecord | ToolProgressRecord) => void>
   >();
   readonly #pendingNotifications: PendingNotification[] = [];
+  readonly #streamDeltaBuffers = new Map<
+    string,
+    { deltas: StreamDeltaRecord[]; textLength: number; overflowed: boolean }
+  >();
   #transactionDepth = 0;
   #flushScheduled = false;
 
@@ -665,7 +672,39 @@ export class SessionStore {
     if (!Number.isSafeInteger(delta.deltaSeq) || delta.deltaSeq <= 0) {
       throw new SessionError('internal', 'Text delta sequence must be positive.');
     }
+    this.#bufferStreamDelta(delta);
     this.#notify(delta);
+  }
+
+  bufferedStreamDeltas(threadId: string): readonly StreamDeltaRecord[] {
+    return [...(this.#streamDeltaBuffers.get(threadId)?.deltas ?? [])];
+  }
+
+  #bufferStreamDelta(delta: StreamDeltaRecord): void {
+    let buffer = this.#streamDeltaBuffers.get(delta.threadId);
+    if (!buffer) {
+      buffer = { deltas: [], textLength: 0, overflowed: false };
+      this.#streamDeltaBuffers.set(delta.threadId, buffer);
+    }
+    if (buffer.overflowed) return;
+    buffer.deltas.push(delta);
+    buffer.textLength += delta.text.length;
+    if (buffer.textLength > maxBufferedStreamDeltaTextLength) {
+      buffer.deltas = [];
+      buffer.textLength = 0;
+      buffer.overflowed = true;
+    }
+  }
+
+  #clearStreamDeltaBuffer(
+    threadId: string,
+    predicate: (delta: StreamDeltaRecord) => boolean,
+  ): void {
+    const buffer = this.#streamDeltaBuffers.get(threadId);
+    if (!buffer) return;
+    buffer.deltas = buffer.deltas.filter((delta) => !predicate(delta));
+    buffer.textLength = buffer.deltas.reduce((total, delta) => total + delta.text.length, 0);
+    if (buffer.deltas.length === 0) buffer.overflowed = false;
   }
 
   flushNotifications(): void {
@@ -4470,6 +4509,18 @@ export class SessionStore {
   }
 
   #notify(event: ThreadEventRecord | TextDeltaRecord | ToolProgressRecord): void {
+    if ('seq' in event) {
+      if (event.payload.case === 'messageCommitted') {
+        const messageId = event.payload.value.message.messageId;
+        this.#clearStreamDeltaBuffer(event.threadId, (delta) => delta.messageId === messageId);
+      } else if (
+        event.payload.case === 'runChanged' &&
+        ['completed', 'failed', 'cancelled', 'interrupted'].includes(event.payload.value.run.status)
+      ) {
+        const runId = event.payload.value.run.runId;
+        this.#clearStreamDeltaBuffer(event.threadId, (delta) => delta.runId === runId);
+      }
+    }
     for (const listener of [...(this.#listeners.get(event.threadId) ?? [])]) listener(event);
   }
 

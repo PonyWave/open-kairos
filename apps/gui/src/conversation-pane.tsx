@@ -89,7 +89,6 @@ export function ConversationPane({
   highlightedCallId = null,
   hidden = false,
   displayMode = 'full',
-  onOpenDisplaySettings = () => {},
   onOpenTopic,
   onCloseTopic,
   onShowOrigin,
@@ -118,7 +117,6 @@ export function ConversationPane({
   highlightedCallId?: string | null;
   hidden?: boolean;
   displayMode?: ConversationDisplayMode;
-  onOpenDisplaySettings?: () => void;
   onOpenTopic: (request: OpenTopicRequest) => void;
   onOpenDirectory: () => void;
   onOpenMain: () => void;
@@ -130,9 +128,11 @@ export function ConversationPane({
   const isSubagent = variant === 'subagent';
   const isAutomation = variant === 'automation';
   const readOnly = isSubagent || isAutomation;
+  const [fullViewOverride, setFullViewOverride] = useState(false);
   const usesDisplayMode =
     variant === 'main' ||
     (variant === 'fullscreen' && thread?.threadType === ThreadType.WORKSPACE_MAIN);
+  const effectiveDisplayMode: ConversationDisplayMode = fullViewOverride ? 'full' : displayMode;
   const agentId = isSubagent ? (subagent?.agentId ?? '') : 'thread';
   const origin: AgentOrigin | null =
     requestedOrigin ??
@@ -272,9 +272,9 @@ export function ConversationPane({
       projectConversationDisplay(
         conversationItems.slice(historyStartIndex),
         snapshot?.runs ?? [],
-        usesDisplayMode ? displayMode : 'full',
+        usesDisplayMode ? effectiveDisplayMode : 'full',
       ),
-    [conversationItems, historyStartIndex, snapshot?.runs, usesDisplayMode, displayMode],
+    [conversationItems, historyStartIndex, snapshot?.runs, usesDisplayMode, effectiveDisplayMode],
   );
   const channelDeliveryIds = useMemo(() => {
     const ids: string[] = [];
@@ -302,7 +302,7 @@ export function ConversationPane({
     useConversationScroll(!hidden && snapshot !== null && !isDraft, loadEarlierTurns, {
       key: historyKey,
       startIndex: historyStartIndex,
-      displayMode: usesDisplayMode ? displayMode : 'full',
+      displayMode: usesDisplayMode ? effectiveDisplayMode : 'full',
     });
 
   useEffect(() => {
@@ -648,13 +648,13 @@ export function ConversationPane({
       {item.kind === 'pending-agent' ? (
         <PendingAgentCard
           input={item.value}
-          compact={usesDisplayMode && displayMode === 'compact'}
+          compact={usesDisplayMode && effectiveDisplayMode === 'compact'}
         />
       ) : item.kind === 'missing-user-reply' ? (
         <div className="missing-user-reply" role="status">
-          <span>本次执行未发送回复，可在显示设置中选择完整视图查看记录。</span>
-          <button type="button" className="text-button" onClick={onOpenDisplaySettings}>
-            显示设置
+          <span>本次执行未发送回复。</span>
+          <button type="button" className="text-button" onClick={() => setFullViewOverride(true)}>
+            查看完整记录
           </button>
         </div>
       ) : item.kind === 'run-outcome' ? (
@@ -898,8 +898,11 @@ export function ConversationPane({
       {!readOnly && (
         <div className="session-compose">
           {!isDraft && projectQueuedInputs(snapshot?.inputs ?? []).length > 0 && (
-            <details className="queue-management">
-              <summary>管理排队消息</summary>
+            <details className="queue-management" open>
+              <summary>
+                <Icon name="chevron" className="i-xs queue-management-chevron" />
+                排队消息（{projectQueuedInputs(snapshot?.inputs ?? []).length} 条）
+              </summary>
               <QueueStack
                 inputs={snapshot?.inputs ?? []}
                 busy={actions.busy}

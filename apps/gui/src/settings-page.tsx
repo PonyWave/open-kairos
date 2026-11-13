@@ -15,6 +15,7 @@ import type { KairosClients } from './client.js';
 import type { ConversationDisplayMode } from './conversation-display.js';
 import { Dropdown } from './dropdown.js';
 import { formatClientError } from './errors.js';
+import { Icon } from './icon.js';
 import { SettingsRequests } from './settings-requests.js';
 import { UserAvatar } from './user-avatar.js';
 
@@ -36,6 +37,8 @@ export function SettingsPage({
   conversationDisplayMode,
   conversationDisplayError,
   onConversationDisplayChange,
+  theme,
+  onThemeChange,
 }: {
   clients: KairosClients;
   identity: Identity;
@@ -46,6 +49,8 @@ export function SettingsPage({
   conversationDisplayMode: ConversationDisplayMode;
   conversationDisplayError: string | null;
   onConversationDisplayChange: (mode: ConversationDisplayMode) => void;
+  theme: 'light' | 'dark';
+  onThemeChange: (theme: 'light' | 'dark') => void;
 }) {
   return (
     <section className="settings-page" aria-labelledby="settings-heading">
@@ -93,13 +98,59 @@ export function SettingsPage({
       ) : section === 'channels' ? (
         <ChannelSettings clients={clients} />
       ) : (
-        <ConversationDisplaySettings
-          mode={conversationDisplayMode}
-          error={conversationDisplayError}
-          onChange={onConversationDisplayChange}
-        />
+        <>
+          <AppearanceSettings theme={theme} onChange={onThemeChange} />
+          <ConversationDisplaySettings
+            mode={conversationDisplayMode}
+            error={conversationDisplayError}
+            onChange={onConversationDisplayChange}
+          />
+        </>
       )}
     </section>
+  );
+}
+
+export function AppearanceSettings({
+  theme,
+  onChange,
+}: {
+  theme: 'light' | 'dark';
+  onChange: (theme: 'light' | 'dark') => void;
+}) {
+  return (
+    <div className="settings-form">
+      <div className="settings-section-heading">
+        <h2>外观</h2>
+        <p>选择界面主题，选择后立即生效，按账号保存在当前浏览器。</p>
+      </div>
+      <fieldset className="settings-display-options" aria-label="外观主题">
+        <label className="settings-display-option">
+          <input
+            type="radio"
+            name="appearance-theme"
+            value="light"
+            checked={theme === 'light'}
+            onChange={() => onChange('light')}
+          />
+          <span>
+            <strong>浅色</strong>
+          </span>
+        </label>
+        <label className="settings-display-option">
+          <input
+            type="radio"
+            name="appearance-theme"
+            value="dark"
+            checked={theme === 'dark'}
+            onChange={() => onChange('dark')}
+          />
+          <span>
+            <strong>深色</strong>
+          </span>
+        </label>
+      </fieldset>
+    </div>
   );
 }
 
@@ -626,7 +677,7 @@ function ModelSettingsPanel({
           ) : (
             <button
               type="button"
-              className="settings-text-button"
+              className="device-secondary"
               disabled={busy || requests.pending !== null}
               onClick={() =>
                 void mutate((clientActionId) =>
@@ -644,6 +695,7 @@ function ModelSettingsPanel({
             type="button"
             className="device-secondary"
             disabled={busy || requests.pending !== null}
+            title="测试会发送少量模型请求，可能产生费用；结果仅代表当时的服务状态。"
             onClick={() => void test(model.id)}
           >
             测试模型
@@ -679,7 +731,7 @@ function ModelSettingsPanel({
         )}
       </div>
       <p className="settings-help settings-model-notice">
-        默认模型用于后续新执行。正在执行及继续原执行的任务沿用原配置；子任务继承所属执行。更换服务后，后续执行会向新服务发送当前对话上下文。
+        默认模型用于后续新执行，正在执行及继续原执行的任务沿用原配置。
       </p>
       {error && (
         <div role="alert" className="settings-error">
@@ -720,6 +772,20 @@ function ModelSettingsPanel({
             if (dirty) setDiscarding(true);
             else setDraft(null);
           }}
+          {...(snapshot.connections.find((connection) => connection.id === draft.id)
+            ? {
+                onDelete: () => {
+                  const connection = snapshot.connections.find(
+                    (candidate) => candidate.id === draft.id,
+                  );
+                  if (connection) setDeleting(connection);
+                },
+                deleteDisabled: (
+                  snapshot.connections.find((connection) => connection.id === draft.id)?.models ??
+                  []
+                ).some((model) => model.id === snapshot.defaultModelId),
+              }
+            : {})}
           onSave={() =>
             void mutate((clientActionId) =>
               clients.settings.saveModelConnection(
@@ -763,25 +829,14 @@ function ModelSettingsPanel({
                   </span>
                   <span className="settings-help settings-url">{connection.baseUrl}</span>
                 </div>
-                <Dropdown
-                  label={`管理连接 ${connection.name}`}
-                  trigger="管理"
-                  triggerClassName="device-secondary"
-                  items={[
-                    { value: 'edit', label: '编辑连接' },
-                    {
-                      value: 'delete',
-                      label: '删除连接',
-                      disabled: connection.models.some(
-                        (model) => model.id === snapshot.defaultModelId,
-                      ),
-                    },
-                  ]}
+                <button
+                  type="button"
+                  className="device-secondary"
                   disabled={busy || requests.pending !== null}
-                  onSelect={(value) =>
-                    value === 'edit' ? edit(connection) : setDeleting(connection)
-                  }
-                />
+                  onClick={() => edit(connection)}
+                >
+                  编辑
+                </button>
               </div>
               {connection.models.map(modelRow)}
             </section>
@@ -791,11 +846,6 @@ function ModelSettingsPanel({
               <h3>尚未配置模型</h3>
               <p>添加一个连接并填写模型 ID，即可用于对话和任务。</p>
             </div>
-          )}
-          {snapshot && (
-            <p className="settings-help">
-              测试会发送少量模型请求，可能产生费用。测试通过仅代表当时的服务状态。删除默认模型所属连接前，请先选择其他默认模型。
-            </p>
           )}
         </>
       )}
@@ -876,6 +926,8 @@ function ConnectionEditor({
   busy,
   onCancel,
   onSave,
+  onDelete,
+  deleteDisabled = false,
 }: {
   draft: ConnectionDraft;
   setDraft: (draft: ConnectionDraft) => void;
@@ -883,19 +935,71 @@ function ConnectionEditor({
   busy: boolean;
   onCancel: () => void;
   onSave: () => void;
+  onDelete?: (() => void) | undefined;
+  deleteDisabled?: boolean;
 }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const update = (id: string, changes: Partial<ConfiguredModel>) =>
     setDraft({
       ...draft,
       models: draft.models.map((model) => (model.id === id ? { ...model, ...changes } : model)),
     });
   const presentation = modelApiTypePresentation(draft.apiType);
+  const fieldError = (key: string) =>
+    errors[key] ? (
+      <span className="settings-field-error" role="alert">
+        {errors[key]}
+      </span>
+    ) : null;
+  const submit = () => {
+    const next: Record<string, string> = {};
+    if (!draft.name.trim()) next.name = '请填写连接名称。';
+    if (!draft.baseUrl.trim()) {
+      next.baseUrl = '请填写基础 URL。';
+    } else {
+      try {
+        const url = new URL(draft.baseUrl.trim());
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+          next.baseUrl = '基础 URL 只支持 http 或 https。';
+        }
+      } catch {
+        next.baseUrl = '基础 URL 格式无效。';
+      }
+    }
+    for (const [index, model] of draft.models.entries()) {
+      if (!model.name.trim())
+        next[`model-${model.id}-name`] = `请填写模型 ${index + 1} 的显示名称。`;
+      if (!model.modelId.trim())
+        next[`model-${model.id}-id`] = `请填写模型 ${index + 1} 的模型 ID。`;
+      if (!Number.isInteger(model.contextWindow) || model.contextWindow < 1024)
+        next[`model-${model.id}-context`] = '上下文容量至少为 1024 token。';
+      if (
+        !Number.isInteger(model.maxOutputTokens) ||
+        model.maxOutputTokens < 1 ||
+        model.maxOutputTokens >= model.contextWindow
+      )
+        next[`model-${model.id}-output`] = '最大输出须小于上下文容量。';
+      if (!Number.isInteger(model.timeoutMs) || model.timeoutMs < 1000 || model.timeoutMs > 3600000)
+        next[`model-${model.id}-timeout`] = '请求超时须为 1 到 3600 秒。';
+    }
+    setErrors(next);
+    if (Object.keys(next).length > 0) {
+      requestAnimationFrame(() => {
+        formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+      });
+      return;
+    }
+    onSave();
+  };
   return (
     <form
+      ref={formRef}
       className="settings-form settings-connection-editor"
+      noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        onSave();
+        submit();
       }}
     >
       <fieldset disabled={busy}>
@@ -905,16 +1009,23 @@ function ConnectionEditor({
             required
             maxLength={80}
             value={draft.name}
+            aria-invalid={errors.name !== undefined}
             onChange={(event) => setDraft({ ...draft, name: event.target.value })}
             placeholder="例如：我的模型服务"
           />
+          {fieldError('name')}
         </label>
         <div className="settings-field">
           <span className="settings-label">API 类型</span>
           <Dropdown
             label="API 类型"
-            trigger={presentation.label}
-            triggerClassName="device-secondary"
+            trigger={
+              <>
+                <span>{presentation.label}</span>
+                <Icon name="down" className="i-sm dropdown-chevron" />
+              </>
+            }
+            triggerClassName="settings-select-trigger"
             value={String(draft.apiType)}
             items={[
               {
@@ -950,11 +1061,13 @@ function ConnectionEditor({
             required
             maxLength={2048}
             value={draft.baseUrl}
+            aria-invalid={errors.baseUrl !== undefined}
             onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })}
             placeholder={presentation.baseUrlPlaceholder}
             autoComplete="off"
             spellCheck={false}
           />
+          {fieldError('baseUrl')}
           <span className="settings-help">
             系统追加 {presentation.path}。请求从 Server 发出，localhost 指向
             Server；内网服务须由部署者放行。
@@ -1006,7 +1119,7 @@ function ConnectionEditor({
               <h4>模型 {index + 1}</h4>
               <button
                 type="button"
-                className="settings-text-button"
+                className="settings-text-button settings-danger"
                 disabled={draft.models.length === 1 || model.id === defaultModelId}
                 onClick={() =>
                   setDraft({
@@ -1024,9 +1137,11 @@ function ConnectionEditor({
                 required
                 maxLength={80}
                 value={model.name}
+                aria-invalid={errors[`model-${model.id}-name`] !== undefined}
                 onChange={(event) => update(model.id, { name: event.target.value })}
                 placeholder="例如：日常任务"
               />
+              {fieldError(`model-${model.id}-name`)}
             </label>
             <label className="settings-field">
               模型 ID
@@ -1034,11 +1149,13 @@ function ConnectionEditor({
                 required
                 maxLength={200}
                 value={model.modelId}
+                aria-invalid={errors[`model-${model.id}-id`] !== undefined}
                 onChange={(event) => update(model.id, { modelId: event.target.value })}
                 placeholder="填写服务提供的准确模型 ID"
                 autoComplete="off"
                 spellCheck={false}
               />
+              {fieldError(`model-${model.id}-id`)}
             </label>
             <details className="settings-advanced">
               <summary>高级设置</summary>
@@ -1051,10 +1168,12 @@ function ConnectionEditor({
                     max={10000000}
                     required
                     value={model.contextWindow}
+                    aria-invalid={errors[`model-${model.id}-context`] !== undefined}
                     onChange={(event) =>
                       update(model.id, { contextWindow: Number(event.target.value) })
                     }
                   />
+                  {fieldError(`model-${model.id}-context`)}
                 </label>
                 <label className="settings-field">
                   最大输出（token）
@@ -1064,10 +1183,12 @@ function ConnectionEditor({
                     max={model.contextWindow - 1}
                     required
                     value={model.maxOutputTokens}
+                    aria-invalid={errors[`model-${model.id}-output`] !== undefined}
                     onChange={(event) =>
                       update(model.id, { maxOutputTokens: Number(event.target.value) })
                     }
                   />
+                  {fieldError(`model-${model.id}-output`)}
                 </label>
                 <label className="settings-field">
                   请求超时（秒）
@@ -1077,10 +1198,12 @@ function ConnectionEditor({
                     max={3600}
                     required
                     value={model.timeoutMs / 1000}
+                    aria-invalid={errors[`model-${model.id}-timeout`] !== undefined}
                     onChange={(event) =>
                       update(model.id, { timeoutMs: Number(event.target.value) * 1000 })
                     }
                   />
+                  {fieldError(`model-${model.id}-timeout`)}
                 </label>
               </div>
               <label className="settings-checkbox">
@@ -1105,8 +1228,21 @@ function ConnectionEditor({
         <button className="device-secondary" type="button" disabled={busy} onClick={onCancel}>
           取消
         </button>
+        {onDelete && (
+          <button
+            className="settings-text-button settings-danger settings-delete-connection"
+            type="button"
+            disabled={busy || deleteDisabled}
+            title={deleteDisabled ? '删除默认模型所属连接前，请先选择其他默认模型。' : undefined}
+            onClick={onDelete}
+          >
+            删除连接
+          </button>
+        )}
       </div>
-      <p className="settings-help">保存后可在模型列表测试并设为默认。</p>
+      <p className="settings-help">
+        保存后可在模型列表测试并设为默认。更换服务后，后续执行会向新服务发送当前对话上下文。
+      </p>
     </form>
   );
 }

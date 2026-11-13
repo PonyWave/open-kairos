@@ -194,6 +194,40 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+.settings-text-button.settings-danger {
+  color: var(--danger);
+}
+.settings-delete-connection {
+  margin-left: auto;
+}
+.settings-field-error {
+  color: var(--danger);
+  font-size: 12px;
+}
+.settings-field input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.settings-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+}
+.settings-select-trigger:hover {
+  background: var(--hover);
+}
+.settings-select-trigger .dropdown-chevron {
+  color: var(--muted);
+  flex-shrink: 0;
+}
 .settings-form-actions {
   display: flex;
   flex-wrap: wrap;

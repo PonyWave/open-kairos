@@ -211,9 +211,9 @@ export function automationTargetText(kind: AutomationTargetKind | undefined): st
     case AutomationTargetKind.EXISTING_THREAD:
       return '已有话题';
     case AutomationTargetKind.NEW_TASK:
-      return '每次新建普通话题';
+      return '每次新建任务对话';
     case AutomationTargetKind.NEW_AUTOMATION_ONLY:
-      return '每次新建定时专属话题';
+      return '每次新建一次性对话';
     default:
       return '目标未知';
   }

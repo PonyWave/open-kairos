@@ -115,7 +115,8 @@ describe('queued input in the conversation', () => {
     expect(compact).toContain('pending-agent-bubble');
     expect(compact).toContain('aria-label="Agent 正在输入"');
     expect(compact).not.toContain('pending-agent-spinner');
-    expect(compact).toContain('<details class="queue-management">');
+    expect(compact).toContain('<details class="queue-management" open="">');
+    expect(compact).toContain('排队消息（1 条）');
 
     const full = renderConversation({ queued: true, mode: 'full' });
     expect(full).toContain('等待中的消息');

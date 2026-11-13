@@ -179,7 +179,7 @@ export function AccountWorkbench({
       setConversationDisplay(saveConversationDisplay(storage, mode)),
     [storage],
   );
-  const [theme, setTheme] = useState(() =>
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     storage?.getItem('kairos.theme') === 'dark' ? 'dark' : 'light',
   );
   useEffect(() => {
@@ -720,11 +720,11 @@ export function AccountWorkbench({
                   <button
                     type="button"
                     className="icon-button"
-                    aria-label="管理工作空间"
-                    title="管理工作空间"
+                    aria-label="新建工作空间"
+                    title="新建工作空间"
                     onClick={openWorkspaces}
                   >
-                    <Icon name="settings" className="i-xs" />
+                    <Icon name="plus" className="i-xs" />
                   </button>
                   <button
                     type="button"
@@ -913,10 +913,6 @@ export function AccountWorkbench({
                     threadSyncManager={threadSyncManager}
                     variant="main"
                     displayMode={conversationDisplay.mode}
-                    onOpenDisplaySettings={() => {
-                      setSettingsSection('display');
-                      openSettings();
-                    }}
                     composerOwner="main"
                     threadId={mainThreadId}
                     thread={mainThread}
@@ -1020,6 +1016,8 @@ export function AccountWorkbench({
                   conversationDisplayMode={conversationDisplay.mode}
                   conversationDisplayError={conversationDisplay.error}
                   onConversationDisplayChange={changeConversationDisplay}
+                  theme={theme}
+                  onThemeChange={setTheme}
                 />
               ) : directory.page === 'devices' ? (
                 <ConnectedDevicesPage clients={clients} />
@@ -1060,6 +1058,7 @@ export function AccountWorkbench({
                   onSort={(sort) => void topics.setSort(sort)}
                   onLoadMore={topics.loadMore}
                   onReload={topics.openDirectory}
+                  onManageWorkspaces={openWorkspaces}
                 />
               ) : directory.page === 'draft' ? (
                 <ConversationPane
@@ -1098,10 +1097,6 @@ export function AccountWorkbench({
                     threadSyncManager={threadSyncManager}
                     variant="fullscreen"
                     displayMode={conversationDisplay.mode}
-                    onOpenDisplaySettings={() => {
-                      setSettingsSection('display');
-                      openSettings();
-                    }}
                     composerOwner="fullscreen"
                     threadId={selectedThreadId}
                     thread={selectedThread}

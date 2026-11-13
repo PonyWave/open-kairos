@@ -99,7 +99,7 @@ describe('Automation management components', () => {
     expect(list).toContain('每天 09:00');
     expect(list).not.toContain('0 9 * * *');
     expect(list).toContain('Asia/Shanghai');
-    expect(list).toContain('每次新建定时专属话题');
+    expect(list).toContain('每次新建一次性对话');
     expect(list).toContain('立即执行');
 
     const onReload = vi.fn();
@@ -181,7 +181,7 @@ describe('Automation management components', () => {
     expect(html).toContain('修改定时任务');
     expect(html).toContain('每日摘要');
     expect(html).toContain('总结当天工作');
-    expect(html).toContain('每次新建定时专属话题');
+    expect(html).toContain('每次新建一次性对话');
     expect(html).toContain('保存后启用定时规则');
     expect(html).not.toContain('<select');
     expect(html).not.toContain('cron');

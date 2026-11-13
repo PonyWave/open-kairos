@@ -133,6 +133,16 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+.automation-action {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.automation-action:hover:not(:disabled) {
+  background: var(--hover);
+}
 .automation-delete {
   color: var(--danger);
 }

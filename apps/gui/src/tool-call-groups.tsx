@@ -5,6 +5,7 @@ import { ToolResultCard } from './conversation.js';
 import { Icon } from './icon.js';
 import { ThinkingBlock } from './thinking-block.js';
 import { isThinkingBlockExpanded, type ThinkingExpansionChoices } from './thinking-expansion.js';
+import { formatToolArguments } from './tool-content.js';
 import {
   type ToolGroupOperation,
   type ToolOutcome,
@@ -283,7 +284,7 @@ function ToolOperationLine({
       </summary>
       <div className="tool-operation-detail">
         <div className="tool-detail-heading">参数</div>
-        <pre>{call.argumentsJson}</pre>
+        <pre>{formatToolArguments(call.argumentsJson)}</pre>
         {outcome ? (
           <ToolResultCard message={outcome.message} clients={clients} />
         ) : progress?.authorization !== undefined ? (

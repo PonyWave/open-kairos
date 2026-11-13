@@ -317,7 +317,7 @@ function DeviceRow({
           disabled={busy}
           items={[
             { value: 'rename', label: '重命名', icon: 'edit' },
-            { value: 'revoke', label: '解除绑定', icon: 'link', section: 'binding' },
+            { value: 'revoke', label: '解除绑定', icon: 'link' },
           ]}
           onSelect={(action) => {
             if (action === 'rename') {

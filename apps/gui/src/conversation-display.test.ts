@@ -287,7 +287,7 @@ describe('sent user messages', () => {
     expect(html).not.toContain('data-user-message-call-id');
     expect(html).not.toContain('发送详情');
     expect(html).toContain('data-tool-call-id="send-1"');
-    expect(html).toContain('&quot;content&quot;:&quot;**正式回复**&quot;');
+    expect(html).toContain('&quot;content&quot;: &quot;**正式回复**&quot;');
     expect(html).toContain('data-message-id="read"');
     expect(html).not.toContain('data-message-id="send"');
     expect(html).not.toContain('data-message-id="sent"');

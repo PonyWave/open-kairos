@@ -271,7 +271,7 @@ describe('mixed Thinking and tool capsule rendering', () => {
     expect(html).toContain('bash pwd');
     expect(html).toContain('第一段完整思考');
     expect(html).not.toContain('第二段流式思考');
-    expect(html).toContain('{&quot;command&quot;:&quot;pwd&quot;}');
+    expect(html).toContain('{\n  &quot;command&quot;: &quot;pwd&quot;\n}');
     expect(html).toContain('缺口预览');
     expect(html.indexOf('第一段完整思考')).toBeLessThan(html.indexOf('data-tool-call-id="bash-1"'));
   });

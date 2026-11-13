@@ -166,7 +166,7 @@ select {
   min-height: 36px;
   padding: 7px 9px;
 }
-input,
+input:not([type="checkbox"]):not([type="radio"]),
 textarea {
   width: 100%;
 }
@@ -1095,6 +1095,7 @@ button.title-icon {
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
+  min-width: 5em;
 }
 .markdown th {
   color: var(--ink);
@@ -1151,12 +1152,21 @@ button.title-icon {
   font-size: 12px;
 }
 .queue-management > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   width: fit-content;
   cursor: pointer;
   list-style: none;
 }
 .queue-management > summary::marker {
   content: "";
+}
+.queue-management-chevron {
+  transition: transform 0.15s ease;
+}
+.queue-management[open] > summary .queue-management-chevron {
+  transform: rotate(90deg);
 }
 @keyframes pending-agent-pulse {
   0%,
@@ -2920,6 +2930,16 @@ button.dropdown-item {
   flex: 1;
 }
 
+.conversation-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0 8px;
+}
+.conversation-section-heading .conversation-section-title {
+  margin: 0;
+}
 .conversation-section-title {
   font-size: 13px;
   color: var(--muted, #6b7280);

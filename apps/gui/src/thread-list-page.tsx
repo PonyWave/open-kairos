@@ -19,6 +19,7 @@ export function ThreadListPage({
   onSort,
   onLoadMore,
   onReload,
+  onManageWorkspaces,
 }: {
   cards: readonly TopicCardView[];
   sort: TopicSort;
@@ -31,6 +32,7 @@ export function ThreadListPage({
   onSort: (sort: TopicSort) => void;
   onLoadMore: () => Promise<void>;
   onReload: () => Promise<void>;
+  onManageWorkspaces: () => void;
 }) {
   const sections: Array<{ key: string; title: string; cards: TopicCardView[] }> = [];
   if (workspaceNames && workspaceNames.size > 0) {
@@ -102,7 +104,16 @@ export function ThreadListPage({
             aria-label={section.title || '全部话题'}
             key={section.key}
           >
-            {section.title && <h2 className="conversation-section-title">{section.title}</h2>}
+            {section.title && (
+              <div className="conversation-section-heading">
+                <h2 className="conversation-section-title">{section.title}</h2>
+                {section.key !== 'temporary' && (
+                  <button type="button" className="text-button" onClick={onManageWorkspaces}>
+                    管理工作空间
+                  </button>
+                )}
+              </div>
+            )}
             {section.cards.map((card) => (
               <TopicCard
                 key={card.thread.threadId}
@@ -170,7 +181,6 @@ export function TopicCard({
       <span className="conversation-card-footer">
         <Icon name="chat" className="i-sm" />
         <span>查看话题</span>
-        <Icon name="chevron" className="i-sm" />
       </span>
     </button>
   );

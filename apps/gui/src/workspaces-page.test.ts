@@ -112,6 +112,7 @@ describe('ThreadListPage workspace sections', () => {
         onSort: vi.fn(),
         onLoadMore: vi.fn(async () => {}),
         onReload: vi.fn(async () => {}),
+        onManageWorkspaces: vi.fn(),
       }),
     );
 
@@ -134,6 +135,7 @@ describe('ThreadListPage workspace sections', () => {
         onSort: vi.fn(),
         onLoadMore: vi.fn(async () => {}),
         onReload: vi.fn(async () => {}),
+        onManageWorkspaces: vi.fn(),
       }),
     );
     expect(markup).toContain('任务一');

@@ -81,8 +81,13 @@ export async function* watchThreadEvents(
   const queue = new BoundedQueue(maximumQueue);
   const unsubscribe = store.subscribe(threadId, (event) => queue.push(event));
   let cursor = afterSeq;
+  const replayedDeltaSeq = new Map<string, number>();
   try {
     yield* catchUp(cursor);
+    for (const delta of store.bufferedStreamDeltas(threadId)) {
+      replayedDeltaSeq.set(delta.messageId, delta.deltaSeq);
+      yield delta;
+    }
     while (!signal.aborted) {
       const item = await queue.next(signal);
       if (!item) break;
@@ -94,6 +99,9 @@ export async function* watchThreadEvents(
         if (sequence > cursor + 1n) yield* catchUp(cursor);
         if (sequence <= cursor) continue;
         cursor = sequence;
+      } else if ('deltaSeq' in event) {
+        if (event.deltaSeq <= (replayedDeltaSeq.get(event.messageId) ?? 0)) continue;
+        replayedDeltaSeq.set(event.messageId, event.deltaSeq);
       }
       yield event;
     }

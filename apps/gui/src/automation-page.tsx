@@ -281,7 +281,7 @@ export function AutomationPage({
       <header className="automation-page-heading">
         <div>
           <h1 id="automation-heading">定时任务</h1>
-          <p>按明确时区提交 prompt，并核对每次执行的实际状态。</p>
+          <p>按明确时区提交提示词，并核对每次执行的实际状态。</p>
         </div>
         {!selectedScheduleId && (
           <button
@@ -339,16 +339,9 @@ export function AutomationPage({
                   <div className="automation-actions">
                     <button
                       type="button"
-                      className="device-secondary"
-                      disabled={detail?.loading}
-                      onClick={() => setDetailRefresh((value) => value + 1)}
-                    >
-                      <Icon name="retry" className="i-sm" />
-                      刷新
-                    </button>
-                    <button
-                      type="button"
-                      className="device-secondary"
+                      className="icon-button automation-action"
+                      aria-label="立即执行"
+                      title="立即执行"
                       disabled={actionUnavailable(
                         actions,
                         `automation:run:${selectedAutomation.scheduleId}`,
@@ -356,11 +349,12 @@ export function AutomationPage({
                       onClick={() => void runNow(selectedAutomation)}
                     >
                       <Icon name="play" className="i-sm" />
-                      立即执行
                     </button>
                     <button
                       type="button"
-                      className="device-secondary"
+                      className="icon-button automation-action"
+                      aria-label="修改"
+                      title="修改"
                       disabled={actionUnavailable(
                         actions,
                         `automation:update:${selectedAutomation.scheduleId}`,
@@ -370,11 +364,12 @@ export function AutomationPage({
                       }
                     >
                       <Icon name="edit" className="i-sm" />
-                      修改
                     </button>
                     <button
                       type="button"
-                      className="device-secondary"
+                      className="icon-button automation-action"
+                      aria-label={selectedAutomation.enabled ? '停用' : '启用'}
+                      title={selectedAutomation.enabled ? '停用' : '启用'}
                       disabled={actionUnavailable(
                         actions,
                         `automation:enabled:${selectedAutomation.scheduleId}`,
@@ -382,11 +377,12 @@ export function AutomationPage({
                       onClick={() => void toggle(selectedAutomation)}
                     >
                       <Icon name={selectedAutomation.enabled ? 'pause' : 'play'} className="i-sm" />
-                      {selectedAutomation.enabled ? '停用' : '启用'}
                     </button>
                     <button
                       type="button"
-                      className="device-secondary automation-delete"
+                      className="icon-button automation-action automation-delete"
+                      aria-label="删除"
+                      title="删除"
                       disabled={actionUnavailable(
                         actions,
                         `automation:delete:${selectedAutomation.scheduleId}`,
@@ -394,7 +390,6 @@ export function AutomationPage({
                       onClick={() => setDeleting(selectedAutomation)}
                     >
                       <Icon name="trash" className="i-sm" />
-                      删除
                     </button>
                   </div>
                 </div>
@@ -413,7 +408,7 @@ export function AutomationPage({
                   </div>
                 </dl>
                 <div className="automation-prompt">
-                  <span>prompt</span>
+                  <span>提示词</span>
                   <p>{selectedAutomation.prompt}</p>
                 </div>
                 {currentTarget(selectedAutomation, mainThreadId) && (
@@ -552,6 +547,9 @@ export function AutomationListView({
                   </span>
                 </span>
                 <span>{automationScheduleText(automation)}</span>
+                {automation.enabled && automation.nextFireAt && (
+                  <span>下次触发 {automationTimestampText(automation.nextFireAt)}</span>
+                )}
                 <span>{automationTargetText(automation.target?.kind)}</span>
               </button>
               <button
@@ -681,7 +679,10 @@ export function AutomationFireHistory({
                 <div className="automation-fire-error" role="alert">
                   <strong>执行错误</strong>
                   <p>{fire.error.message || 'Server 未提供错误正文。'}</p>
-                  <code>error_code={fire.error.code}</code>
+                  <details className="automation-fire-error-detail">
+                    <summary>技术详情</summary>
+                    <code>error_code={fire.error.code}</code>
+                  </details>
                 </div>
               )}
               {fire.targetThreadId && (
@@ -872,7 +873,7 @@ export function AutomationEditor({
             />
           </label>
           <label>
-            每次执行的 prompt
+            每次执行的提示词
             <textarea
               required
               rows={5}
@@ -1061,7 +1062,7 @@ export function AutomationEditor({
             />
             {form.targetKind === AutomationTargetKind.NEW_AUTOMATION_ONLY && (
               <span className="automation-field-help">
-                定时专属话题只从该任务的执行历史进入，不进入最近话题和全部对话。
+                一次性对话只从该任务的执行历史进入，不进入最近话题和全部对话。
               </span>
             )}
           </div>
