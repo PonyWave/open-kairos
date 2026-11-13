@@ -2070,13 +2070,13 @@ button.icon-button.failure-details {
   position: fixed;
   top: 16px;
   left: 50%;
-  transform: translateX(-50%);
+  translate: -50% 0;
   z-index: 95;
   display: flex;
   align-items: center;
   gap: 10px;
   max-width: min(480px, calc(100vw - 32px));
-  padding: 10px 14px;
+  padding: 6px 12px;
   color: var(--ink);
   background: var(--raised);
   border: 1px solid var(--line);
