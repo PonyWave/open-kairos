@@ -39,6 +39,7 @@ export interface GuiAuthentication {
   authService: AuthService;
   allowedOrigin: string | null;
   secureCookies: boolean;
+  disabled?: boolean;
 }
 
 export function requireOwner(context: HandlerContext, authentication: GuiAuthentication): string {
@@ -46,7 +47,7 @@ export function requireOwner(context: HandlerContext, authentication: GuiAuthent
     if (!readOnlyMethods.has(context.method.localName)) {
       requireStateRequest(context, authentication);
     }
-    return authentication.authService.requireIdentity(cookieValue(context, sessionCookie)).tenantId;
+    return resolveIdentity(context, authentication).tenantId;
   } catch (error) {
     if (error instanceof AuthError && error.code === 'permission_denied') {
       throw new SessionError('permission_denied', error.message, { cause: error });
@@ -63,6 +64,11 @@ export function requireGuiIdentity(
   authentication: GuiAuthentication,
 ): Identity {
   requireOwner(context, authentication);
+  return resolveIdentity(context, authentication);
+}
+
+function resolveIdentity(context: HandlerContext, authentication: GuiAuthentication): Identity {
+  if (authentication.disabled) return authentication.authService.ensureLocalIdentity();
   return authentication.authService.requireIdentity(cookieValue(context, sessionCookie));
 }
 
@@ -72,6 +78,9 @@ export function registerAuthRoutes(router: ConnectRouter, authentication: GuiAut
     bootstrapSession: (request, context) => {
       try {
         requireStateRequest(context, authentication);
+        if (authentication.disabled) {
+          return { identity: identityResponse(service.ensureLocalIdentity()) };
+        }
         if (request.token.trim().length === 0 || request.token.length > 200) {
           throw new AuthError('invalid_argument', 'The local session token is invalid.');
         }
@@ -91,6 +100,12 @@ export function registerAuthRoutes(router: ConnectRouter, authentication: GuiAut
     },
     getCurrentIdentity: (_request, context) => {
       ensureCsrfCookie(context, authentication.secureCookies);
+      if (authentication.disabled) {
+        return {
+          state: AuthenticationState.AUTHENTICATED,
+          identity: identityResponse(service.ensureLocalIdentity()),
+        };
+      }
       const current = service.currentIdentity(cookieValue(context, sessionCookie));
       return current.state === 'authenticated'
         ? {
@@ -102,8 +117,10 @@ export function registerAuthRoutes(router: ConnectRouter, authentication: GuiAut
     logout: (_request, context) => {
       try {
         requireStateRequest(context, authentication);
-        service.revokeSession(cookieValue(context, sessionCookie));
-        clearCookie(context, sessionCookie, authentication.secureCookies);
+        if (!authentication.disabled) {
+          service.revokeSession(cookieValue(context, sessionCookie));
+          clearCookie(context, sessionCookie, authentication.secureCookies);
+        }
         return {};
       } catch (error) {
         throw authConnectError(error);

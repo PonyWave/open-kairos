@@ -113,6 +113,47 @@ it('allows loopback and same-origin requests by default and rejects foreign orig
   }
 });
 
+it('treats requests as the local identity without a session when authentication is disabled', async () => {
+  const { database, service } = fixture();
+  try {
+    const csrf = 'test-csrf-token';
+    const router = createRouterTransport(
+      (connectRouter) => {
+        registerAuthRoutes(connectRouter, {
+          authService: service,
+          allowedOrigin: null,
+          secureCookies: false,
+          disabled: true,
+        });
+      },
+      {
+        transport: {
+          interceptors: [
+            (next) => async (request) => {
+              request.header.set('origin', 'http://127.0.0.1:4317');
+              request.header.set('cookie', `kairos_csrf=${csrf}`);
+              request.header.set('x-csrf-token', csrf);
+              return next(request);
+            },
+          ],
+        },
+      },
+    );
+    const client = createClient(AuthService, router);
+
+    const current = await client.getCurrentIdentity({});
+    expect(current.state).toBe(AuthenticationState.AUTHENTICATED);
+    expect(current.identity?.userId).toBe(service.ensureLocalIdentity().userId);
+
+    const bootstrapped = await client.bootstrapSession({ token: 'any-token' });
+    expect(bootstrapped.identity?.userId).toBe(service.ensureLocalIdentity().userId);
+
+    await client.logout({});
+  } finally {
+    database.close();
+  }
+});
+
 it('serves bootstrap, current identity and logout over Connect with cookies', async () => {
   const { database, service } = fixture();
   try {

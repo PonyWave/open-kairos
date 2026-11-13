@@ -82,7 +82,7 @@ pnpm start
 open-kairos 已启动：http://127.0.0.1:<端口>/#token=<本地会话令牌>
 ```
 
-在浏览器打开该地址即进入本地网页。地址中的令牌用于首次登录，之后由会话 Cookie 保持；令牌同时保存在数据目录，丢失时重新查看启动输出即可。
+在浏览器打开该地址即进入本地网页。地址中的令牌用于首次登录，之后由会话 Cookie 保持；令牌同时保存在数据目录，丢失时重新查看启动输出即可。在可信网络中运行时可用 `KAIROS_AUTH_ENABLED=false` 关闭令牌认证，启动后打开地址直接进入。
 
 ### 配置模型
 
@@ -145,14 +145,16 @@ kairos-daemon start    # 重新启动
 
 常用环境变量（完整列表与说明见 [.env.example](.env.example)）：
 
-| 变量                                                                 | 作用                            | 默认值                      |
-| -------------------------------------------------------------------- | ------------------------------- | --------------------------- |
-| `KAIROS_PORT`                                                        | 固定 GUI 端口                   | 自动选择空闲端口            |
-| `KAIROS_DATA_DIR`                                                    | 数据目录                        | `data/server`               |
-| `KAIROS_MAIN_WORKSPACE`                                              | 主环境工作目录                  | 启动命令所在目录            |
-| `KAIROS_AUTH_SECRET`                                                 | 认证密钥（至少 32 字符）        | 自动生成并保存到数据目录    |
-| `KAIROS_MODEL_BASE_URL` / `KAIROS_MODEL_ID` / `KAIROS_MODEL_API_KEY` | 平台默认模型接口                | 未配置时不能执行 Agent 任务 |
-| `KAIROS_PUBLIC_ORIGIN`                                               | 通过反向代理暴露时的公开 Origin | 接受回环与同源来源          |
+| 变量                                                                 | 作用                            | 默认值                         |
+| -------------------------------------------------------------------- | ------------------------------- | ------------------------------ |
+| `KAIROS_PORT`                                                        | 固定 GUI 端口                   | 自动选择空闲端口               |
+| `KAIROS_DATA_DIR`                                                    | 数据目录                        | `~/.kairos/.data`              |
+| `KAIROS_LOG_DIR`                                                     | Server 日志目录                 | `~/.kairos/log`                |
+| `KAIROS_MAIN_WORKSPACE`                                              | 主环境工作目录                  | 启动命令所在目录               |
+| `KAIROS_AUTH_SECRET`                                                 | 认证密钥（至少 32 字符）        | 自动生成并保存到数据目录       |
+| `KAIROS_AUTH_ENABLED`                                                | 本地会话令牌认证开关            | `true`，`false` 时网页直接进入 |
+| `KAIROS_MODEL_BASE_URL` / `KAIROS_MODEL_ID` / `KAIROS_MODEL_API_KEY` | 平台默认模型接口                | 未配置时不能执行 Agent 任务    |
+| `KAIROS_PUBLIC_ORIGIN`                                               | 通过反向代理暴露时的公开 Origin | 接受回环与同源来源             |
 
 ## 数据与迁移
 

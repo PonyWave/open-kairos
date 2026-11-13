@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
+import { homedir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ModelRequest } from '@kairos/agent-core';
@@ -57,8 +58,13 @@ const environmentSchema = z.object({
   KAIROS_DATA_DIR: z
     .string()
     .refine(isAbsolute, 'KAIROS_DATA_DIR must be an absolute path.')
-    .default(fileURLToPath(new URL('../../../data/server', import.meta.url))),
+    .default(join(homedir(), '.kairos', '.data')),
+  KAIROS_LOG_DIR: z
+    .string()
+    .refine(isAbsolute, 'KAIROS_LOG_DIR must be an absolute path.')
+    .optional(),
   KAIROS_AUTH_SECRET: z.string().min(32).optional(),
+  KAIROS_AUTH_ENABLED: z.enum(['true', 'false']).default('true'),
   KAIROS_MAIN_ENV_ID: z.string().optional(),
   KAIROS_MAIN_WORKSPACE: z.string().optional(),
   KAIROS_PUBLIC_ORIGIN: z.string().optional(),
@@ -543,6 +549,7 @@ export function readServerConfig(environment: NodeJS.ProcessEnv = process.env) {
       config.KAIROS_DAEMON_RELEASE_DIR ??
       fileURLToPath(new URL('../../../dist/releases', import.meta.url)),
     auth: {
+      enabled: config.KAIROS_AUTH_ENABLED === 'true',
       secret: config.KAIROS_AUTH_SECRET,
       allowedOrigin: config.KAIROS_PUBLIC_ORIGIN
         ? readPublicOrigin(config.KAIROS_PUBLIC_ORIGIN)
@@ -555,9 +562,12 @@ export function readServerConfig(environment: NodeJS.ProcessEnv = process.env) {
     maxConcurrentModelRequests: config.KAIROS_MAX_CONCURRENT_MODEL_REQUESTS,
     maxStepsPerRun: config.KAIROS_MAX_STEPS_PER_RUN,
     memory: {
-      directory: config.KAIROS_MEMORY_DIR ?? join(config.KAIROS_DATA_DIR, 'memory'),
+      directory: config.KAIROS_MEMORY_DIR ?? join(homedir(), '.kairos', 'memory'),
       indexMaxBytes: config.KAIROS_MEMORY_INDEX_MAX_BYTES,
     } satisfies MemoryConfiguration,
+    log: {
+      directory: config.KAIROS_LOG_DIR ?? join(homedir(), '.kairos', 'log'),
+    },
     memoryDreamEnabled: config.KAIROS_MEMORY_DREAM_ENABLED === 'true',
     periodicRecap: readPeriodicRecapConfig(environment),
     sqlRecall: readSqlRecallConfig(environment),

@@ -32,35 +32,51 @@ const authService = new AuthService(new AuthStore(database), {
   createMainThread: (tenantId) => sessionStore.getOrCreateMainThread(tenantId),
 });
 const localIdentity = authService.ensureLocalIdentity();
-const localSession = authService.createLocalSession();
-const server = createServer(database, true, {
-  tenantId: localIdentity.tenantId,
-  identity: {
-    secret: authSecret,
-    allowedOrigin: config.auth.allowedOrigin,
-    secureCookies: config.auth.secureCookies,
-  },
-  ...(config.model
-    ? {
-        model: {
-          configurationId: config.model.configurationId,
-          provider: config.model.provider,
-          providerId: config.model.status.providerId,
-          modelId: config.model.status.modelId,
-          contextWindowTokens: config.model.status.contextCapacity,
-          outputReserveTokens: config.model.status.outputReserve,
-          countTokens: config.model.countTokens,
+const localSession = config.auth.enabled ? authService.createLocalSession() : undefined;
+const server = createServer(
+  database,
+  {
+    level: 'info',
+    transport: {
+      targets: [
+        {
+          target: 'pino/file',
+          options: { destination: join(config.log.directory, 'server.log'), mkdir: true },
         },
-      }
-    : {}),
-  modelStatus: config.modelStatus,
-  mainEnvironment: config.mainEnvironment,
-  maxRpcBytes: config.maxRpcBytes,
-  maxEventQueue: config.maxEventQueue,
-  maxActiveThreads: config.maxActiveThreads,
-  maxConcurrentModelRequests: config.maxConcurrentModelRequests,
-  maxStepsPerRun: config.maxStepsPerRun,
-});
+        { target: 'pino/file', options: { destination: 1 } },
+      ],
+    },
+  },
+  {
+    tenantId: localIdentity.tenantId,
+    identity: {
+      secret: authSecret,
+      allowedOrigin: config.auth.allowedOrigin,
+      secureCookies: config.auth.secureCookies,
+      authDisabled: !config.auth.enabled,
+    },
+    ...(config.model
+      ? {
+          model: {
+            configurationId: config.model.configurationId,
+            provider: config.model.provider,
+            providerId: config.model.status.providerId,
+            modelId: config.model.status.modelId,
+            contextWindowTokens: config.model.status.contextCapacity,
+            outputReserveTokens: config.model.status.outputReserve,
+            countTokens: config.model.countTokens,
+          },
+        }
+      : {}),
+    modelStatus: config.modelStatus,
+    mainEnvironment: config.mainEnvironment,
+    maxRpcBytes: config.maxRpcBytes,
+    maxEventQueue: config.maxEventQueue,
+    maxActiveThreads: config.maxActiveThreads,
+    maxConcurrentModelRequests: config.maxConcurrentModelRequests,
+    maxStepsPerRun: config.maxStepsPerRun,
+  },
+);
 
 let closing = false;
 const shutdownHandlers: Array<() => Promise<void>> = [];
@@ -95,7 +111,7 @@ try {
   });
   const hostForUrl = config.host.includes(':') ? `[${config.host}]` : config.host;
   console.log(
-    `open-kairos 已启动：http://${hostForUrl}:${actualPort}/#token=${localSession.token}`,
+    `open-kairos 已启动：http://${hostForUrl}:${actualPort}/${localSession ? `#token=${localSession.token}` : ''}`,
   );
   shutdownHandlers.push(() => embeddedDaemon.stop());
 } catch (error) {

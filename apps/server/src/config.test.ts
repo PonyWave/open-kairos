@@ -1,3 +1,5 @@
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_PERIODIC_RECAP_CONFIGURATION,
@@ -143,6 +145,18 @@ describe('main environment configuration', () => {
     { KAIROS_MAIN_WORKSPACE: 'relative/path' },
   ])('rejects invalid main environment configuration: %o', (environment) => {
     expect(() => readServerConfig(environment)).toThrow(/KAIROS_MAIN/);
+  });
+});
+
+describe('authentication configuration', () => {
+  it('requires the local session token by default and reads explicit values', () => {
+    expect(readServerConfig({}).auth.enabled).toBe(true);
+    expect(readServerConfig({ KAIROS_AUTH_ENABLED: 'true' }).auth.enabled).toBe(true);
+    expect(readServerConfig({ KAIROS_AUTH_ENABLED: 'false' }).auth.enabled).toBe(false);
+  });
+
+  it('rejects invalid authentication switches', () => {
+    expect(() => readServerConfig({ KAIROS_AUTH_ENABLED: 'yes' })).toThrow(/KAIROS_AUTH_ENABLED/);
   });
 });
 
@@ -382,13 +396,25 @@ describe('web tool configuration', () => {
 });
 
 describe('memory configuration', () => {
-  it('defaults the memory directory under the data directory and enables the dream job', () => {
+  it('defaults the memory directory under the user kairos home and enables the dream job', () => {
     const config = readServerConfig({ KAIROS_DATA_DIR: '/data/kairos' });
     expect(config.memory).toEqual({
-      directory: '/data/kairos/memory',
+      directory: join(homedir(), '.kairos', 'memory'),
       indexMaxBytes: 10 * 1024,
     });
     expect(config.memoryDreamEnabled).toBe(true);
+  });
+
+  it('defaults the data and log directories under the user kairos home', () => {
+    const config = readServerConfig({});
+    expect(config.dataDirectory).toBe(join(homedir(), '.kairos', '.data'));
+    expect(config.log).toEqual({ directory: join(homedir(), '.kairos', 'log') });
+  });
+
+  it('accepts an explicit log directory', () => {
+    const config = readServerConfig({ KAIROS_LOG_DIR: '/srv/log' });
+    expect(config.log).toEqual({ directory: '/srv/log' });
+    expect(() => readServerConfig({ KAIROS_LOG_DIR: 'log' })).toThrowError(/absolute path/);
   });
 
   it('accepts explicit memory directory, index limit and dream switch', () => {

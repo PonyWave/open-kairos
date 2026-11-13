@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { fastifyConnectPlugin } from '@connectrpc/connect-fastify';
+import type { FastifyServerOptions } from 'fastify';
 import Fastify from 'fastify';
 import type { GuiAuthentication } from './api/auth.js';
 import { registerGuiRoutes } from './api/connect.js';
@@ -44,6 +45,7 @@ export interface IdentityServerOptions {
   secret: string;
   allowedOrigin: string | null;
   secureCookies: boolean;
+  authDisabled?: boolean;
 }
 
 export interface ServerOptions {
@@ -84,7 +86,11 @@ const unavailableModel: ModelConfigurationStatus = {
   ],
 };
 
-export function createServer(database: DatabaseSync, logger = false, options: ServerOptions = {}) {
+export function createServer(
+  database: DatabaseSync,
+  logger: FastifyServerOptions['logger'] = false,
+  options: ServerOptions = {},
+) {
   const identity = options.identity;
   if (!identity) throw new Error('Server identity authentication must be configured.');
   const maxRpcBytes = options.maxRpcBytes ?? 1024 * 1024;
@@ -173,6 +179,7 @@ export function createServer(database: DatabaseSync, logger = false, options: Se
     }),
     allowedOrigin: identity.allowedOrigin,
     secureCookies: identity.secureCookies,
+    ...(identity.authDisabled ? { disabled: true } : {}),
   };
   server.addHook('onRequest', async (request) => {
     request.headers['x-kairos-source-address'] = request.ip;
