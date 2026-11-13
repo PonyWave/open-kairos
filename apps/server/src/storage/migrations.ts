@@ -532,7 +532,7 @@ CREATE TABLE context_messages_next (
         superseded_by_run_id TEXT,
         source TEXT CHECK(source IN (
           'user', 'thread_call', 'thread_response', 'subagent_response', 'automation',
-          'thread_notification', 'channel'
+          'thread_notification', 'channel', 'background_task'
         )),
         delegation_source_thread_id TEXT,
         delegation_source_agent_id TEXT,
