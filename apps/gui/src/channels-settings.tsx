@@ -574,7 +574,9 @@ function FeishuCard({
                 创建企业自建应用并启用机器人。
               </li>
               <li>
-                事件订阅选择长连接，添加「接收消息」（im.message.receive_v1），配置接收和发送消息的权限，并发布应用。
+                事件订阅选择长连接，添加「接收消息」（im.message.receive_v1）；权限需要
+                im:message、im:message:send_as_bot、im:message:readonly（引用消息查询）与
+                im:resource（媒体上传下载），并发布应用。
               </li>
               <li>复制应用的 App ID 与 App Secret。保存后，将配对码发送给机器人。</li>
             </ol>

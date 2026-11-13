@@ -8,12 +8,14 @@
 
 | 命名空间                 | 版本 | 说明                                                     |
 | ------------------------ | ---- | -------------------------------------------------------- |
-| `context_recap`          | 2    | Context、Recap、附件、环境、身份与设置记录。             |
-| `server_runtime`         | 3    | Thread、输入队列、Run、Automation、通知交付、工作空间与 IM 渠道记录。 |
+| `context_recap`          | 3    | Context、Recap、附件、环境、身份与设置记录。             |
+| `server_runtime`         | 7    | Thread、输入队列、Run、Automation、通知交付、工作空间与 IM 渠道记录。 |
 | `devices`                | 1    | 设备身份与绑定。                                         |
 | `environment_operations` | 1    | 远程 Operation 意图、状态与输出，以及环境间文件同步记录。 |
 
 v2 迁移（`context_recap` 与 `server_runtime`）为 IM 渠道引入：`context_messages` 与 `inputs` 的 `source` 取值扩展 `channel` 并新增 `channel_json` 列（表重建），`server_runtime` 新增 `channel_states`、`channel_inbound_events`、`channel_deliveries` 表。迁移在关闭外键检查的事务中重建表，提交后执行 `foreign_key_check`。
+
+后续渠道迁移：`context_recap` v3 放开 `attachments.media_type`（`application/octet-stream` 兜底）并把附件来源扩展 `channel`；`server_runtime` v5 同步附件来源约束，v6 新增 `channel_message_map`（平台消息 ID ↔ 输入/消息 seq + 摘要，引用解析与飞书 reply 目标），v7 为 `channel_deliveries` 增加 `attachment_ids_json`（出站文件引用）。
 
 正常启动先预检全部命名空间，存在未迁移旧版本时在任何 DDL 或 DML 前拒绝启动；v1 数据库通过显式迁移命令（`migrate.js`，带受限权限备份）升级到当前版本，未版本化应用表的数据库明确拒绝。
 

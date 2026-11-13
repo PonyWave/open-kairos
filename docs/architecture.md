@@ -93,12 +93,16 @@ Server 内置渠道适配层，把微信与飞书接入全局 main。渠道凭�
 
 - 微信：腾讯微信团队维护的 ClawBot 通道（协议见 `Tencent/openclaw-weixin` 的 protocol 文档）。用户在设置页扫码绑定，Server 保存 `bot_token` 后以长轮询 `getupdates` 收消息；只接受绑定用户的私聊消息。绑定过程触发微信风控要求数字验证码（`need_verifycode`）时，设置页展示输入框，提交的 `verify_code` 随下一次状态轮询上报，验证码错误或锁定（`verify_code_blocked`）按协议重新输入或刷新二维码。入站消息入队后开启「正在输入」状态（`getconfig` 获取 `typing_ticket` 并缓存，每 5 秒刷新），该用户首条投递成功后取消；输入状态为尽力而为，接口失败不影响消息链路。
 - 飞书：自建应用机器人，Server 使用官方 SDK 的长连接订阅 `im.message.receive_v1`，不需要公网入口。保存 App ID/Secret 后生成六位配对码，用户在飞书里把配对码发给机器人完成绑定。
-- 入站消息追加到全局 main 的输入队列，`source` 为 `channel` 并携带 `channel` 引用（渠道、类型、外部消息 ID），正文为原文；渠道来源经模型视图的 `<msg from/>` 元信息表达（见 4.2），GUI 气泡按引用显示渠道角标。平台消息 ID 用于去重；入站图片、文件等媒体在 v1 降级为占位文本。
+- 入站消息以 `steer` 模式追加到全局 main 的输入队列，`source` 为 `channel` 并携带 `channel` 引用（渠道、类型、外部消息 ID），正文为原文；渠道来源经模型视图的 `<msg from/>` 元信息表达（见 4.2），GUI 气泡按引用显示渠道角标。平台消息 ID 用于去重并写入 `channel_message_map`（平台消息 ID ↔ 输入/消息 seq + 摘要）。
+- 入站媒体统一下载进附件管线：微信走 CDN 下载 + AES-128-ECB 解密（图片优先 `image_item.aeskey`），飞书走 `im/v1/messages/:id/resources/:file_key`；下载后经 `uploadChannel` 入库、关联输入并随 Run 物化到工作区 `.kairos/attachments/`，模型按路径用 `read`/`read_image` 读取；语音带转写文本时不再下载音频。单文件上限 20MB。
+- 纯媒体消息（仅占位文本 + 附件）按渠道 + 用户缓冲 5 秒（`mediaBatchWindowMs` 可配置），窗口内后续消息并入；文本消息立即入队并冲刷待发媒体批，合并为一次输入。
+- 入站引用：飞书 `parent_id` 查 `channel_message_map`（`input_id` 反查 seq），未命中调消息查询 API 取摘要；微信解析 `ref_msg` 的文本与消息 ID。引用以 `<ref seq="n">摘要</ref>` 渲染在 `<msg>` 元信息块内（`ChannelReference.quote_seq/quote_excerpt`，投影层生成）。
 
 ### 6.2 出站与投递失败
 
 - `send_to_user` 始终投递 GUI；全局 main 可额外传 `channels`（`wechat`/`feishu`）。工具执行时为每个渠道创建 `channel_deliveries` 记录，投递 worker 在事务外渲染并调用平台接口：微信渲染为纯文本分段（约 1500 字节），飞书渲染为卡片 JSON 2.0（`markdown` 组件，表格转原生 `table` 组件，单卡不超过 5 个表格、约 24 KB，超出拆卡，失败时降级纯文本）。
 - 投递失败先按 2s/10s/30s 退避重试（最多 4 次尝试）；可重试错误耗尽或非可重试错误（未登录、登录态失效、权限不足）置为 `failed`，并向全局 main 注入一条 `channel` 来源、以 `<system-reminder>` 包裹的投递失败通知，内容包含失败原因、尝试次数、原内容与引导：可重试错误引导模型用 `send_to_user` 的 `redeliver_of` 重投（不产生新气泡），非可重试错误引导模型提示用户在设置页处理。
+- 飞书出站优先使用 reply API 挂到该用户最近一条入站消息下（`channel_message_map` 方向为入站的最新记录），无入站记录时回退 create；投递成功后记录出站映射。
 - 微信发送依赖入站消息携带的 `context_token`，长时间无入站时主动推送可能失败，按投递失败流程处理。
 - 出站文件：`send_to_user` 的 `files` 参数接收主环境绝对路径（单文件 20MB 上限），Server 读取后经 `uploadChannel` 入库并作为附件关联到工具结果消息（GUI 气泡展示、点击下载）；携带 `channels` 时投递记录带附件引用，飞书按图片（10MB）/文件（30MB）两步上传发送，微信走 CDN 加密上传（AES-128-ECB + getUploadUrl）后发送媒体消息。
 
