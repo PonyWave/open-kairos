@@ -45,6 +45,11 @@ describe('sidebar workspace groups', () => {
         onOpenThread: noop,
         onNewTopic: noop,
         onRename: rename,
+        onArchiveThread: () => {},
+        onEditWorkspace: () => {},
+        onDeleteWorkspace: () => {},
+        onRenameWorkspace: () => Promise.resolve(true),
+        onClearWorkspaceMain: () => {},
       }),
     );
     expect(html).toContain('workspace-group-header current');
@@ -75,6 +80,11 @@ describe('sidebar workspace groups', () => {
         onOpenThread: noop,
         onNewTopic: noop,
         onRename: rename,
+        onArchiveThread: () => {},
+        onEditWorkspace: () => {},
+        onDeleteWorkspace: () => {},
+        onRenameWorkspace: () => Promise.resolve(true),
+        onClearWorkspaceMain: () => {},
       }),
     );
     expect(html).not.toContain('workspace-group-header current');
@@ -90,6 +100,7 @@ describe('sidebar workspace groups', () => {
         onOpenThread: noop,
         onNewTopic: noop,
         onRename: rename,
+        onArchiveThread: () => {},
       }),
     );
     expect(html).toContain('临时对话');
@@ -109,6 +120,7 @@ describe('sidebar workspace groups', () => {
         onOpenThread: noop,
         onNewTopic: noop,
         onRename: rename,
+        onArchiveThread: () => {},
       }),
     );
     expect(html).toBe('');
@@ -142,6 +154,11 @@ describe('sidebar workspace groups', () => {
         onOpenThread: noop,
         onNewTopic: noop,
         onRename: rename,
+        onArchiveThread: () => {},
+        onEditWorkspace: () => {},
+        onDeleteWorkspace: () => {},
+        onRenameWorkspace: () => Promise.resolve(true),
+        onClearWorkspaceMain: () => {},
       }),
     );
     expect(html).toContain('任务 4');

@@ -18,13 +18,17 @@ import { formatClientError } from './errors.js';
 import { Icon } from './icon.js';
 import { ModelIdField, type ModelIdOption } from './model-id-field.js';
 import { randomId } from './random.js';
+import { ArchivedSettingsPanel } from './settings-archived.js';
 import { SettingsRequests } from './settings-requests.js';
 import { UserAvatar } from './user-avatar.js';
 
-export type SettingsSection = 'account' | 'models' | 'channels' | 'display';
+export type SettingsSection = 'account' | 'models' | 'channels' | 'display' | 'archived';
 export function settingsSectionFromLocation(search: string): SettingsSection {
   const section = new URLSearchParams(search).get('section');
-  return section === 'models' || section === 'display' || section === 'channels'
+  return section === 'models' ||
+    section === 'display' ||
+    section === 'channels' ||
+    section === 'archived'
     ? section
     : 'account';
 }
@@ -41,6 +45,7 @@ export function SettingsPage({
   onConversationDisplayChange,
   theme,
   onThemeChange,
+  onArchivedChanged,
 }: {
   clients: KairosClients;
   identity: Identity;
@@ -53,6 +58,7 @@ export function SettingsPage({
   onConversationDisplayChange: (mode: ConversationDisplayMode) => void;
   theme: 'light' | 'dark';
   onThemeChange: (theme: 'light' | 'dark') => void;
+  onArchivedChanged?: (() => void) | undefined;
 }) {
   return (
     <section className="settings-page" aria-labelledby="settings-heading">
@@ -81,6 +87,13 @@ export function SettingsPage({
         </button>
         <button
           type="button"
+          aria-current={section === 'archived' ? 'page' : undefined}
+          onClick={() => onSectionChange('archived')}
+        >
+          已归档
+        </button>
+        <button
+          type="button"
           aria-current={section === 'display' ? 'page' : undefined}
           onClick={() => onSectionChange('display')}
         >
@@ -99,6 +112,8 @@ export function SettingsPage({
         <ModelSettingsPanel clients={clients} onDirtyChange={onDirtyChange} />
       ) : section === 'channels' ? (
         <ChannelSettings clients={clients} onDirtyChange={onDirtyChange} />
+      ) : section === 'archived' ? (
+        <ArchivedSettingsPanel clients={clients} onChanged={onArchivedChanged} />
       ) : (
         <>
           <AppearanceSettings theme={theme} onChange={onThemeChange} />

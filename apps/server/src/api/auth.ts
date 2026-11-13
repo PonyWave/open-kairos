@@ -21,6 +21,7 @@ const readOnlyMethods = new Set([
   'listThreadCards',
   'listThreadCallPreviews',
   'listSubagentCallViews',
+  'listArchivedThreads',
   'downloadAttachment',
   'readContext',
   'readRecaps',

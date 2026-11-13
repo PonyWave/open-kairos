@@ -662,10 +662,13 @@ export function ConversationPane({
         </div>
       )}
       {item.kind === 'pending-agent' ? (
-        <PendingAgentCard
-          input={item.value}
-          compact={usesDisplayMode && effectiveDisplayMode === 'compact'}
-        />
+        'runId' in item.value && !(usesDisplayMode && effectiveDisplayMode === 'compact') ? null : (
+          <PendingAgentCard
+            input={item.value}
+            compact={usesDisplayMode && effectiveDisplayMode === 'compact'}
+            mainAgent={item.value.threadId === mainThreadId}
+          />
+        )
       ) : item.kind === 'missing-user-reply' ? (
         <div className="missing-user-reply" role="status">
           <span>本次执行未发送回复。</span>

@@ -588,9 +588,12 @@ describe('compact conversation projection', () => {
         },
       ],
     });
-    expect(projectConversationDisplay(items, [run], 'compact')).toEqual([]);
+    expect(projectConversationDisplay(items, [run], 'compact').map((item) => item.kind)).toEqual([
+      'pending-agent',
+    ]);
     expect(projectConversationDisplay(items, [], 'compact').map((item) => item.key)).toEqual([
       'stream',
+      'pending-agent:run:run',
     ]);
   });
 

@@ -18,6 +18,7 @@ import {
   ThreadSchema,
   ThreadSnapshotSchema,
   ToolCallSchema,
+  ToolResultStatus,
   WatchThreadResponseSchema,
 } from '@kairos/contracts';
 import { describe, expect, it } from 'vitest';
@@ -165,8 +166,13 @@ describe('conversation response projection', () => {
       ],
     });
 
-    expect(items.map((item) => item.key)).toEqual(['user-1', 'current-response', 'new-temporary']);
-    const temporary = items.at(-1);
+    expect(items.map((item) => item.key)).toEqual([
+      'user-1',
+      'current-response',
+      'new-temporary',
+      'pending-agent:run:run-new',
+    ]);
+    const temporary = items.find((item) => item.key === 'new-temporary');
     expect(temporary?.kind).toBe('message');
     if (temporary?.kind === 'message') {
       expect(temporary.value.streaming).toBe(true);
@@ -201,7 +207,7 @@ describe('conversation response projection', () => {
       items.map((item) =>
         item.kind === 'message' ? item.value.message.createdAt?.seconds : undefined,
       ),
-    ).toEqual([20n, 10n]);
+    ).toEqual([20n, 10n, undefined]);
   });
 
   it('places one failed Run outcome after its last associated response', () => {
@@ -557,7 +563,11 @@ describe('conversation response projection', () => {
       transientResponses: [transient('leftover', 'run-1'), transient('active', 'run-2')],
       runs: [run('run-1', RunStatus.FAILED), run('run-2', RunStatus.RUNNING)],
     });
-    expect(items.map((item) => item.key)).toEqual(['active', 'run-outcome:run-1']);
+    expect(items.map((item) => item.key)).toEqual([
+      'active',
+      'run-outcome:run-1',
+      'pending-agent:run:run-2',
+    ]);
   });
 });
 
@@ -935,7 +945,12 @@ describe('queued direct user input projection', () => {
       runs: [run('run-1', RunStatus.RUNNING)],
       inputs: [input],
     });
-    expect(consumed.map((item) => item.kind)).toEqual(['message']);
+    expect(consumed.map((item) => item.kind)).toEqual(['message', 'pending-agent']);
+    const consumedPending = consumed.at(-1);
+    if (consumedPending?.kind !== 'pending-agent' || !('runId' in consumedPending.value)) {
+      throw new Error('Run pending indicator is missing.');
+    }
+    expect(consumedPending.value.runId).toBe('run-1');
     expect(consumed[0]?.kind === 'message' && consumed[0].value.message.messageId).not.toBe(
       'queued:input-1',
     );
@@ -948,5 +963,55 @@ describe('queued direct user input projection', () => {
       inputs: [{ ...input, status: InputStatus.CANCELLED }],
     });
     expect(cancelled.map((item) => item.kind)).toEqual(['run-outcome']);
+  });
+});
+
+describe('active run pending indicator', () => {
+  function sentToUser(runId: string, seq: bigint): Message {
+    return create(MessageSchema, {
+      messageId: `sent-${seq}`,
+      threadId,
+      agentId: 'thread',
+      seq,
+      role: MessageRole.TOOL,
+      toolName: 'send_to_user',
+      toolCallId: `call-${seq}`,
+      toolStatus: ToolResultStatus.SUCCESS,
+      runId,
+      content: JSON.stringify({ status: 'sent', content: '回复', end_turn: true }),
+    });
+  }
+
+  it('shows the typing indicator while the run has not replied via send_to_user', () => {
+    const items = projectConversation({
+      threadId,
+      messages: [message('问题', 1n)],
+      transientResponses: [],
+      runs: [run('run-1', RunStatus.RUNNING)],
+    });
+    expect(items.map((item) => item.kind)).toEqual(['message', 'pending-agent']);
+    const pending = items.at(-1);
+    if (pending?.kind !== 'pending-agent' || !('runId' in pending.value)) {
+      throw new Error('Run pending indicator is missing.');
+    }
+    expect(pending.value.runId).toBe('run-1');
+  });
+
+  it('hides the typing indicator once send_to_user replied or the run ended', () => {
+    const replied = projectConversation({
+      threadId,
+      messages: [message('问题', 1n), sentToUser('run-1', 2n)],
+      transientResponses: [],
+      runs: [run('run-1', RunStatus.RUNNING)],
+    });
+    expect(replied.map((item) => item.kind)).toEqual(['message', 'message']);
+
+    const finished = projectConversation({
+      threadId,
+      messages: [message('问题', 1n)],
+      transientResponses: [],
+      runs: [run('run-1', RunStatus.COMPLETED)],
+    });
+    expect(finished.map((item) => item.kind)).toEqual(['message']);
   });
 });

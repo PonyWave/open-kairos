@@ -3,6 +3,7 @@ import { openDatabase } from '../storage/database.js';
 import { ContextStore } from './context-store.js';
 import type { PrepareModelInput } from './model-input-service.js';
 import { ModelInputService } from './model-input-service.js';
+import { stripMessageMeta } from './model-input.js';
 
 function input(overrides: Partial<PrepareModelInput> = {}): PrepareModelInput {
   return {
@@ -105,7 +106,9 @@ describe('ModelInputService requestId deduplication', () => {
 
       const recovered = await service.prepare(input());
       expect(recovered.contextMessageSeqs).toEqual([1]);
-      expect(recovered.request.messages.at(-1)).toEqual({ role: 'user', content: 'pending once' });
+      expect(stripMessageMeta(String(recovered.request.messages.at(-1)?.content))).toBe(
+        'pending once',
+      );
       expect(tokenCalls).toBe(2);
       expectSinglePendingRequest(database);
       expect(service.getRequestRecord('request')).toMatchObject({
@@ -139,10 +142,10 @@ describe('ModelInputService requestId deduplication', () => {
       database.prepare('UPDATE model_input_states SET view_version = view_version + 1').run();
       const rebuilt = await service.prepare(input());
       expect(rebuilt.requestId).toBe(first.requestId);
-      expect(rebuilt.request.messages.at(-1)).toEqual({
-        role: 'user',
-        content: 'current revision',
-      });
+      expect(rebuilt.request.messages.at(-1)?.role).toBe('user');
+      expect(stripMessageMeta(String(rebuilt.request.messages.at(-1)?.content))).toBe(
+        'current revision',
+      );
       expect(rebuilt.request).not.toEqual(first.request);
       expect(tokenCalls).toBe(2);
       expect(service.getRequestRecord('request')?.viewVersion).toBe(1);

@@ -10,7 +10,7 @@ import type { Recap, RecapSourceGroup, SaveRecapInput } from '../recap/types.js'
 import { RecapError } from '../recap/types.js';
 import { inTransaction } from '../storage/transaction.js';
 import { ContextStore } from './context-store.js';
-import { buildModelMessages } from './model-input.js';
+import { buildModelMessages, currentModelMessageWithMeta } from './model-input.js';
 import type { Clock, ContextMessage, ToolCallRelation } from './types.js';
 import {
   ContextError,
@@ -476,7 +476,7 @@ export class ModelInputService {
           'pendingContextSeqs must form a suffix of the current Context snapshot.',
         );
       }
-      const pendingMessages = pendingRecords.map(currentModelMessage);
+      const pendingMessages = pendingRecords.map(currentModelMessageWithMeta);
       const replaceableMessages = snapshot.filter((message) => !pendingSeqs.has(message.seq));
       const oldMessages = replaceableMessages.filter(
         (message) => message.seq <= previousState.readThroughSeq,

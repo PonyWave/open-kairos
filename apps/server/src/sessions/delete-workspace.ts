@@ -1,21 +1,18 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { SessionError } from './errors.js';
 
-// The caller has checked ownership and holds the write transaction. Keep the thread
-// set intact until all dependent records are removed. No device or filesystem operations.
-export function deleteWorkspaceRecords(
-  db: DatabaseSync,
-  ownerId: string,
-  workspaceId: string,
-): void {
-  const ids = 'SELECT thread_id FROM threads WHERE owner_id = $owner AND workspace_id = $space';
-  const params = { owner: ownerId, space: workspaceId };
-  const threads = `(${ids})`;
+interface CascadeScope {
+  threads: string;
+  params: Record<string, string>;
+  schedules: string;
+}
+
+function runCascade(db: DatabaseSync, scope: CascadeScope): void {
+  const { threads, params, schedules } = scope;
   const runs = `(SELECT run_id FROM runs WHERE thread_id IN ${threads})`;
   const messages = `(SELECT seq FROM context_messages WHERE thread_id IN ${threads})`;
   const requests = `(SELECT request_id FROM model_request_records WHERE thread_id IN ${threads})`;
   const linked = `source_thread_id IN ${threads} OR target_thread_id IN ${threads} OR reply_thread_id IN ${threads}`;
-  const schedules = `(SELECT schedule_id FROM automations WHERE owner_id = $owner AND (workspace_id = $space OR target_thread_id IN ${threads}))`;
   const query = (sql: string) => db.prepare(sql).get(params);
   if (
     query(`SELECT 1 FROM runs WHERE thread_id IN ${threads} AND status IN ('queued','running','waiting','cancel_requested')
@@ -25,7 +22,7 @@ export function deleteWorkspaceRecords(
   ) {
     throw new SessionError(
       'failed_precondition',
-      '工作空间仍有任务正在执行。请先停止任务或等待其完成，再删除工作空间。',
+      '仍有任务正在执行。请先停止任务或等待其完成，再删除对话。',
     );
   }
   if (
@@ -35,7 +32,7 @@ export function deleteWorkspaceRecords(
   ) {
     throw new SessionError(
       'failed_precondition',
-      '有定时任务使用这个工作空间或其中的对话。请先修改执行目标或删除该定时任务，再删除工作空间。',
+      '有定时任务使用这个对话。请先修改执行目标或删除该定时任务，再删除对话。',
     );
   }
   // Keep unrelated schedules and their execution history. A deleted conversation can
@@ -71,13 +68,46 @@ export function deleteWorkspaceRecords(
     'recaps',
   ])
     exec(`DELETE FROM ${table} WHERE thread_id IN ${threads}`);
-  // Other conversations may have historical parent pointers into this workspace.
+  // Other conversations may have historical parent pointers into this scope.
   exec(
     `UPDATE runs SET parent_run_id = NULL WHERE parent_run_id IN ${runs} AND thread_id NOT IN ${threads}`,
   );
   exec(`UPDATE runs SET rerun_from_message_seq = NULL WHERE thread_id IN ${threads}`);
   exec(`DELETE FROM runs WHERE thread_id IN ${threads}`);
   exec(`DELETE FROM context_messages WHERE thread_id IN ${threads}`);
-  exec(`DELETE FROM threads WHERE owner_id = $owner AND workspace_id = $space`);
-  exec('DELETE FROM workspaces WHERE tenant_id = $owner AND workspace_id = $space');
+  exec(`DELETE FROM threads WHERE owner_id = $owner AND thread_id IN ${threads}`);
+}
+
+// The caller has checked ownership and holds the write transaction. Keep the thread
+// set intact until all dependent records are removed. No device or filesystem operations.
+export function deleteWorkspaceRecords(
+  db: DatabaseSync,
+  ownerId: string,
+  workspaceId: string,
+): void {
+  const threads =
+    '(SELECT thread_id FROM threads WHERE owner_id = $owner AND workspace_id = $space)';
+  runCascade(db, {
+    threads,
+    params: { owner: ownerId, space: workspaceId },
+    schedules: `(SELECT schedule_id FROM automations WHERE owner_id = $owner AND (workspace_id = $space OR target_thread_id IN ${threads}))`,
+  });
+  db.prepare('DELETE FROM workspaces WHERE tenant_id = $owner AND workspace_id = $space').run({
+    owner: ownerId,
+    space: workspaceId,
+  });
+}
+
+// Permanently removes one archived task conversation and its dependent records.
+export function deleteArchivedThreadRecords(
+  db: DatabaseSync,
+  ownerId: string,
+  threadId: string,
+): void {
+  const threads = '(SELECT thread_id FROM threads WHERE owner_id = $owner AND thread_id = $thread)';
+  runCascade(db, {
+    threads,
+    params: { owner: ownerId, thread: threadId },
+    schedules: `(SELECT schedule_id FROM automations WHERE owner_id = $owner AND target_thread_id IN ${threads})`,
+  });
 }

@@ -49,7 +49,7 @@ export type ConversationItem =
   | { kind: 'recap'; key: string; value: Recap }
   | { kind: 'run-outcome'; key: string; value: Run }
   | { kind: 'missing-user-reply'; key: string; value: Run }
-  | { kind: 'pending-agent'; key: string; value: Input };
+  | { kind: 'pending-agent'; key: string; value: Input | Run };
 
 interface ConversationProjectionInput {
   threadId: string;
@@ -229,6 +229,29 @@ export function projectConversation({
       key: `pending-agent:${pendingInput.inputId}`,
       value: pendingInput,
     });
+  } else {
+    const activeRun = currentRuns
+      .filter(
+        (run) =>
+          !run.supersededByRunId &&
+          (run.status === RunStatus.QUEUED ||
+            run.status === RunStatus.RUNNING ||
+            run.status === RunStatus.WAITING),
+      )
+      .sort(compareRuns)
+      .at(-1);
+    if (
+      activeRun &&
+      !currentMessages.some(
+        (message) => message.runId === activeRun.runId && sentUserMessage(message) !== null,
+      )
+    ) {
+      items.push({
+        kind: 'pending-agent',
+        key: `pending-agent:run:${activeRun.runId}`,
+        value: activeRun,
+      });
+    }
   }
   return projectMixedOperationGroups(items, currentMessages);
 }

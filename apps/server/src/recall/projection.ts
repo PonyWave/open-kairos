@@ -141,10 +141,12 @@ function elevatedScopes(
   const threadIds: string[] = [];
   const threadStatement =
     authorization.visibility === 'owner'
-      ? database.prepare('SELECT thread_id FROM threads WHERE owner_id = ? ORDER BY seq')
+      ? database.prepare(
+          'SELECT thread_id FROM threads WHERE owner_id = ? AND archived_at IS NULL ORDER BY seq',
+        )
       : database.prepare(
           `SELECT thread_id FROM threads
-           WHERE owner_id = ? AND (workspace_id = ? OR thread_id = ?) ORDER BY seq`,
+           WHERE owner_id = ? AND (workspace_id = ? OR thread_id = ?) AND archived_at IS NULL ORDER BY seq`,
         );
   const threadParameters =
     authorization.visibility === 'owner'

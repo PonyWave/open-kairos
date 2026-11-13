@@ -271,6 +271,11 @@ const shapes = {
       <path d="M3 11a9 9 0 1 1 2.5 7M3 4v7h7M12 7v5l3 2" />
     </>
   ),
+  archive: (
+    <>
+      <path d="M3 4h18v5H3zM5 9v11h14V9M10 13h4" />
+    </>
+  ),
   grip: (
     <>
       <circle cx="9" cy="5" r="1.5" fill="currentColor" stroke="none" />

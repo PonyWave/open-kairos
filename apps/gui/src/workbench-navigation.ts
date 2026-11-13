@@ -47,7 +47,7 @@ export function workbenchLocation(
   page: string,
   threadId: string | null,
   mainThreadId: string,
-  section: 'account' | 'models' | 'channels' | 'display',
+  section: 'account' | 'models' | 'channels' | 'display' | 'archived',
   automationScheduleId: string | null = null,
   automationThreadId: string | null = null,
   draftWorkspaceId: string | null = null,

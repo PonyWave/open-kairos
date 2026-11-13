@@ -34,7 +34,7 @@ export function createSendToUserTool(options: {
   return {
     name: 'send_to_user',
     description:
-      'Deliver one user-facing message in this main conversation; ordinary assistant text is private execution content, never a reply. Keep the message as short as the content allows, in plain text without Markdown formatting or filler. Each call creates one message bubble, so keep related paragraphs together and do not fragment one answer. Omit end_turn or set false while work continues; set end_turn true on the final send, as the only tool call in that response, after all work for this reply is complete. A successful final send saves its tool result and ends this reply; a sent message does not imply the user has read it. The message always appears in the GUI; set channels to also deliver it to bound IM channels (wechat or feishu). Use redeliver_of with a failed delivery id to retry that channel delivery without creating a new bubble.',
+      'Deliver one user-facing message in this main conversation; ordinary assistant text is private execution content, never a reply, and must not appear in this conversation. Keep the message as short as the content allows, in plain text without Markdown formatting or filler. Each call creates one message bubble, so keep related paragraphs together and do not fragment one answer. Omit end_turn or set false while work continues; set end_turn true on the final send, as the only tool call in that response, after all work for this reply is complete. A successful final send saves its tool result and ends this reply; a sent message does not imply the user has read it. The message always appears in the GUI; set channels to also deliver it to bound IM channels (wechat or feishu). Use redeliver_of with a failed delivery id to retry that channel delivery without creating a new bubble.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -175,6 +175,7 @@ export function createSendToUserTool(options: {
           content: JSON.stringify({
             status: 'sent',
             redelivered: true,
+            message_seq: assistant.seq,
             delivery: {
               channel: delivery.channel,
               delivery_id: delivery.deliveryId,
@@ -233,6 +234,7 @@ export function createSendToUserTool(options: {
         content: JSON.stringify({
           status: 'sent',
           content: input.content,
+          message_seq: assistant.seq,
           end_turn: input.end_turn ?? false,
           ...(deliveries.length === 0 ? {} : { deliveries }),
         }),

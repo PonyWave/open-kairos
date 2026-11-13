@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AnimatedDisclosure } from './animated-disclosure.js';
+import { ContextMenu, type ContextMenuItem } from './context-menu.js';
 import { EntityMark, ThreadBadge } from './entity-mark.js';
 import { Icon } from './icon.js';
 import { TitleEditor } from './thread-title.js';
@@ -12,6 +13,11 @@ export function WorkspaceGroupSection({
   onOpenThread,
   onNewTopic,
   onRename,
+  onArchiveThread,
+  onEditWorkspace,
+  onDeleteWorkspace,
+  onRenameWorkspace,
+  onClearWorkspaceMain,
 }: {
   group: WorkspaceGroup;
   selectedThreadId: string | null;
@@ -19,9 +25,16 @@ export function WorkspaceGroupSection({
   onOpenThread: (threadId: string) => void;
   onNewTopic: () => void;
   onRename: (threadId: string, title: string) => Promise<boolean>;
+  onArchiveThread: (threadId: string) => void;
+  onEditWorkspace: () => void;
+  onDeleteWorkspace: () => void;
+  onRenameWorkspace: (name: string) => Promise<boolean>;
+  onClearWorkspaceMain: () => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const [showAll, setShowAll] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [renaming, setRenaming] = useState(false);
   const main = group.mainThread;
   const name = group.workspace?.name ?? '工作空间';
   const mainCurrent = main !== null && selectedThreadId === main.threadId;
@@ -30,11 +43,39 @@ export function WorkspaceGroupSection({
   );
   const visibleTasks = showAll ? sortedTasks : sortedTasks.slice(0, 3);
   const hiddenCount = sortedTasks.length - visibleTasks.length;
+  const menuItems: ContextMenuItem[] = [
+    { key: 'edit', label: '编辑工作空间', icon: 'edit', onSelect: onEditWorkspace },
+    {
+      key: 'rename',
+      label: '重命名工作空间',
+      icon: 'edit',
+      onSelect: () => setRenaming(true),
+    },
+    {
+      key: 'clear-main',
+      label: '清空主对话上下文',
+      icon: 'history',
+      disabled: main === null,
+      onSelect: onClearWorkspaceMain,
+    },
+    {
+      key: 'delete',
+      label: '删除工作空间',
+      icon: 'trash',
+      danger: true,
+      onSelect: onDeleteWorkspace,
+    },
+  ];
   return (
     <div className="workspace-group">
       <div
         className={`workspace-group-header${mainCurrent ? ' current' : ''}`}
         title={group.workspace ? `${group.workspace.envId} · ${group.workspace.path}` : undefined}
+        onContextMenu={(event) => {
+          if (!group.workspace) return;
+          event.preventDefault();
+          setMenu({ x: event.clientX, y: event.clientY });
+        }}
       >
         <button
           type="button"
@@ -50,7 +91,21 @@ export function WorkspaceGroupSection({
         >
           <Icon name="chevron" className={`i-sm workspace-chevron${expanded ? ' expanded' : ''}`} />
         </button>
-        {main ? (
+        {renaming && group.workspace ? (
+          <span className="workspace-main-open workspace-rename-editor">
+            <EntityMark threadId={main?.threadId} className="workspace-avatar" />
+            <TitleEditor
+              title={name}
+              busy={busy}
+              onCancel={() => setRenaming(false)}
+              onSave={async (next) => {
+                const saved = await onRenameWorkspace(next);
+                if (saved) setRenaming(false);
+                return saved;
+              }}
+            />
+          </span>
+        ) : main ? (
           <button
             type="button"
             className="workspace-main-open"
@@ -89,6 +144,7 @@ export function WorkspaceGroupSection({
               busy={busy}
               onOpen={() => onOpenThread(thread.threadId)}
               onRename={(title) => onRename(thread.threadId, title)}
+              onArchive={() => onArchiveThread(thread.threadId)}
             />
           ))}
           {hiddenCount > 0 && (
@@ -98,6 +154,9 @@ export function WorkspaceGroupSection({
           )}
         </div>
       </AnimatedDisclosure>
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />
+      )}
     </div>
   );
 }
@@ -109,6 +168,7 @@ function WorkspaceTaskItem({
   line = false,
   onOpen,
   onRename,
+  onArchive,
 }: {
   thread: WorkspaceGroup['tasks'][number];
   current: boolean;
@@ -116,10 +176,22 @@ function WorkspaceTaskItem({
   line?: boolean | undefined;
   onOpen: () => void;
   onRename: (title: string) => Promise<boolean>;
+  onArchive: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const menuItems: ContextMenuItem[] = [
+    { key: 'rename', label: '编辑', icon: 'edit', onSelect: () => setEditing(true) },
+    { key: 'archive', label: '归档', icon: 'archive', onSelect: onArchive },
+  ];
   return (
-    <div className={`workspace-task-item${current ? ' current' : ''}`}>
+    <div
+      className={`workspace-task-item${current ? ' current' : ''}`}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        setMenu({ x: event.clientX, y: event.clientY });
+      }}
+    >
       <ThreadBadge threadId={thread.threadId} line={line} className="workspace-task-badge" />
       {editing ? (
         <TitleEditor
@@ -143,6 +215,32 @@ function WorkspaceTaskItem({
           {thread.title || '未命名话题'}
         </button>
       )}
+      {!editing && (
+        <span className="workspace-task-actions">
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={`编辑 ${thread.title || '未命名话题'}`}
+            title="编辑名称"
+            onClick={() => setEditing(true)}
+          >
+            <Icon name="edit" className="i-xs" />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={`归档 ${thread.title || '未命名话题'}`}
+            title="归档话题"
+            disabled={busy}
+            onClick={onArchive}
+          >
+            <Icon name="archive" className="i-xs" />
+          </button>
+        </span>
+      )}
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />
+      )}
     </div>
   );
 }
@@ -154,6 +252,7 @@ export function TemporaryThreadsSection({
   onOpenThread,
   onNewTopic,
   onRename,
+  onArchiveThread,
 }: {
   threads: WorkspaceGroup['tasks'];
   selectedThreadId: string | null;
@@ -161,6 +260,7 @@ export function TemporaryThreadsSection({
   onOpenThread: (threadId: string) => void;
   onNewTopic: () => void;
   onRename: (threadId: string, title: string) => Promise<boolean>;
+  onArchiveThread: (threadId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const [showAll, setShowAll] = useState(false);
@@ -218,6 +318,7 @@ export function TemporaryThreadsSection({
               line
               onOpen={() => onOpenThread(thread.threadId)}
               onRename={(title) => onRename(thread.threadId, title)}
+              onArchive={() => onArchiveThread(thread.threadId)}
             />
           ))}
           {hiddenCount > 0 && (

@@ -7,6 +7,7 @@ import { openDatabase } from '../storage/database.js';
 import { ContextStore } from './context-store.js';
 import type { RecapGenerationInput } from './model-input-service.js';
 import { ModelInputService } from './model-input-service.js';
+import { stripMessageMeta } from './model-input.js';
 import { RecallService } from './recall-service.js';
 import { currentModelMessage } from './types.js';
 
@@ -122,7 +123,14 @@ it('preserves complete and incomplete tool fields through reopen, recall, recap 
       contextWindowTokens: 1000,
     });
     expect(prepared.hardCut).toBe(true);
-    expect(requests[0]?.messages).toEqual([assistant, ...results]);
+    const requestMessages = requests[0]?.messages ?? [];
+    expect(requestMessages[0]?.content).toMatch(/^<system-reminder>\n<msg seq="1" /);
+    expect(
+      requestMessages.map((message) => ({
+        ...message,
+        content: stripMessageMeta(String(message.content)),
+      })),
+    ).toEqual([assistant, ...results]);
     expect(generated).toHaveLength(1);
     expect(generated[0]?.sourceMessageSeqs).toEqual([1, 2, 3, 4]);
     expect(generated[0]?.messages.map((message) => message.message)).toEqual([

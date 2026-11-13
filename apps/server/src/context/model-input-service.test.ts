@@ -9,11 +9,14 @@ import { openDatabase } from '../storage/database.js';
 import { ContextStore } from './context-store.js';
 import type { PrepareModelInput, RecapGenerationInput } from './model-input-service.js';
 import { ModelInputService } from './model-input-service.js';
+import { stripMessageMeta } from './model-input.js';
 
 function contentTokens(request: ModelRequest): number {
   return (
-    request.messages.reduce((total, message) => total + message.content.length, 0) +
-    request.tools.reduce((total, tool) => total + tool.description.length, 0)
+    request.messages.reduce(
+      (total, message) => total + stripMessageMeta(message.content).length,
+      0,
+    ) + request.tools.reduce((total, tool) => total + tool.description.length, 0)
   );
 }
 
@@ -79,7 +82,9 @@ describe('ModelInputService thresholds and recovery', () => {
         }
         expect(prepared.request.messages[0]).toEqual({ role: 'system', content: '1234567890' });
         expect(prepared.request.tools[0]?.description).toBe('12345');
-        expect(prepared.request.messages.at(-1)).toEqual({ role: 'user', content: '1234567890' });
+        expect(stripMessageMeta(String(prepared.request.messages.at(-1)?.content))).toBe(
+          '1234567890',
+        );
         if (hardCut) {
           expect(prepared.request.messages.map((message) => message.role)).toEqual([
             'system',
@@ -175,7 +180,9 @@ describe('ModelInputService thresholds and recovery', () => {
         'user',
       ]);
       expect(prepared.request.messages[1]?.content).not.toContain('new pending original');
-      expect(prepared.request.messages.at(-1)?.content).toBe('new pending original');
+      expect(stripMessageMeta(String(prepared.request.messages.at(-1)?.content))).toBe(
+        'new pending original',
+      );
       expect(service.getRequestRecord('pending-request')?.contextMessageSeqs).toEqual([2]);
       expect(database.prepare('SELECT payload_json FROM context_events').get()).toEqual({
         payload_json: expect.stringContaining('"replaced_source_seqs":[1]'),
@@ -224,10 +231,14 @@ describe('ModelInputService thresholds and recovery', () => {
       expect(first.contextMessageSeqs).toEqual([2, 3]);
       expect(generated.map((input) => input.sourceMessageSeqs)).toEqual([[1]]);
       expect(
-        first.request.messages.filter((message) => message.content === 'pending original'),
+        first.request.messages.filter(
+          (message) => stripMessageMeta(String(message.content)) === 'pending original',
+        ),
       ).toHaveLength(1);
       expect(
-        first.request.messages.filter((message) => message.content === 'later raw'),
+        first.request.messages.filter(
+          (message) => stripMessageMeta(String(message.content)) === 'later raw',
+        ),
       ).toHaveLength(1);
 
       const second = await service.prepare(
@@ -241,10 +252,14 @@ describe('ModelInputService thresholds and recovery', () => {
       expect(second.readThroughSeq).toBe(1);
       expect(second.contextMessageSeqs).toEqual([2, 3]);
       expect(
-        second.request.messages.filter((message) => message.content === 'pending original'),
+        second.request.messages.filter(
+          (message) => stripMessageMeta(String(message.content)) === 'pending original',
+        ),
       ).toHaveLength(1);
       expect(
-        second.request.messages.filter((message) => message.content === 'later raw'),
+        second.request.messages.filter(
+          (message) => stripMessageMeta(String(message.content)) === 'later raw',
+        ),
       ).toHaveLength(1);
       expect(generated).toHaveLength(1);
       expect(database.prepare('SELECT source_message_seqs FROM recaps').all()).toEqual([
@@ -326,7 +341,9 @@ describe('ModelInputService thresholds and recovery', () => {
         }),
       );
       expect(ordinary.contextMessageSeqs).toEqual([2, 3]);
-      const contents = ordinary.request.messages.map((message) => message.content);
+      const contents = ordinary.request.messages.map((message) =>
+        stripMessageMeta(String(message.content)),
+      );
       expect(contents.indexOf('pending original')).toBeLessThan(contents.indexOf('later raw'));
       expect(generated).toHaveLength(1);
     } finally {
@@ -433,9 +450,11 @@ describe('ModelInputService thresholds and recovery', () => {
       const secondResult = await second.prepare(requestInput({ requestId: 'second' }));
       expect(secondRequests).toHaveLength(2);
       expect(secondRequests[0]?.messages[1]?.content).toContain('short-1');
-      expect(secondRequests[0]?.messages.some((message) => message.content === secondRaw)).toBe(
-        true,
-      );
+      expect(
+        secondRequests[0]?.messages.some(
+          (message) => stripMessageMeta(String(message.content)) === secondRaw,
+        ),
+      ).toBe(true);
       expect(secondGenerated.map((input) => input.sourceMessageSeqs)).toEqual([[2]]);
       expect(secondResult.selectedRecapIds).toEqual([
         firstRecapId,

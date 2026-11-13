@@ -590,6 +590,46 @@ message RenameThreadRequest {
   string title = 3;
 }
 
+message ArchiveThreadRequest {
+  string client_action_id = 1;
+  string thread_id = 2;
+}
+
+message ArchiveThreadResponse {
+  string client_action_id = 1;
+  Thread thread = 2;
+}
+
+message RestoreThreadRequest {
+  string client_action_id = 1;
+  string thread_id = 2;
+}
+
+message RestoreThreadResponse {
+  string client_action_id = 1;
+  Thread thread = 2;
+}
+
+message DeleteThreadRequest {
+  string client_action_id = 1;
+  string thread_id = 2;
+}
+
+message DeleteThreadResponse {
+  string client_action_id = 1;
+}
+
+message ListArchivedThreadsRequest {
+  uint64 after_seq = 1;
+  uint32 limit = 2;
+}
+
+message ListArchivedThreadsResponse {
+  repeated Thread threads = 1;
+  uint64 next_seq = 2;
+  bool has_more = 3;
+}
+
 message RenameThreadResponse {
   string client_action_id = 1;
   Thread thread = 2;
@@ -1164,6 +1204,10 @@ service ThreadService {
   rpc ListThreadCallPreviews(ListThreadCallPreviewsRequest) returns (ListThreadCallPreviewsResponse);
   rpc ListSubagentCallViews(ListSubagentCallViewsRequest) returns (ListSubagentCallViewsResponse);
   rpc RenameThread(RenameThreadRequest) returns (RenameThreadResponse);
+  rpc ArchiveThread(ArchiveThreadRequest) returns (ArchiveThreadResponse);
+  rpc RestoreThread(RestoreThreadRequest) returns (RestoreThreadResponse);
+  rpc DeleteThread(DeleteThreadRequest) returns (DeleteThreadResponse);
+  rpc ListArchivedThreads(ListArchivedThreadsRequest) returns (ListArchivedThreadsResponse);
 }
 
 service MessageService {

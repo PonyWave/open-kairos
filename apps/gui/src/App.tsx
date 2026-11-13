@@ -204,6 +204,7 @@ export function AccountWorkbench({
     null,
   );
   const [deletingWorkspace, setDeletingWorkspace] = useState<WorkspaceGroup | null>(null);
+  const [clearingWorkspaceMain, setClearingWorkspaceMain] = useState<WorkspaceGroup | null>(null);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
@@ -359,6 +360,62 @@ export function AccountWorkbench({
       setWorkspaceBusy(false);
     }
   }
+  async function renameWorkspace(workspace: Workspace, name: string): Promise<boolean> {
+    setWorkspaceBusy(true);
+    setWorkspaceError(null);
+    try {
+      await clients.workspaces.updateWorkspace({
+        clientActionId: randomId(),
+        workspaceId: workspace.workspaceId,
+        name,
+      });
+      workspaceDirectory.refresh();
+      showNotice('工作空间已重命名。');
+      return true;
+    } catch (cause) {
+      showNotice(formatClientError(cause));
+      return false;
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+  async function archiveThread(threadId: string) {
+    try {
+      await clients.thread.archiveThread({ clientActionId: randomId(), threadId });
+      drafts.discardDrafts([threadId]);
+      workbench.forgetThreads([threadId]);
+      setActiveTopic((current) => (current?.threadId === threadId ? null : current));
+      if (selectedThreadId === threadId) workbench.showMain();
+      workspaceDirectory.refresh();
+      void topics.openDirectory();
+      showNotice('话题已归档，可在「设置 → 已归档」中恢复或删除。');
+    } catch (cause) {
+      showNotice(formatClientError(cause));
+    }
+  }
+  async function clearWorkspaceMain() {
+    const main = clearingWorkspaceMain?.mainThread;
+    if (!main || workspaceBusy) return;
+    setWorkspaceBusy(true);
+    try {
+      const response = await clients.thread.startNewMain({
+        clientActionId: randomId(),
+        threadId: main.threadId,
+      });
+      const next = response.thread;
+      if (!next) throw new Error('Server 未返回新的主对话。');
+      drafts.discardDrafts([main.threadId]);
+      workbench.forgetThreads([main.threadId]);
+      workspaceDirectory.refresh();
+      setClearingWorkspaceMain(null);
+      openFullThread(next.threadId);
+      showNotice('主对话上下文已清空，原对话已归档。');
+    } catch (cause) {
+      showNotice(formatClientError(cause));
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
   async function removeWorkspace() {
     const workspace = deletingWorkspace?.workspace;
     if (!workspace || deleteConfirmation !== workspace.name || workspaceBusy) return;
@@ -464,11 +521,10 @@ export function AccountWorkbench({
         setFullTopic({ origin: null, invocationId: null });
         workbench.openThread(sourceThreadId);
       }
-      setActiveSubagent(null);
-      setActiveTopic({ threadId, invocationId, origin });
+      if (activeSubagent === null) setActiveTopic({ threadId, invocationId, origin });
       topics.closeDirectory();
     },
-    [mainThreadId, topics.closeDirectory, workbench.openThread, workbench.showMain],
+    [activeSubagent, mainThreadId, topics.closeDirectory, workbench.openThread, workbench.showMain],
   );
 
   const completeAction = useCallback<ActionCompletion>(
@@ -950,6 +1006,22 @@ export function AccountWorkbench({
                         title,
                       })) !== undefined
                     }
+                    onArchiveThread={(threadId) => void archiveThread(threadId)}
+                    onEditWorkspace={() => {
+                      if (group.workspace) editWorkspace(group.workspace);
+                    }}
+                    onDeleteWorkspace={() => {
+                      setWorkspaceError(null);
+                      deleteActionId.current = randomId();
+                      setDeleteConfirmation('');
+                      setDeletingWorkspace(group);
+                    }}
+                    onRenameWorkspace={(name) =>
+                      group.workspace
+                        ? renameWorkspace(group.workspace, name)
+                        : Promise.resolve(false)
+                    }
+                    onClearWorkspaceMain={() => setClearingWorkspaceMain(group)}
                   />
                 ))}
               {
@@ -965,6 +1037,7 @@ export function AccountWorkbench({
                       title,
                     })) !== undefined
                   }
+                  onArchiveThread={(threadId) => void archiveThread(threadId)}
                 />
               }
             </section>
@@ -1186,6 +1259,10 @@ export function AccountWorkbench({
                   onConversationDisplayChange={changeConversationDisplay}
                   theme={theme}
                   onThemeChange={setTheme}
+                  onArchivedChanged={() => {
+                    workspaceDirectory.refresh();
+                    void topics.openDirectory();
+                  }}
                 />
               ) : directory.page === 'devices' ? (
                 <ConnectedDevicesPage clients={clients} />
@@ -1388,6 +1465,37 @@ export function AccountWorkbench({
                 </p>
               )}
             </div>
+          </AppDialog>
+        )}
+        {clearingWorkspaceMain?.workspace && (
+          <AppDialog
+            title="清空主对话上下文"
+            subtitle={`“${clearingWorkspaceMain.workspace.name}”的当前主对话将归档，并自动创建新的主对话。`}
+            onClose={() => {
+              if (!workspaceBusy) setClearingWorkspaceMain(null);
+            }}
+            actions={
+              <>
+                <button
+                  type="button"
+                  className="device-secondary"
+                  disabled={workspaceBusy}
+                  onClick={() => setClearingWorkspaceMain(null)}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className="device-primary"
+                  disabled={workspaceBusy}
+                  onClick={() => void clearWorkspaceMain()}
+                >
+                  {workspaceBusy ? '正在清空…' : '清空并新建'}
+                </button>
+              </>
+            }
+          >
+            <p>原主对话进入已归档，可在「设置 → 已归档」中查看；设备上的文件不受影响。</p>
           </AppDialog>
         )}
         {leaveAction && (

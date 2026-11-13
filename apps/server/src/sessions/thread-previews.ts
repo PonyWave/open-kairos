@@ -383,7 +383,7 @@ export function listThreadCards(
         `SELECT * FROM (
           SELECT threads.*, ${lastMessageAt} AS last_message_at, ${sortAt} AS sort_at
           FROM threads WHERE threads.owner_id = ? AND threads.thread_type = 'task'
-            AND threads.automation_only = 0
+            AND threads.automation_only = 0 AND threads.archived_at IS NULL
         ) AS card_rows
         ${cursorWhere}
         ORDER BY sort_at DESC, seq ASC LIMIT ?`,

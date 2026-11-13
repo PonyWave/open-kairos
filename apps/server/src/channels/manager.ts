@@ -2,7 +2,6 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { Clock } from '../context/types.js';
 import type { InputRecord } from '../sessions/records.js';
 import type { SessionStore } from '../sessions/store.js';
-import { wrapSystemReminder } from '../sessions/system-reminder.js';
 import { ChannelDeliveryWorker } from './delivery-worker.js';
 import { FeishuChannel } from './feishu/adapter.js';
 import { ChannelStore } from './store.js';
@@ -71,17 +70,13 @@ export class ChannelManager {
   }
 
   #handleInbound(message: InboundChannelMessage): void {
-    const channelName = message.channel === 'wechat' ? 'WeChat' : 'Feishu';
-    const marker = wrapSystemReminder(
-      `The following user message arrived from the ${channelName} IM channel (${message.channel}).`,
-    );
     try {
       const accepted = this.#sessionStore.acceptChannelInput({
         ownerId: this.#ownerId(),
         method: 'ChannelInbound',
         clientActionId: `channel-inbound:${message.channel}:${message.externalMessageId}`,
         parameters: {},
-        text: `${marker}\n\n${message.text}`,
+        text: message.text,
         channel: {
           channel: message.channel,
           kind: 'inbound',

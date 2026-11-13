@@ -32,6 +32,7 @@ interface StubPaneProps {
     invocationId: string | null;
     origin: StubOrigin | null;
   }) => void;
+  onOpenSubagent: (view: { threadId: string; agentId: string }) => void;
   onShowOrigin: (threadId: string, origin: StubOrigin) => void;
 }
 
@@ -285,6 +286,30 @@ describe('topic side pane navigation', () => {
       expect(pane('main:main-a')?.hidden).toBe(false);
       expect(pane('main:main-a')?.highlightedCallId).toBe('call-7');
       expect(pane('topic:topic-1')).toBeDefined();
+    } finally {
+      await act(async () => root.unmount());
+    }
+  });
+
+  it('keeps the subagent pane while locating its origin call in the main conversation', async () => {
+    const root = await renderWorkbench('');
+    try {
+      const origin = delegationOrigin('main-a', 'call-3');
+      const main = pane('main:main-a');
+      await act(async () => {
+        main?.onOpenSubagent({ threadId: 'main-a', agentId: 'sub-1' });
+      });
+      expect(pane('subagent:main-a')).toBeDefined();
+
+      const subagent = pane('subagent:main-a');
+      await act(async () => {
+        subagent?.onShowOrigin('main-a', origin);
+      });
+
+      expect(pane('subagent:main-a')).toBeDefined();
+      expect(pane('main:main-a')?.hidden).toBe(false);
+      expect(pane('main:main-a')?.highlightedCallId).toBe('call-3');
+      expect([...stubPanes.mounted.keys()].filter((key) => key.startsWith('topic:'))).toEqual([]);
     } finally {
       await act(async () => root.unmount());
     }

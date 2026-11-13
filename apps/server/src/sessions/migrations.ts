@@ -482,4 +482,13 @@ ALTER TABLE workspaces ADD COLUMN description TEXT NOT NULL DEFAULT '';
 ALTER TABLE workspaces ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0 CHECK(hidden IN (0,1));
     `,
   },
+  {
+    version: 4,
+    name: 'workspace_main_reset_allows_archived_predecessor',
+    sql: `
+DROP INDEX threads_one_workspace_main_per_workspace;
+CREATE UNIQUE INDEX threads_one_workspace_main_per_workspace
+        ON threads(workspace_id) WHERE thread_type = 'workspace_main' AND archived_at IS NULL;
+    `,
+  },
 ];

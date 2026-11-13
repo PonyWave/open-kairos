@@ -58,12 +58,14 @@ export function SentUserMessageCard({
   compact,
   continuation,
   deliveryStatuses,
+  mainThreadId,
 }: {
   message: Message;
   sent: SentUserMessage;
   compact: boolean;
   continuation: boolean;
   deliveryStatuses?: ReadonlyMap<string, ChannelDeliveryStatusInfo> | undefined;
+  mainThreadId?: string | null | undefined;
 }) {
   const badges =
     sent.deliveries.length === 0 ? null : (
@@ -90,7 +92,7 @@ export function SentUserMessageCard({
           label="Kairos"
           timestamp={message.createdAt}
           threadId={message.threadId}
-          mainAgent
+          mainAgent={mainThreadId === undefined || message.threadId === mainThreadId}
         />
       )}
       <div className="message-content">

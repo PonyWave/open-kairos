@@ -74,7 +74,7 @@ describe('Agent view isolation', () => {
       runs: [rootRun, { ...childRun, status: RunStatus.FAILED }],
       transientResponses: [live],
     });
-    expect(items.map((item) => item.key)).toEqual(['root']);
+    expect(items.map((item) => item.key)).toEqual(['root', 'pending-agent:run:root-run']);
   });
   it('projects only the selected child stream even when sequence numbers overlap', () => {
     const items = projectConversation({
@@ -84,8 +84,13 @@ describe('Agent view isolation', () => {
       runs: [rootRun, childRun],
       transientResponses: [live],
     });
-    expect(items.map((item) => item.key)).toEqual(['child-prompt', 'child-reply', 'child-stream']);
-    const item = items.at(-1);
+    expect(items.map((item) => item.key)).toEqual([
+      'child-prompt',
+      'child-reply',
+      'child-stream',
+      'pending-agent:run:child-run',
+    ]);
+    const item = items.find((candidate) => candidate.key === 'child-stream');
     expect(item?.kind === 'message' && item.value.message.agentId).toBe('child');
   });
   it('keeps streams without message or Run ownership out of the root view', () => {
@@ -96,14 +101,14 @@ describe('Agent view isolation', () => {
       runs: [rootRun, { ...childRun, agentId: undefined }],
       transientResponses: [unattributed],
     });
-    expect(items.map((item) => item.key)).toEqual(['root']);
+    expect(items.map((item) => item.key)).toEqual(['root', 'pending-agent:run:root-run']);
     const unknown = projectConversation({
       threadId: 'main',
       messages: [parent],
       runs: [rootRun, { ...childRun, agentId: undefined }],
       transientResponses: [unattributed],
     });
-    expect(unknown.map((item) => item.key)).toEqual(['root']);
+    expect(unknown.map((item) => item.key)).toEqual(['root', 'pending-agent:run:root-run']);
   });
   it('removes only the matching Thread source prompt from a sidebar', () => {
     const call = create(DelegationReferenceSchema, {

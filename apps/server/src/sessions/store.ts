@@ -36,7 +36,7 @@ import type { Recap } from '../recap/types.js';
 import { migrateDatabase } from '../storage/migrations.js';
 import { assertServerDatabaseCompatible } from '../storage/server-schema.js';
 import { inTransaction } from '../storage/transaction.js';
-import { deleteWorkspaceRecords } from './delete-workspace.js';
+import { deleteArchivedThreadRecords, deleteWorkspaceRecords } from './delete-workspace.js';
 import {
   AgentEnvironmentStore,
   type EnvironmentPolicyInput,
@@ -1042,7 +1042,10 @@ export class SessionStore {
   startNewMain(action: ActionInput & { threadId: string }): ThreadRecord {
     return this.#action(action, threadResponseSchema, () => {
       const current = this.getThread(action.ownerId, action.threadId);
-      if (current.threadType !== 'main' || current.archivedAt) {
+      if (
+        (current.threadType !== 'main' && current.threadType !== 'workspace_main') ||
+        current.archivedAt
+      ) {
         throw new SessionError(
           'failed_precondition',
           'Only the current main conversation can be replaced.',
@@ -1087,13 +1090,14 @@ export class SessionStore {
       }
       return this.#insertThread(
         action.ownerId,
-        'main',
-        '主对话',
+        current.threadType,
+        current.threadType === 'workspace_main' ? current.title : '主对话',
         undefined,
         undefined,
         undefined,
         false,
         current.threadId,
+        current.threadType === 'workspace_main' ? (current.workspaceId ?? undefined) : undefined,
       );
     });
   }
@@ -1394,6 +1398,101 @@ export class SessionStore {
       this.#updateThreadTitle(input.ownerId, input.threadId, title);
       return this.getThread(input.ownerId, input.threadId);
     });
+  }
+
+  archiveThread(action: ActionInput & { threadId: string }): ThreadRecord {
+    return this.#action(action, threadResponseSchema, () => {
+      const current = this.getThread(action.ownerId, action.threadId);
+      if (current.threadType !== 'task') {
+        throw new SessionError('failed_precondition', 'Only task conversations can be archived.');
+      }
+      if (current.archivedAt) {
+        throw new SessionError('failed_precondition', 'The conversation is already archived.');
+      }
+      if (this.getActiveRun(current.threadId)) {
+        throw new SessionError(
+          'failed_precondition',
+          'Wait for the active root Run to finish first.',
+        );
+      }
+      if (this.listQueuedInputs(current.threadId).length > 0) {
+        throw new SessionError(
+          'failed_precondition',
+          'Consume or remove queued inputs before archiving.',
+        );
+      }
+      const backgroundOperation = this.database
+        .prepare(
+          `SELECT 'manual_compact' AS kind FROM manual_compact_operations
+           WHERE thread_id = ? AND status = 'running'
+           UNION ALL
+           SELECT 'periodic_recap' AS kind FROM recap_generation_operations
+           WHERE thread_id = ? AND agent_id = 'thread' AND status = 'running'
+           LIMIT 1`,
+        )
+        .get(current.threadId, current.threadId);
+      if (backgroundOperation !== undefined) {
+        throw new SessionError(
+          'failed_precondition',
+          'Wait for Context maintenance to finish before archiving.',
+        );
+      }
+      const now = isoTime(undefined, this.#clock);
+      this.database
+        .prepare(
+          'UPDATE threads SET archived_at = ?, updated_at = ? WHERE thread_id = ? AND archived_at IS NULL',
+        )
+        .run(now, now, current.threadId);
+      const archived = this.getThread(action.ownerId, action.threadId);
+      this.#insertEvent(current.threadId, { case: 'threadRenamed', value: { thread: archived } });
+      return archived;
+    });
+  }
+
+  restoreThread(action: ActionInput & { threadId: string }): ThreadRecord {
+    return this.#action(action, threadResponseSchema, () => {
+      const current = this.getThread(action.ownerId, action.threadId);
+      if (current.threadType !== 'task' || !current.archivedAt) {
+        throw new SessionError(
+          'failed_precondition',
+          'Only archived task conversations can be restored.',
+        );
+      }
+      const now = isoTime(undefined, this.#clock);
+      this.database
+        .prepare('UPDATE threads SET archived_at = NULL, updated_at = ? WHERE thread_id = ?')
+        .run(now, current.threadId);
+      const restored = this.getThread(action.ownerId, action.threadId);
+      this.#insertEvent(current.threadId, { case: 'threadRenamed', value: { thread: restored } });
+      return restored;
+    });
+  }
+
+  deleteArchivedThread(action: ActionInput & { threadId: string }): { threadId: string } {
+    return this.#action(action, z.object({ threadId: z.string() }), () => {
+      const current = this.getThread(action.ownerId, action.threadId);
+      if (current.threadType !== 'task' || !current.archivedAt) {
+        throw new SessionError(
+          'failed_precondition',
+          'Only archived task conversations can be deleted.',
+        );
+      }
+      deleteArchivedThreadRecords(this.database, action.ownerId, action.threadId);
+      return { threadId: action.threadId };
+    });
+  }
+
+  listArchivedThreads(ownerId: string, afterSeq: bigint, limit: number): ThreadRecord[] {
+    if (afterSeq > BigInt(Number.MAX_SAFE_INTEGER)) return [];
+    const rows = this.database
+      .prepare(
+        `SELECT * FROM threads
+         WHERE owner_id = ? AND seq > ? AND thread_type = 'task' AND automation_only = 0
+           AND archived_at IS NOT NULL
+         ORDER BY seq LIMIT ?`,
+      )
+      .all(ownerId, Number(afterSeq), limit);
+    return rows.map((row) => this.#toThread(threadRowSchema.parse(row)));
   }
 
   sendMessage(

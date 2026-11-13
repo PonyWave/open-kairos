@@ -149,6 +149,7 @@ export function MessageCard({
         compact={compact}
         continuation={continuation}
         deliveryStatuses={channelDeliveries}
+        mainThreadId={mainThreadId}
       />
     );
   }

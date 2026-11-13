@@ -114,6 +114,10 @@ describe('GUI service descriptors', () => {
       'listThreadCallPreviews',
       'listSubagentCallViews',
       'renameThread',
+      'archiveThread',
+      'restoreThread',
+      'deleteThread',
+      'listArchivedThreads',
     ]);
     expect(MessageService.methods.map((method) => method.localName)).toEqual([
       'sendMessage',

@@ -6,6 +6,7 @@ import {
   MessageSource,
   ThreadSchema,
   ThreadSnapshotSchema,
+  ToolResultStatus,
 } from '@kairos/contracts';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -96,6 +97,41 @@ describe('incoming main messages', () => {
     expect(html).toContain('user-message-content');
     expect(html).toContain('来自工作空间主对话');
     expect(html).toContain('time-left');
+  });
+});
+
+describe('send_to_user bubble avatars', () => {
+  it('uses the workspace main avatar instead of the global main avatar outside the global main', () => {
+    const message = create(MessageSchema, {
+      messageId: 'sent-1',
+      threadId: 'ws-main-1',
+      agentId: 'thread',
+      role: MessageRole.TOOL,
+      toolName: 'send_to_user',
+      toolCallId: 'call-1',
+      toolStatus: ToolResultStatus.SUCCESS,
+      content: JSON.stringify({ status: 'sent', content: '空间回复', end_turn: true }),
+    });
+    const html = renderToStaticMarkup(
+      createElement(MessageCard, {
+        message,
+        delegationCall: null,
+        clients: createKairosClients({ transport: createRouterTransport(() => {}) }),
+        busy: false,
+        editing: false,
+        streaming: false,
+        thinkingExpansionChoices: {},
+        mainThreadId: 'main-1',
+        onThinkingExpansionChange: () => {},
+        onStartEditing: () => {},
+        onCancelEditing: () => {},
+        onRevise: async () => {},
+        onRerun: async () => {},
+      }),
+    );
+    expect(html).toContain('sent-message-bubble');
+    expect(html).toContain('data-thread-id="ws-main-1"');
+    expect(html).not.toContain('entity-main');
   });
 });
 

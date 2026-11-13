@@ -416,6 +416,49 @@ export function registerGuiRoutes(router: ConnectRouter, options: GuiApiOptions)
         );
         return { clientActionId: request.clientActionId, thread: toThread(thread) };
       }),
+    archiveThread: (request, context) =>
+      handle(request.clientActionId, () => {
+        const ownerId = owner(context);
+        const thread = options.store.archiveThread(
+          action(ownerId, 'ArchiveThread', request.clientActionId, {
+            threadId: request.threadId,
+          }),
+        );
+        return { clientActionId: request.clientActionId, thread: toThread(thread) };
+      }),
+    restoreThread: (request, context) =>
+      handle(request.clientActionId, () => {
+        const ownerId = owner(context);
+        const thread = options.store.restoreThread(
+          action(ownerId, 'RestoreThread', request.clientActionId, {
+            threadId: request.threadId,
+          }),
+        );
+        return { clientActionId: request.clientActionId, thread: toThread(thread) };
+      }),
+    deleteThread: (request, context) =>
+      handle(request.clientActionId, () => {
+        const ownerId = owner(context);
+        options.store.deleteArchivedThread(
+          action(ownerId, 'DeleteThread', request.clientActionId, {
+            threadId: request.threadId,
+          }),
+        );
+        return { clientActionId: request.clientActionId };
+      }),
+    listArchivedThreads: (request, context) =>
+      handle(undefined, () => {
+        const ownerId = owner(context);
+        const limit = requirePositiveInteger(request.limit, 'limit', 100);
+        const threads = options.store.listArchivedThreads(ownerId, request.afterSeq, limit + 1);
+        const hasMore = threads.length > limit;
+        const page = threads.slice(0, limit);
+        return {
+          threads: page.map(toThread),
+          ...(hasMore && page.length > 0 ? { nextSeq: BigInt(page.at(-1)?.seq ?? 0) } : {}),
+          hasMore,
+        };
+      }),
   });
 
   router.service(MessageService, {

@@ -1,6 +1,7 @@
 import { RunStatus, type SubagentCallView, type ToolCall } from '@kairos/contracts';
 import { EntityMark } from './entity-mark.js';
 import { Icon } from './icon.js';
+import { originElementId } from './workbench-navigation.js';
 
 export function SubagentCard({
   call,
@@ -41,6 +42,7 @@ export function SubagentCard({
     <button
       type="button"
       className="subagent-card"
+      id={originElementId(call.toolCallId)}
       disabled={!view}
       onClick={() => view && onOpen(view)}
       aria-label={`查看子代理：${view?.task || task}`}

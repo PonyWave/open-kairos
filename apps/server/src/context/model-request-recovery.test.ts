@@ -6,6 +6,7 @@ import { openDatabase } from '../storage/database.js';
 import { ContextStore } from './context-store.js';
 import type { PrepareModelInput } from './model-input-service.js';
 import { ModelInputService } from './model-input-service.js';
+import { stripMessageMeta } from './model-input.js';
 
 it('persists pending inputs and restores each complete model request after reopen', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'kairos-request-recovery-'));
@@ -196,7 +197,9 @@ it('resumes an interrupted preparation after reopen without duplicating input', 
     const recoveredService = new ModelInputService(database, { countTokens: () => 100 });
     const recovered = await recoveredService.prepare(request);
     expect(recovered.contextMessageSeqs).toEqual([1]);
-    expect(recovered.request.messages.at(-1)).toEqual({ role: 'user', content: 'pending once' });
+    expect(stripMessageMeta(String(recovered.request.messages.at(-1)?.content))).toBe(
+      'pending once',
+    );
     finishCount(100);
     await expect(pendingPreparation).rejects.toMatchObject({ code: 'storage_failed' });
     expect(

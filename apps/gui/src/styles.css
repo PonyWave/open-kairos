@@ -3573,3 +3573,112 @@ button.dropdown-item {
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+.workspace-task-actions {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.workspace-task-item:hover .workspace-task-actions,
+.workspace-task-item:focus-within .workspace-task-actions {
+  display: inline-flex;
+}
+.workspace-task-actions .icon-button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: var(--muted);
+}
+.workspace-task-actions .icon-button:hover {
+  color: var(--ink);
+}
+.workspace-rename-editor {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.context-menu {
+  position: fixed;
+  z-index: 90;
+  min-width: 180px;
+  padding: 6px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-menu);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: left;
+}
+.context-menu-item:hover:not(:disabled) {
+  background: var(--hover);
+}
+.context-menu-item:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+.context-menu-item.danger {
+  color: var(--danger);
+}
+.context-menu-item .icon {
+  color: var(--muted);
+}
+.context-menu-item.danger .icon {
+  color: var(--danger);
+}
+.settings-archived-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.settings-archived-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.settings-archived-mark {
+  flex-shrink: 0;
+}
+.settings-archived-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--ink);
+}
+.settings-archived-time {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.settings-archived-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.settings-archived-delete {
+  color: var(--muted);
+}
+.settings-archived-delete:hover {
+  color: var(--danger);
+}

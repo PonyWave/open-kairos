@@ -49,18 +49,27 @@ export function RunOutcomeCard({
   );
 }
 
-export function PendingAgentCard({ input, compact }: { input: Input; compact: boolean }) {
+export function PendingAgentCard({
+  input,
+  compact,
+  mainAgent = true,
+}: {
+  input: Input | Run;
+  compact: boolean;
+  mainAgent?: boolean;
+}) {
+  const pendingId = 'inputId' in input ? input.inputId : input.runId;
   return createElement(
     'article',
     {
       className: 'message assistant pending-agent-message',
-      'data-pending-input-id': input.inputId,
+      'data-pending-input-id': pendingId,
     },
     createElement(MessageAvatar, {
       label: 'Kairos',
       timestamp: input.createdAt,
       threadId: input.threadId,
-      mainAgent: true,
+      mainAgent,
     }),
     createElement(
       'div',
