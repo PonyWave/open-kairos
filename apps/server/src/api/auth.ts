@@ -90,7 +90,7 @@ export function registerAuthRoutes(router: ConnectRouter, authentication: GuiAut
           sessionCookie,
           request.token,
           bootstrapped.expiresAt,
-          authentication.secureCookies,
+          requestSecure(context, authentication),
           true,
         );
         return { identity: identityResponse(bootstrapped.identity) };
@@ -99,7 +99,7 @@ export function registerAuthRoutes(router: ConnectRouter, authentication: GuiAut
       }
     },
     getCurrentIdentity: (_request, context) => {
-      ensureCsrfCookie(context, authentication.secureCookies);
+      ensureCsrfCookie(context, requestSecure(context, authentication));
       if (authentication.disabled) {
         return {
           state: AuthenticationState.AUTHENTICATED,
@@ -119,7 +119,7 @@ export function registerAuthRoutes(router: ConnectRouter, authentication: GuiAut
         requireStateRequest(context, authentication);
         if (!authentication.disabled) {
           service.revokeSession(cookieValue(context, sessionCookie));
-          clearCookie(context, sessionCookie, authentication.secureCookies);
+          clearCookie(context, sessionCookie, requestSecure(context, authentication));
         }
         return {};
       } catch (error) {
@@ -146,12 +146,25 @@ export function requireStateRequest(
 }
 
 function isAllowedOrigin(origin: string, allowedOrigin: string | null, host: string): boolean {
-  if (allowedOrigin !== null) return origin === allowedOrigin;
+  if (allowedOrigin !== null && origin === allowedOrigin) return true;
   try {
     const url = new URL(origin);
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
     if (['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname)) return true;
     return host !== '' && url.host === host;
+  } catch {
+    return false;
+  }
+}
+
+function requestSecure(context: HandlerContext, authentication: GuiAuthentication): boolean {
+  if (!authentication.secureCookies) return false;
+  const forwarded = context.requestHeader.get('x-forwarded-proto');
+  if (forwarded !== null) return forwarded === 'https';
+  if (authentication.allowedOrigin === null) return true;
+  const host = context.requestHeader.get('host') ?? '';
+  try {
+    return new URL(authentication.allowedOrigin).host === host;
   } catch {
     return false;
   }

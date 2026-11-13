@@ -39,13 +39,14 @@ class TestClient {
     service: string,
     method: string,
     payload: Record<string, unknown>,
-    options: { origin?: boolean; csrf?: boolean } = {},
+    options: { origin?: boolean; csrf?: boolean; originValue?: string; host?: string } = {},
   ) {
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       'connect-protocol-version': '1',
     };
-    if (options.origin !== false) headers.origin = origin;
+    if (options.origin !== false) headers.origin = options.originValue ?? origin;
+    if (options.host !== undefined) headers.host = options.host;
     const cookies = [...this.#cookies.entries()].map(([name, value]) => `${name}=${value}`);
     if (cookies.length > 0) headers.cookie = cookies.join('; ');
     const csrf = this.#cookies.get('kairos_csrf');
@@ -73,7 +74,9 @@ interface Fixture {
   directory: string;
 }
 
-async function fixture(): Promise<Fixture> {
+async function fixture(
+  identityOverrides: { allowedOrigin?: string | null; secureCookies?: boolean } = {},
+): Promise<Fixture> {
   const directory = await mkdtemp(join(tmpdir(), 'kairos-auth-integration-'));
   const database = openDatabase(':memory:');
   const provider = new ScriptedProvider([
@@ -85,6 +88,7 @@ async function fixture(): Promise<Fixture> {
       secret,
       allowedOrigin: origin,
       secureCookies: false,
+      ...identityOverrides,
     },
     model: {
       provider,
@@ -360,6 +364,46 @@ it('isolates threads, runs, logs and devices between personal tenants', async ()
       secondThreads.json().threads.map((thread: { threadId: string }) => thread.threadId),
     ).toEqual([secondIdentity.mainThreadId]);
     expect((await first.call('ThreadService', 'GetThread', { threadId })).statusCode).toBe(200);
+  } finally {
+    await cleanup(current);
+  }
+});
+
+it('accepts same-host origins alongside the public origin and omits Secure cookies on direct HTTP', async () => {
+  const current = await fixture({
+    allowedOrigin: 'https://kairos.example.test',
+    secureCookies: true,
+  });
+  try {
+    const direct = new TestClient(current.server);
+    const directIdentity = await direct.call(
+      'AuthService',
+      'GetCurrentIdentity',
+      {},
+      { originValue: 'http://172.27.134.23:4317', host: '172.27.134.23:4317' },
+    );
+    expect(directIdentity.statusCode).toBe(200);
+    expect(JSON.stringify(directIdentity.headers['set-cookie'])).toContain('kairos_csrf');
+    expect(JSON.stringify(directIdentity.headers['set-cookie'])).not.toContain('Secure');
+
+    const proxied = new TestClient(current.server);
+    const proxiedIdentity = await proxied.call(
+      'AuthService',
+      'GetCurrentIdentity',
+      {},
+      { originValue: 'https://kairos.example.test', host: 'kairos.example.test' },
+    );
+    expect(proxiedIdentity.statusCode).toBe(200);
+    expect(JSON.stringify(proxiedIdentity.headers['set-cookie'])).toContain('Secure');
+
+    const foreign = new TestClient(current.server);
+    const foreignCall = await foreign.call(
+      'AuthService',
+      'BootstrapSession',
+      { token: 'invalid-token' },
+      { originValue: 'https://evil.example.com', host: '172.27.134.23:4317' },
+    );
+    expect(foreignCall.statusCode).toBe(403);
   } finally {
     await cleanup(current);
   }
