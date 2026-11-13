@@ -23,6 +23,7 @@ import {
   WorkspaceService,
 } from '@kairos/contracts';
 import { AutomationService as AutomationManager } from '../automation/service.js';
+import type { ChannelManager } from '../channels/manager.js';
 import type { ModelConfigurationStatus } from '../config.js';
 import type { DeviceChannel } from '../devices/channel.js';
 import type { EnvironmentStore } from '../devices/environment-store.js';
@@ -42,6 +43,7 @@ import type { SettingsStore } from '../settings/store.js';
 import type { GuiAuthentication } from './auth.js';
 import { registerAuthRoutes, requireOwner } from './auth.js';
 import { registerAutomationRoutes } from './automation.js';
+import { registerChannelRoutes } from './channel.js';
 import {
   toAttachment,
   toAuditMessage,
@@ -102,6 +104,7 @@ export interface GuiApiOptions {
   store: SessionStore;
   coordinator: RunCoordinator;
   automations?: AutomationManager;
+  channels?: ChannelManager;
   logs: BashLogReader;
   modelStatus: ModelConfigurationStatus;
   settings?: SettingsStore;
@@ -126,6 +129,9 @@ export function registerGuiRoutes(router: ConnectRouter, options: GuiApiOptions)
     });
   registerAuthRoutes(router, options.authentication);
   if (options.settings) registerSettingsRoutes(router, options.settings, options.authentication);
+  if (options.channels) {
+    registerChannelRoutes(router, options.channels, options.authentication);
+  }
   registerAutomationRoutes(router, {
     automations,
     store: options.store,

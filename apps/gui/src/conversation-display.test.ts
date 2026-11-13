@@ -200,7 +200,7 @@ describe('sent user messages', () => {
           renderToStaticMarkup(
             createElement(SentUserMessageCard, {
               message: sendResult(`sent-${index}`, { toolCallId: `send-${index}` }),
-              sent: { content, endTurn: index === 1 },
+              sent: { content, endTurn: index === 1, deliveries: [] },
               compact,
               continuation: index > 0,
             }),
@@ -221,7 +221,11 @@ describe('sent user messages', () => {
 
   it('accepts only a successful persisted send result, including when its call is on another page', () => {
     const result = sendResult();
-    expect(sentUserMessage(result)).toEqual({ content: '**正式回复**', endTurn: true });
+    expect(sentUserMessage(result)).toEqual({
+      content: '**正式回复**',
+      endTurn: true,
+      deliveries: [],
+    });
     const projected = projectConversation({
       threadId,
       messages: [result],

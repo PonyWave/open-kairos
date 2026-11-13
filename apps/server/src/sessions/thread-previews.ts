@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { type AttachmentMetadata, attachmentMediaTypeSchema } from '../attachments/types.js';
-import type { DelegationKey, MessageSource } from '../context/types.js';
+import { parseChannelJson } from '../channels/reference.js';
+import type { ChannelReference, DelegationKey, MessageSource } from '../context/types.js';
 import { SessionError } from './errors.js';
 import type { InteractionRecord, RunStatus, ThreadRecord } from './records.js';
 import type { SessionStore } from './store.js';
@@ -25,6 +26,7 @@ export interface ThreadMessagePreviewProjection {
   createdAt: string;
   source: MessageSource | null;
   sourceThreadId: string | null;
+  channel: ChannelReference | null;
   attachments: AttachmentMetadata[];
 }
 
@@ -58,6 +60,7 @@ const messageSourceSchema = z.enum([
   'subagent_response',
   'automation',
   'thread_notification',
+  'channel',
 ]);
 const runStatusSchema = z.enum([
   'queued',
@@ -91,6 +94,7 @@ const messageRowSchema = z.object({
   role: z.enum(['user', 'assistant']),
   source: messageSourceSchema.nullable(),
   source_thread_id: z.string().nullable(),
+  channel_json: z.string().nullable(),
   created_at: z.string(),
   text: z.string(),
   text_truncated: z
@@ -183,7 +187,7 @@ function currentText(alias: string): string {
 function previewColumns(alias: string): string {
   const text = currentText(alias);
   return `${alias}.thread_id, ${alias}.agent_id, ${alias}.message_id, ${alias}.seq,
-    ${alias}.role, ${alias}.source, ${alias}.source_thread_id, ${alias}.created_at,
+    ${alias}.role, ${alias}.source, ${alias}.source_thread_id, ${alias}.channel_json, ${alias}.created_at,
     substr(${text}, 1, ${threadPreviewTextLimit}) AS text,
     (length(${text}) > ${threadPreviewTextLimit}) AS text_truncated`;
 }
@@ -258,6 +262,7 @@ function toMessage(row: MessageRow): ThreadMessagePreviewProjection {
     createdAt: row.created_at,
     source: row.source,
     sourceThreadId: row.source_thread_id,
+    channel: parseChannelJson(row.channel_json),
     attachments: row.attachments,
   };
 }

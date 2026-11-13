@@ -1,6 +1,7 @@
 import type { AttachmentMetadata } from '../attachments/types.js';
 import type {
   AutomationReference,
+  ChannelReference,
   ContextMessage,
   DelegationKey,
   MessageSource,
@@ -62,6 +63,7 @@ export interface InputRecord {
   sourceThreadId: string | null;
   sourceAgentId: string | null;
   automation: AutomationReference | null;
+  channel: ChannelReference | null;
   attachments?: readonly AttachmentMetadata[] | undefined;
   createdAt: string;
   updatedAt: string;

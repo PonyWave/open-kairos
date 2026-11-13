@@ -11,6 +11,8 @@ import { BashLogReader } from './api/logs.js';
 import { AuthService } from './auth/service.js';
 import { AuthStore } from './auth/store.js';
 import { AutomationService } from './automation/service.js';
+import { ChannelManager } from './channels/manager.js';
+import type { WechatClient } from './channels/wechat/client.js';
 import {
   type ModelConfigurationStatus,
   readPeriodicRecapConfig,
@@ -73,6 +75,7 @@ export interface ServerOptions {
   web?: WebToolOptions;
   maxQueuedInputs?: number;
   eventRetentionMs?: number;
+  wechatClient?: WechatClient;
 }
 
 const unavailableModel: ModelConfigurationStatus = {
@@ -141,6 +144,14 @@ export function createServer(
   });
   const memory =
     options.memory === false ? undefined : new MemoryWiki(options.memory ?? serverConfig.memory);
+  const channelManager = new ChannelManager({
+    database,
+    secret: identity.secret,
+    sessionStore: store,
+    ownerId: () => options.tenantId ?? authentication.authService.ensureLocalIdentity().tenantId,
+    ...(options.now ? { clock: options.now } : {}),
+    ...(options.wechatClient === undefined ? {} : { wechatClient: options.wechatClient }),
+  });
   let coordinator: RunCoordinator;
   const automations = new AutomationService(store, {
     ...(options.now ? { clock: options.now } : {}),
@@ -151,6 +162,7 @@ export function createServer(
     settings,
     store,
     automations,
+    channels: { store: channelManager.store },
     ...(options.model ? { model: options.model } : {}),
     environments,
     environmentOperations: options.environmentOperations ?? deviceChannel,
@@ -205,6 +217,7 @@ export function createServer(
       settings,
       coordinator,
       automations,
+      channels: channelManager,
       logs,
       modelStatus:
         options.modelStatus ??
@@ -252,6 +265,7 @@ export function createServer(
     coordinator.recoverManualCompactions();
     coordinator.resumePeriodicRecaps();
     coordinator.resumeDeliveries();
+    channelManager.start();
     if (options.tenantId && memory) {
       ensureMemoryDreamAutomation(store, automations, {
         ownerId: options.tenantId,
@@ -270,6 +284,7 @@ export function createServer(
   });
   server.addHook('preClose', async () => {
     closing = true;
+    channelManager.stop();
     await automations.close();
     await coordinator.close();
     server.server.closeIdleConnections();

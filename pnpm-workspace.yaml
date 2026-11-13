@@ -7,6 +7,7 @@ storeDir: .pnpm-store
 allowBuilds:
   "@bufbuild/buf": true
   esbuild: true
+  protobufjs: false
 
 minimumReleaseAgeExclude:
   - "@vitejs/plugin-react@6.2.1"

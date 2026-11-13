@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
-import { migrationTableNames } from './migrations.js';
+import { migrateDatabase } from './migrations.js';
 import {
   inspectServerDatabase,
   migrateServerDatabase,
@@ -103,21 +103,45 @@ function currentSchemaColumns(): ReadonlyMap<string, readonly ColumnDefinition[]
   }
 }
 
-function expectedTables(inspection: ServerMigrationInspection): string[] {
-  const plan = serverMigrationPlans.find(
-    (candidate) => candidate.namespace === inspection.namespace,
-  );
-  if (!plan) throw new Error(`Unknown database namespace ${inspection.namespace}.`);
-  return [...migrationTableNames(plan.migrations)];
+interface VersionedSchema {
+  tables: Set<string>;
+  columns: Map<string, string[]>;
 }
 
-function expectedColumns(
-  table: string,
-  currentColumns: ReadonlyMap<string, readonly ColumnDefinition[]>,
-): string[] {
-  const columns = new Set((currentColumns.get(table) ?? []).map((column) => column.name));
-  if (columns.size === 0) throw new Error(`Current schema does not contain table ${table}.`);
-  return [...columns].sort();
+const versionedSchemaCache = new Map<string, VersionedSchema>();
+
+function expectedSchemaAtVersion(namespace: string, version: number): VersionedSchema {
+  const cacheKey = `${namespace}/${version}`;
+  const cached = versionedSchemaCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const plan = serverMigrationPlans.find((candidate) => candidate.namespace === namespace);
+  if (!plan) throw new Error(`Unknown database namespace ${namespace}.`);
+  const database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
+  try {
+    migrateDatabase(
+      database,
+      plan.migrations.filter((migration) => migration.version <= version),
+      namespace,
+    );
+    const tables = new Set(
+      [...tableNames(database)].filter(
+        (table) => table !== 'schema_migrations' && table !== 'sqlite_sequence',
+      ),
+    );
+    const columns = new Map(
+      [...tables].map((table) => [
+        table,
+        columnDefinitions(database, table)
+          .map((column) => column.name)
+          .sort(),
+      ]),
+    );
+    const schema = { tables, columns };
+    versionedSchemaCache.set(cacheKey, schema);
+    return schema;
+  } finally {
+    database.close();
+  }
 }
 
 function assertIntegrity(database: DatabaseSync, schema?: 'main'): void {
@@ -153,14 +177,15 @@ function inspectSource(database: DatabaseSync, path: string): SourceInspection {
     if (inspection.currentVersion === 0) {
       throw new Error(`Database schema ${inspection.namespace}/0 has no published table shape.`);
     }
-    for (const table of expectedTables(inspection)) {
+    const expectedSchema = expectedSchemaAtVersion(inspection.namespace, inspection.currentVersion);
+    for (const table of expectedSchema.tables) {
       if (!tables.has(table)) {
         throw new Error(`Database schema ${inspection.namespace} is missing table ${table}.`);
       }
       const actual = columnDefinitions(database, table)
         .map((column) => column.name)
         .sort();
-      const expected = expectedColumns(table, currentColumns);
+      const expected = expectedSchema.columns.get(table) ?? [];
       if (actual.join('\0') !== expected.join('\0')) {
         throw new Error(
           `Database schema ${inspection.namespace}/${inspection.currentVersion} has an unsupported ${table} shape.`,

@@ -1,4 +1,6 @@
 import {
+  ChannelId,
+  ChannelReferenceKind,
   ContentBlockType,
   type Message,
   MessageRole,
@@ -24,6 +26,7 @@ import { MessageAvatar } from './message-avatar.js';
 import { ThreadNotificationCallCard, ThreadNotificationCard } from './notification-cards.js';
 import { EditedMarker } from './response-components.js';
 import type { DelegationCallProjection } from './response-projection.js';
+import type { ChannelDeliveryStatusInfo } from './sent-user-message.js';
 import { type SentUserMessage, sentUserMessage } from './sent-user-message.js';
 import { SentUserMessageCard, UserMessageFailure } from './sent-user-message-card.js';
 import { SubagentCard } from './subagent-card.js';
@@ -67,6 +70,7 @@ export interface MessageCardProps {
   mergedThinkingBlockIndexes?: ReadonlySet<number> | undefined;
   sentMessage?: SentUserMessage | null | undefined;
   sentCall?: ToolCall | undefined;
+  channelDeliveries?: ReadonlyMap<string, ChannelDeliveryStatusInfo> | undefined;
   displayId?: string | undefined;
   hideContent?: boolean | undefined;
   compact?: boolean | undefined;
@@ -105,6 +109,7 @@ export function MessageCard({
   mergedThinkingBlockIndexes: projectedMergedThinking,
   sentMessage,
   sentCall,
+  channelDeliveries,
   displayId,
   hideContent = false,
   compact = false,
@@ -119,8 +124,20 @@ export function MessageCard({
   onRerun,
 }: MessageCardProps) {
   const [revision, setRevision] = useState(message.content);
-  const isUser = !readOnly && isRootAgent(message.agentId) && isDirectUserMessage(message);
-  const showActions = isUser && allowActions;
+  const channelInbound =
+    message.source === MessageSource.CHANNEL &&
+    message.channel?.kind === ChannelReferenceKind.INBOUND;
+  const channelKey =
+    channelInbound === true
+      ? message.channel?.channel === ChannelId.WECHAT
+        ? ('wechat' as const)
+        : ('feishu' as const)
+      : undefined;
+  const isUser =
+    !readOnly &&
+    isRootAgent(message.agentId) &&
+    (isDirectUserMessage(message) || channelInbound === true);
+  const showActions = isUser && allowActions && channelInbound !== true;
   const editingActive = editing && showActions;
   const sent = sentMessage === undefined ? sentUserMessage(message) : sentMessage;
   if (sent) {
@@ -131,6 +148,7 @@ export function MessageCard({
         call={sentCall}
         compact={compact}
         continuation={continuation}
+        deliveryStatuses={channelDeliveries}
       />
     );
   }
@@ -161,6 +179,13 @@ export function MessageCard({
         onOpenTopic={onOpenTopic}
       />
     );
+  }
+
+  if (
+    message.source === MessageSource.CHANNEL &&
+    message.channel?.kind === ChannelReferenceKind.DELIVERY_FAILURE
+  ) {
+    return <ChannelDeliveryFailureCard message={message} />;
   }
 
   if (message.source === MessageSource.THREAD_RESPONSE && message.sourceThreadId) {
@@ -381,7 +406,11 @@ export function MessageCard({
           </div>
         </form>
       ) : orderedContent ? null : (
-        renderText(message)
+        renderText(
+          channelInbound === true
+            ? { ...message, content: message.content.replace(/^\[来自(微信|飞书)\]\n?/, '') }
+            : message,
+        )
       )}
 
       {orderedContent ? renderOrderedContent() : renderedToolItems}
@@ -416,14 +445,26 @@ export function MessageCard({
 
   return (
     <article
-      className={`message role-${message.role}${streaming ? ' transient' : ''}${isUser ? ' user user-with-avatar' : ' assistant'}${continuation ? ' assistant-continuation' : ''}`}
+      className={`message role-${message.role}${streaming ? ' transient' : ''}${isUser ? ' user user-with-avatar' : ' assistant'}${continuation ? ' assistant-continuation' : ''}${channelKey !== undefined ? ` channel-inbound channel-${channelKey}` : ''}`}
       data-message-id={message.messageId}
       data-display-id={displayId}
       data-delegation-call-id={message.delegation?.sourceToolCallId}
     >
       {isUser ? (
         <>
-          <div className="user-message-content">{content}</div>
+          <div className="user-message-content">
+            {channelKey !== undefined && (
+              <span
+                className={`channel-corner-badge channel-${channelKey}`}
+                role="img"
+                aria-label={channelKey === 'wechat' ? '来自微信' : '来自飞书'}
+                title={channelKey === 'wechat' ? '来自微信' : '来自飞书'}
+              >
+                <Icon name={channelKey === 'wechat' ? 'wechat' : 'feishu'} className="i-sm" />
+              </span>
+            )}
+            {content}
+          </div>
           {avatar}
         </>
       ) : (
@@ -432,6 +473,18 @@ export function MessageCard({
           <div className="message-content">{content}</div>
         </>
       )}
+    </article>
+  );
+}
+
+function ChannelDeliveryFailureCard({ message }: { message: Message }) {
+  const channelName = message.channel?.channel === ChannelId.WECHAT ? '微信' : '飞书';
+  return (
+    <article className="message channel-delivery-failure" data-message-id={message.messageId}>
+      <div className="channel-delivery-failure-card">
+        <div className="channel-delivery-failure-title">渠道投递失败（{channelName}）</div>
+        <pre className="channel-delivery-failure-detail">{message.content}</pre>
+      </div>
     </article>
   );
 }

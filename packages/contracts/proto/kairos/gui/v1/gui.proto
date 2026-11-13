@@ -26,6 +26,26 @@ enum MessageSource {
   MESSAGE_SOURCE_SUBAGENT_RESPONSE = 4;
   MESSAGE_SOURCE_AUTOMATION = 5;
   MESSAGE_SOURCE_THREAD_NOTIFICATION = 6;
+  MESSAGE_SOURCE_CHANNEL = 7;
+}
+
+enum ChannelId {
+  CHANNEL_ID_UNSPECIFIED = 0;
+  CHANNEL_ID_WECHAT = 1;
+  CHANNEL_ID_FEISHU = 2;
+}
+
+enum ChannelReferenceKind {
+  CHANNEL_REFERENCE_KIND_UNSPECIFIED = 0;
+  CHANNEL_REFERENCE_KIND_INBOUND = 1;
+  CHANNEL_REFERENCE_KIND_DELIVERY_FAILURE = 2;
+}
+
+message ChannelReference {
+  ChannelId channel = 1;
+  ChannelReferenceKind kind = 2;
+  optional string external_message_id = 3;
+  optional string delivery_id = 4;
 }
 
 enum RunExecutionMode {
@@ -230,6 +250,7 @@ message Message {
   optional ToolResultError tool_error = 26;
   optional AutomationReference automation = 27;
   optional bool send_to_user_enabled = 28;
+  optional ChannelReference channel = 29;
 }
 
 message Input {
@@ -250,6 +271,7 @@ message Input {
   optional DelegationReference delegation = 14;
   repeated Attachment attachments = 15;
   optional AutomationReference automation = 16;
+  optional ChannelReference channel = 17;
 }
 
 message TokenUsage {
@@ -488,6 +510,7 @@ message ThreadMessagePreview {
   optional MessageSource source = 7;
   optional string source_thread_id = 8;
   repeated Attachment attachments = 9;
+  optional ChannelReference channel = 10;
 }
 
 message ThreadCallReference {

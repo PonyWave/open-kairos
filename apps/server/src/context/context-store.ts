@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { DetailedModelUsage } from '@kairos/agent-core';
 import { z } from 'zod';
 import { AttachmentStore } from '../attachments/store.js';
+import { channelJsonText, parseChannelJson } from '../channels/reference.js';
 import { inTransaction } from '../storage/transaction.js';
 import { modelResponseModeEventId, readSendToUserMode } from './output-mode.js';
 import type {
@@ -51,6 +52,7 @@ const contextRowSchema = z.object({
       'subagent_response',
       'automation',
       'thread_notification',
+      'channel',
     ])
     .nullable(),
   delegation_source_thread_id: z.string().nullable(),
@@ -63,6 +65,7 @@ const contextRowSchema = z.object({
   automation_fire_id: z.string().nullable(),
   automation_trigger: z.enum(['scheduled', 'run_now']).nullable(),
   automation_scheduled_at: z.string().nullable(),
+  channel_json: z.string().nullable(),
 });
 
 type ContextRow = z.infer<typeof contextRowSchema>;
@@ -192,6 +195,13 @@ export class ContextStore {
     if (sourceInputId !== null) requireIdentifier(sourceInputId, 'sourceInputId');
     if (sourceThreadId !== null) requireIdentifier(sourceThreadId, 'sourceThreadId');
     if (sourceAgentId !== null) requireIdentifier(sourceAgentId, 'sourceAgentId');
+    const channel = input.channel ?? null;
+    if (channel !== null) {
+      if (channel.externalMessageId != null) {
+        requireIdentifier(channel.externalMessageId, 'channel.externalMessageId');
+      }
+      if (channel.deliveryId != null) requireIdentifier(channel.deliveryId, 'channel.deliveryId');
+    }
 
     const append = () => {
       let toolCall: z.infer<typeof toolCallRowSchema> | undefined;
@@ -241,8 +251,8 @@ export class ContextStore {
             superseded_by_run_id, source, delegation_source_thread_id,
             delegation_source_agent_id, source_tool_call_id, source_input_id,
             source_thread_id, source_agent_id, automation_schedule_id, automation_fire_id,
-            automation_trigger, automation_scheduled_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            automation_trigger, automation_scheduled_at, channel_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           messageId,
@@ -280,6 +290,7 @@ export class ContextStore {
           automation?.fireId ?? null,
           automation?.trigger ?? null,
           automation?.scheduledAt ?? null,
+          channelJsonText(channel),
         );
       const insertedSeq = requireSequence(Number(result.lastInsertRowid), 'seq');
 
@@ -622,6 +633,7 @@ export class ContextStore {
       sourceInputId: row.source_input_id,
       sourceThreadId: row.source_thread_id,
       sourceAgentId: row.source_agent_id,
+      channel: parseChannelJson(row.channel_json),
       automation:
         row.automation_schedule_id === null ||
         row.automation_fire_id === null ||

@@ -1,0 +1,186 @@
+import { expect, it, vi } from 'vitest';
+import { SessionStore } from '../../sessions/store.js';
+import { openDatabase } from '../../storage/database.js';
+import { ChannelStore } from '../store.js';
+import { WechatChannel } from './adapter.js';
+import type { WechatClientApi } from './client.js';
+
+const ownerId = 'wechat-adapter-owner';
+const secret = 'wechat-adapter-test-secret-32chars';
+
+type QrStatus = Awaited<ReturnType<WechatClientApi['pollQrcodeStatus']>>;
+
+const confirmedStatus: QrStatus = {
+  status: 'confirmed',
+  bot_token: 'token-1',
+  ilink_bot_id: 'bot-1',
+  baseurl: 'https://ilinkai.weixin.qq.com',
+  ilink_user_id: 'user-1',
+};
+
+class StubClient implements WechatClientApi {
+  baseUrl = 'https://ilinkai.weixin.qq.com';
+  qrCount = 0;
+  polls: { qrcode: string; verifyCode: string | undefined }[] = [];
+  script: QrStatus[] = [];
+  sentTexts: string[] = [];
+  typingCalls: { userId: string; ticket: string; status: 1 | 2 }[] = [];
+
+  async getBotQrcode() {
+    this.qrCount += 1;
+    return { qrcode: `qr-${this.qrCount}`, qrcode_img_content: `content-${this.qrCount}` };
+  }
+
+  async pollQrcodeStatus(qrcode: string, verifyCode?: string) {
+    this.polls.push({ qrcode, verifyCode });
+    await new Promise((resolve) => setImmediate(resolve));
+    return this.script.shift() ?? { status: 'wait' };
+  }
+
+  async getUpdates(): Promise<never> {
+    throw new Error('not used in login tests');
+  }
+
+  async sendText(
+    _botToken: string,
+    _toUserId: string,
+    _contextToken: string | null,
+    text: string,
+  ): Promise<void> {
+    this.sentTexts.push(text);
+  }
+
+  async getConfig(): Promise<string | null> {
+    return 'ticket-1';
+  }
+
+  async sendTyping(
+    _botToken: string,
+    userId: string,
+    ticket: string,
+    status: 1 | 2,
+  ): Promise<void> {
+    this.typingCalls.push({ userId, ticket, status });
+  }
+
+  async notifyLifecycle(): Promise<void> {}
+}
+
+function fixture(onInbound: (message: { text: string }) => void = () => {}) {
+  const database = openDatabase(':memory:');
+  new SessionStore(database);
+  const store = new ChannelStore(database, secret);
+  const client = new StubClient();
+  const channel = new WechatChannel({
+    ownerId: () => ownerId,
+    store,
+    onInbound,
+    client,
+  });
+  return { database, store, client, channel };
+}
+
+it('completes login with a phone PIN and submits it on the next status poll', async () => {
+  const { database, store, client, channel } = fixture();
+  try {
+    client.script = [{ status: 'need_verifycode' }, { status: 'scaned' }, confirmedStatus];
+    const { sessionId, qrContent } = await channel.startLogin();
+    expect(qrContent).toBe('content-1');
+    await vi.waitFor(() => expect(channel.pollLogin(sessionId).awaitingPin).toBe(true));
+    expect(channel.pollLogin(sessionId).reason).toContain('数字验证码');
+    channel.submitLoginPin(sessionId, '123456');
+    await vi.waitFor(() => expect(channel.pollLogin(sessionId).status).toBe('confirmed'));
+    expect(client.polls[0]?.verifyCode).toBeUndefined();
+    expect(client.polls[1]?.verifyCode).toBe('123456');
+    const state = store.getState(ownerId, 'wechat');
+    expect(state.status).toBe('active');
+    expect(state.externalUserId).toBe('user-1');
+    expect(store.getCredentials(ownerId, 'wechat')).toMatchObject({ botToken: 'token-1' });
+  } finally {
+    database.close();
+  }
+});
+
+it('asks for the PIN again when the submitted code is rejected', async () => {
+  const { database, client, channel } = fixture();
+  try {
+    client.script = [
+      { status: 'need_verifycode' },
+      { status: 'need_verifycode' },
+      { status: 'scaned' },
+      confirmedStatus,
+    ];
+    const { sessionId } = await channel.startLogin();
+    await vi.waitFor(() => expect(channel.pollLogin(sessionId).awaitingPin).toBe(true));
+    channel.submitLoginPin(sessionId, '111111');
+    await vi.waitFor(() => expect(channel.pollLogin(sessionId).reason).toContain('不正确'));
+    expect(channel.pollLogin(sessionId).awaitingPin).toBe(true);
+    channel.submitLoginPin(sessionId, '222222');
+    await vi.waitFor(() => expect(channel.pollLogin(sessionId).status).toBe('confirmed'));
+    expect(client.polls[1]?.verifyCode).toBe('111111');
+    expect(client.polls[2]?.verifyCode).toBe('222222');
+  } finally {
+    database.close();
+  }
+});
+
+it('refreshes the QR code and clears the PIN state when the code is blocked', async () => {
+  const { database, channel, client } = fixture();
+  try {
+    client.script = [{ status: 'verify_code_blocked' }, confirmedStatus];
+    const { sessionId } = await channel.startLogin();
+    await vi.waitFor(() => expect(channel.pollLogin(sessionId).status).toBe('confirmed'));
+    expect(client.qrCount).toBe(2);
+    expect(client.polls[1]?.qrcode).toBe('qr-2');
+  } finally {
+    database.close();
+  }
+});
+
+it('rejects PIN submission when the session is not waiting for one', async () => {
+  const { database, channel, client } = fixture();
+  try {
+    const { sessionId } = await channel.startLogin();
+    expect(() => channel.submitLoginPin(sessionId, '123456')).toThrowError(/不需要数字验证码/);
+    expect(() => channel.submitLoginPin('missing-session', '123456')).toThrowError(/不存在/);
+    expect(() => channel.submitLoginPin(sessionId, '12ab')).toThrowError(/不需要数字验证码/);
+    client.script = [confirmedStatus];
+    await vi.waitFor(() => expect(channel.pollLogin(sessionId).status).toBe('confirmed'));
+  } finally {
+    database.close();
+  }
+});
+
+it('shows typing on inbound wechat messages and cancels it after the first delivery', async () => {
+  const inbound: string[] = [];
+  const { database, store, client, channel } = fixture((message) => {
+    inbound.push(message.text);
+  });
+  try {
+    store.completeWechatLogin(ownerId, {
+      kind: 'wechat',
+      botToken: 'token-1',
+      baseUrl: 'https://ilinkai.weixin.qq.com',
+      botId: 'bot-1',
+      ilinkUserId: 'user-1',
+    });
+    channel.handleInboundMessage(ownerId, 'user-1', {
+      message_type: 1,
+      from_user_id: 'user-1',
+      message_id: 42,
+      context_token: 'ctx-1',
+      item_list: [{ type: 1, text_item: { text: '你好' } }],
+    });
+    expect(inbound).toEqual(['你好']);
+    await vi.waitFor(() => expect(client.typingCalls.some((call) => call.status === 1)).toBe(true));
+    expect(store.getState(ownerId, 'wechat').contextToken).toBe('ctx-1');
+    await channel.send(
+      { externalUserId: 'user-1', contextToken: 'ctx-1', markdown: '回复内容' },
+      new AbortController().signal,
+    );
+    expect(client.sentTexts).toEqual(['回复内容']);
+    expect(client.typingCalls.some((call) => call.status === 2)).toBe(true);
+  } finally {
+    database.close();
+  }
+});

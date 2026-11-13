@@ -16,4 +16,5 @@ export const healthResponseSchema = z.strictObject({
 
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
+export * from './gen/kairos/gui/v1/channel_pb.js';
 export * from './gen/kairos/gui/v1/settings_pb.js';

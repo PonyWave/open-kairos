@@ -48,6 +48,7 @@ import type { ToolExpansionChange, ToolExpansionChoices } from './tool-call-grou
 import { projectAssociatedToolResultIds, projectToolOutcomes } from './tool-group-projection.js';
 import type { useActionExecutor } from './use-action-executor.js';
 import { useCallPreviews } from './use-call-previews.js';
+import { useChannelDeliveries } from './use-channel-deliveries.js';
 import { useConversationScroll } from './use-conversation-scroll.js';
 import type { useDrafts } from './use-drafts.js';
 import { useSubagentViews } from './use-subagent-views.js';
@@ -275,6 +276,17 @@ export function ConversationPane({
       ),
     [conversationItems, historyStartIndex, snapshot?.runs, usesDisplayMode, displayMode],
   );
+  const channelDeliveryIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const item of visibleConversationItems) {
+      if (item.kind !== 'message') continue;
+      for (const delivery of item.value.sentMessage?.deliveries ?? []) {
+        ids.push(delivery.deliveryId);
+      }
+    }
+    return ids;
+  }, [visibleConversationItems]);
+  const channelDeliveries = useChannelDeliveries(clients, channelDeliveryIds);
   const loadEarlierTurns = useCallback((): boolean => {
     if (!hasEarlierTurns) return false;
     setHistoryWindow((current) => {
@@ -705,6 +717,7 @@ export function ConversationPane({
           mergedThinkingBlockIndexes={item.value.mergedThinkingBlockIndexes}
           sentMessage={item.value.sentMessage}
           sentCall={item.value.sentCall}
+          channelDeliveries={channelDeliveries}
           hideContent={item.value.hideContent}
           compact={item.value.compact}
           sendFailure={item.value.sendFailure}

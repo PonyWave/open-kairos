@@ -6,6 +6,7 @@ export interface Migration {
   version: number;
   name: string;
   sql: string;
+  foreignKeysOff?: boolean;
 }
 
 export const contextRecapMigrations: readonly Migration[] = [
@@ -505,6 +506,99 @@ CREATE INDEX recaps_owner_validity
         ON recaps(thread_id, agent_id, validity, source_seq_start, source_seq_end);
     `,
   },
+  {
+    version: 2,
+    name: 'context_messages_channel_source',
+    foreignKeysOff: true,
+    sql: `
+CREATE TABLE context_messages_next (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id TEXT NOT NULL UNIQUE,
+        thread_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant', 'tool')),
+        content TEXT NOT NULL,
+        content_blocks_json TEXT,
+        response_usage_json TEXT,
+        tool_calls_json TEXT,
+        incomplete_tool_calls_json TEXT,
+        tool_call_id TEXT,
+        tool_name TEXT,
+        tool_status TEXT CHECK(tool_status IN ('success', 'error')),
+        tool_error_json TEXT,
+        created_at TEXT NOT NULL,
+        run_id TEXT,
+        superseded_by_run_id TEXT,
+        source TEXT CHECK(source IN (
+          'user', 'thread_call', 'thread_response', 'subagent_response', 'automation',
+          'thread_notification', 'channel'
+        )),
+        delegation_source_thread_id TEXT,
+        delegation_source_agent_id TEXT,
+        source_tool_call_id TEXT,
+        source_input_id TEXT,
+        source_thread_id TEXT,
+        source_agent_id TEXT, automation_schedule_id TEXT, automation_fire_id TEXT, automation_trigger TEXT
+        CHECK(automation_trigger IS NULL OR automation_trigger IN ('scheduled', 'run_now')), automation_scheduled_at TEXT,
+        channel_json TEXT,
+        CHECK (
+          (
+            role IN ('system', 'user')
+            AND content_blocks_json IS NULL
+            AND response_usage_json IS NULL
+            AND tool_calls_json IS NULL
+            AND incomplete_tool_calls_json IS NULL
+            AND tool_call_id IS NULL
+            AND tool_name IS NULL
+            AND tool_status IS NULL
+            AND tool_error_json IS NULL
+          )
+          OR (
+            role = 'assistant'
+            AND tool_call_id IS NULL
+            AND tool_name IS NULL
+            AND tool_status IS NULL
+            AND tool_error_json IS NULL
+          )
+          OR (
+            role = 'tool'
+            AND content_blocks_json IS NULL
+            AND response_usage_json IS NULL
+            AND tool_calls_json IS NULL
+            AND incomplete_tool_calls_json IS NULL
+            AND tool_call_id IS NOT NULL
+            AND tool_name IS NOT NULL
+          )
+        )
+      );
+INSERT INTO context_messages_next (
+        seq, message_id, thread_id, agent_id, role, content, content_blocks_json,
+        response_usage_json, tool_calls_json, incomplete_tool_calls_json, tool_call_id, tool_name,
+        tool_status, tool_error_json, created_at, run_id, superseded_by_run_id, source,
+        delegation_source_thread_id, delegation_source_agent_id, source_tool_call_id,
+        source_input_id, source_thread_id, source_agent_id, automation_schedule_id,
+        automation_fire_id, automation_trigger, automation_scheduled_at, channel_json
+      )
+      SELECT
+        seq, message_id, thread_id, agent_id, role, content, content_blocks_json,
+        response_usage_json, tool_calls_json, incomplete_tool_calls_json, tool_call_id, tool_name,
+        tool_status, tool_error_json, created_at, run_id, superseded_by_run_id, source,
+        delegation_source_thread_id, delegation_source_agent_id, source_tool_call_id,
+        source_input_id, source_thread_id, source_agent_id, automation_schedule_id,
+        automation_fire_id, automation_trigger, automation_scheduled_at, NULL
+      FROM context_messages;
+DROP TABLE context_messages;
+ALTER TABLE context_messages_next RENAME TO context_messages;
+CREATE INDEX context_messages_delegation
+        ON context_messages(
+          delegation_source_thread_id, delegation_source_agent_id, source_tool_call_id, seq
+        );
+CREATE INDEX context_messages_owner_created
+        ON context_messages(thread_id, agent_id, created_at, seq);
+CREATE UNIQUE INDEX context_messages_owner_seq
+        ON context_messages(thread_id, agent_id, seq);
+    `,
+  },
 ];
 
 export class SchemaMigrationRequiredError extends Error {
@@ -610,8 +704,12 @@ export function migrateDatabase(
     }
     previousVersion = migration.version;
   }
-  inTransaction(database, () => {
-    database.exec(`
+  const pending = migrations.filter((migration) => migration.version > inspection.currentVersion);
+  const foreignKeysOff = pending.some((migration) => migration.foreignKeysOff === true);
+  if (foreignKeysOff) database.exec('PRAGMA foreign_keys = OFF;');
+  try {
+    inTransaction(database, () => {
+      database.exec(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         namespace TEXT NOT NULL,
         version INTEGER NOT NULL,
@@ -620,15 +718,26 @@ export function migrateDatabase(
         PRIMARY KEY(namespace, version)
       );
     `);
-    for (const migration of migrations) {
-      database.exec(migration.sql);
-      database
-        .prepare(
-          'INSERT INTO schema_migrations(namespace, version, name, applied_at) VALUES (?, ?, ?, ?)',
-        )
-        .run(namespace, migration.version, migration.name, new Date().toISOString());
+      for (const migration of migrations) {
+        database.exec(migration.sql);
+        database
+          .prepare(
+            'INSERT INTO schema_migrations(namespace, version, name, applied_at) VALUES (?, ?, ?, ?)',
+          )
+          .run(namespace, migration.version, migration.name, new Date().toISOString());
+      }
+    });
+  } finally {
+    if (foreignKeysOff) database.exec('PRAGMA foreign_keys = ON;');
+  }
+  if (foreignKeysOff) {
+    const violations = database.prepare('PRAGMA foreign_key_check;').all();
+    if (violations.length > 0) {
+      throw new Error(
+        `Migration ${namespace} produced ${violations.length} foreign key violations.`,
+      );
     }
-  });
+  }
 }
 
 export function migrationTableNames(migrations: readonly Migration[]): Set<string> {
@@ -641,5 +750,8 @@ export function migrationTableNames(migrations: readonly Migration[]): Set<strin
   }
   names.delete('schema_migrations');
   names.delete('threads_next');
+  for (const name of names) {
+    if (name.endsWith('_next')) names.delete(name);
+  }
   return names;
 }

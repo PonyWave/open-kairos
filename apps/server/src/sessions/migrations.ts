@@ -337,4 +337,105 @@ CREATE UNIQUE INDEX threads_one_workspace_main_per_workspace
 CREATE INDEX threads_owner_seq ON threads(owner_id, seq);
     `,
   },
+  {
+    version: 2,
+    name: 'channel_integration',
+    foreignKeysOff: true,
+    sql: `
+CREATE TABLE inputs_next (
+        input_id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
+        owner_id TEXT NOT NULL,
+        text TEXT NOT NULL,
+        mode TEXT NOT NULL CHECK(mode IN ('follow_up', 'steer')),
+        status TEXT NOT NULL CHECK(status IN ('queued', 'consumed', 'cancelled')),
+        position INTEGER NOT NULL CHECK(position > 0),
+        version INTEGER NOT NULL CHECK(version > 0),
+        consumed_run_id TEXT,
+        source TEXT NOT NULL CHECK(source IN (
+          'user', 'thread_call', 'thread_response', 'subagent_response', 'automation',
+          'channel'
+        )),
+        delegation_source_thread_id TEXT,
+        delegation_source_agent_id TEXT,
+        source_tool_call_id TEXT,
+        source_thread_id TEXT,
+        source_agent_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL, automation_schedule_id TEXT, automation_fire_id TEXT, automation_trigger TEXT
+        CHECK(automation_trigger IS NULL OR automation_trigger IN ('scheduled', 'run_now')), automation_scheduled_at TEXT,
+        channel_json TEXT,
+        UNIQUE(thread_id, position),
+        CHECK(
+          (delegation_source_thread_id IS NULL AND delegation_source_agent_id IS NULL AND source_tool_call_id IS NULL)
+          OR (delegation_source_thread_id IS NOT NULL AND delegation_source_agent_id IS NOT NULL AND source_tool_call_id IS NOT NULL)
+        )
+      );
+INSERT INTO inputs_next (
+        input_id, thread_id, owner_id, text, mode, status, position, version, consumed_run_id,
+        source, delegation_source_thread_id, delegation_source_agent_id, source_tool_call_id,
+        source_thread_id, source_agent_id, created_at, updated_at, automation_schedule_id,
+        automation_fire_id, automation_trigger, automation_scheduled_at, channel_json
+      )
+      SELECT
+        input_id, thread_id, owner_id, text, mode, status, position, version, consumed_run_id,
+        source, delegation_source_thread_id, delegation_source_agent_id, source_tool_call_id,
+        source_thread_id, source_agent_id, created_at, updated_at, automation_schedule_id,
+        automation_fire_id, automation_trigger, automation_scheduled_at, NULL
+      FROM inputs;
+DROP TABLE inputs;
+ALTER TABLE inputs_next RENAME TO inputs;
+CREATE UNIQUE INDEX inputs_delegation_source
+        ON inputs(delegation_source_thread_id, delegation_source_agent_id, source_tool_call_id, source)
+        WHERE source_tool_call_id IS NOT NULL;
+CREATE INDEX inputs_source
+        ON inputs(delegation_source_thread_id, delegation_source_agent_id, source_tool_call_id);
+CREATE INDEX inputs_thread_status_position
+        ON inputs(thread_id, status, position);
+CREATE TABLE channel_states (
+        tenant_id TEXT NOT NULL,
+        channel TEXT NOT NULL CHECK(channel IN ('wechat', 'feishu')),
+        status TEXT NOT NULL CHECK(status IN (
+          'unconfigured', 'pending_login', 'pending_binding', 'active', 'error'
+        )),
+        account_label TEXT NOT NULL DEFAULT '',
+        external_user_id TEXT,
+        encrypted_credentials TEXT,
+        context_token TEXT,
+        inbound_cursor TEXT NOT NULL DEFAULT '',
+        pairing_code TEXT,
+        status_reason TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(tenant_id, channel)
+      );
+CREATE TABLE channel_inbound_events (
+        tenant_id TEXT NOT NULL,
+        channel TEXT NOT NULL CHECK(channel IN ('wechat', 'feishu')),
+        external_message_id TEXT NOT NULL,
+        received_at TEXT NOT NULL,
+        PRIMARY KEY(tenant_id, channel, external_message_id)
+      );
+CREATE TABLE channel_deliveries (
+        delivery_id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        channel TEXT NOT NULL CHECK(channel IN ('wechat', 'feishu')),
+        message_id TEXT,
+        tool_call_id TEXT,
+        content TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('pending', 'delivering', 'succeeded', 'failed')),
+        attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
+        max_attempts INTEGER NOT NULL CHECK(max_attempts > 0),
+        last_error_code TEXT,
+        last_error_message TEXT,
+        last_error_retryable INTEGER CHECK(last_error_retryable IN (0, 1)),
+        next_attempt_at TEXT,
+        notified_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+CREATE INDEX channel_deliveries_due ON channel_deliveries(status, next_attempt_at);
+CREATE INDEX channel_deliveries_owner ON channel_deliveries(owner_id, created_at, delivery_id);
+    `,
+  },
 ];
