@@ -1,6 +1,11 @@
 import { randomInt } from 'node:crypto';
 import type { ConnectRouter, HandlerContext } from '@connectrpc/connect';
-import { ChannelId, ChannelLoginState, ChannelService } from '@kairos/contracts';
+import {
+  ChannelDeliveryStatus,
+  ChannelId,
+  ChannelLoginState,
+  ChannelService,
+} from '@kairos/contracts';
 import type { ChannelManager } from '../channels/manager.js';
 import type { ChannelStateRecord } from '../channels/store.js';
 import { ChannelDeliveryError } from '../channels/store.js';
@@ -144,6 +149,31 @@ export function registerChannelRoutes(
         if (channel === 'wechat') channels.wechat.sync();
         else channels.feishu.sync();
         return { clientActionId: request.clientActionId, state: toStateResponse(state) };
+      }),
+    listChannelDeliveries: (request, context) =>
+      handle(() => {
+        const ownerId = owner(context);
+        if (request.deliveryIds.length > 100) {
+          throw new SessionError('invalid_argument', '单次最多查询 100 条投递记录。');
+        }
+        for (const deliveryId of request.deliveryIds) {
+          requireText(deliveryId, 'deliveryId', 200);
+        }
+        return {
+          deliveries: channels.store.listDeliveries(ownerId, request.deliveryIds).map((record) => ({
+            deliveryId: record.deliveryId,
+            channel: record.channel === 'wechat' ? ChannelId.WECHAT : ChannelId.FEISHU,
+            status:
+              record.status === 'pending'
+                ? ChannelDeliveryStatus.PENDING
+                : record.status === 'delivering'
+                  ? ChannelDeliveryStatus.DELIVERING
+                  : record.status === 'succeeded'
+                    ? ChannelDeliveryStatus.SUCCEEDED
+                    : ChannelDeliveryStatus.FAILED,
+            errorMessage: record.status === 'failed' ? (record.lastErrorMessage ?? '') : '',
+          })),
+        };
       }),
   });
 }

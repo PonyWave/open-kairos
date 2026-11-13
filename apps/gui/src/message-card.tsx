@@ -26,6 +26,7 @@ import { MessageAvatar } from './message-avatar.js';
 import { ThreadNotificationCallCard, ThreadNotificationCard } from './notification-cards.js';
 import { EditedMarker } from './response-components.js';
 import type { DelegationCallProjection } from './response-projection.js';
+import type { ChannelDeliveryStatusInfo } from './sent-user-message.js';
 import { type SentUserMessage, sentUserMessage } from './sent-user-message.js';
 import { SentUserMessageCard, UserMessageFailure } from './sent-user-message-card.js';
 import { SubagentCard } from './subagent-card.js';
@@ -69,6 +70,7 @@ export interface MessageCardProps {
   mergedThinkingBlockIndexes?: ReadonlySet<number> | undefined;
   sentMessage?: SentUserMessage | null | undefined;
   sentCall?: ToolCall | undefined;
+  channelDeliveries?: ReadonlyMap<string, ChannelDeliveryStatusInfo> | undefined;
   displayId?: string | undefined;
   hideContent?: boolean | undefined;
   compact?: boolean | undefined;
@@ -107,6 +109,7 @@ export function MessageCard({
   mergedThinkingBlockIndexes: projectedMergedThinking,
   sentMessage,
   sentCall,
+  channelDeliveries,
   displayId,
   hideContent = false,
   compact = false,
@@ -124,6 +127,12 @@ export function MessageCard({
   const channelInbound =
     message.source === MessageSource.CHANNEL &&
     message.channel?.kind === ChannelReferenceKind.INBOUND;
+  const channelKey =
+    channelInbound === true
+      ? message.channel?.channel === ChannelId.WECHAT
+        ? ('wechat' as const)
+        : ('feishu' as const)
+      : undefined;
   const isUser =
     !readOnly &&
     isRootAgent(message.agentId) &&
@@ -139,6 +148,7 @@ export function MessageCard({
         call={sentCall}
         compact={compact}
         continuation={continuation}
+        deliveryStatuses={channelDeliveries}
       />
     );
   }
@@ -362,11 +372,6 @@ export function MessageCard({
   };
   const content = (
     <>
-      {channelInbound === true && (
-        <div className="reply-source channel-source">
-          {message.channel?.channel === ChannelId.WECHAT ? '来自微信' : '来自飞书'}
-        </div>
-      )}
       {sourceThreadId && sourceThreadId !== message.threadId && (
         <div className="reply-source">
           {sourceThreadId === mainThreadId ? '来自主对话' : '来自其他话题'}
@@ -440,14 +445,26 @@ export function MessageCard({
 
   return (
     <article
-      className={`message role-${message.role}${streaming ? ' transient' : ''}${isUser ? ' user user-with-avatar' : ' assistant'}${continuation ? ' assistant-continuation' : ''}`}
+      className={`message role-${message.role}${streaming ? ' transient' : ''}${isUser ? ' user user-with-avatar' : ' assistant'}${continuation ? ' assistant-continuation' : ''}${channelKey !== undefined ? ` channel-inbound channel-${channelKey}` : ''}`}
       data-message-id={message.messageId}
       data-display-id={displayId}
       data-delegation-call-id={message.delegation?.sourceToolCallId}
     >
       {isUser ? (
         <>
-          <div className="user-message-content">{content}</div>
+          <div className="user-message-content">
+            {channelKey !== undefined && (
+              <span
+                className={`channel-corner-badge channel-${channelKey}`}
+                role="img"
+                aria-label={channelKey === 'wechat' ? '来自微信' : '来自飞书'}
+                title={channelKey === 'wechat' ? '来自微信' : '来自飞书'}
+              >
+                <Icon name={channelKey === 'wechat' ? 'wechat' : 'feishu'} className="i-sm" />
+              </span>
+            )}
+            {content}
+          </div>
           {avatar}
         </>
       ) : (

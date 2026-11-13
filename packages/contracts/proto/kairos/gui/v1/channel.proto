@@ -12,6 +12,29 @@ enum ChannelLoginState {
   CHANNEL_LOGIN_STATE_ERROR = 4;
 }
 
+enum ChannelDeliveryStatus {
+  CHANNEL_DELIVERY_STATUS_UNSPECIFIED = 0;
+  CHANNEL_DELIVERY_STATUS_PENDING = 1;
+  CHANNEL_DELIVERY_STATUS_DELIVERING = 2;
+  CHANNEL_DELIVERY_STATUS_SUCCEEDED = 3;
+  CHANNEL_DELIVERY_STATUS_FAILED = 4;
+}
+
+message ChannelDeliveryInfo {
+  string delivery_id = 1;
+  ChannelId channel = 2;
+  ChannelDeliveryStatus status = 3;
+  string error_message = 4;
+}
+
+message ListChannelDeliveriesRequest {
+  repeated string delivery_ids = 1;
+}
+
+message ListChannelDeliveriesResponse {
+  repeated ChannelDeliveryInfo deliveries = 1;
+}
+
 message ChannelState {
   ChannelId channel = 1;
   ChannelLoginState login_state = 2;
@@ -87,6 +110,7 @@ service ChannelService {
   rpc StartChannelLogin(StartChannelLoginRequest) returns (StartChannelLoginResponse);
   rpc PollChannelLogin(PollChannelLoginRequest) returns (PollChannelLoginResponse);
   rpc SubmitChannelLoginPin(SubmitChannelLoginPinRequest) returns (SubmitChannelLoginPinResponse);
+  rpc ListChannelDeliveries(ListChannelDeliveriesRequest) returns (ListChannelDeliveriesResponse);
   rpc SaveFeishuCredentials(SaveFeishuCredentialsRequest) returns (SaveFeishuCredentialsResponse);
   rpc UnbindChannel(UnbindChannelRequest) returns (UnbindChannelResponse);
 }

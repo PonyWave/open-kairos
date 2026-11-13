@@ -153,3 +153,22 @@ describe('ChannelStore deliveries', () => {
     }
   });
 });
+
+describe('ChannelStore.listDeliveries', () => {
+  it('returns only the requested deliveries owned by the tenant', () => {
+    const { database, store } = fixture();
+    try {
+      const first = store.createDelivery({ ownerId: 'owner', channel: 'wechat', content: 'a' });
+      const second = store.createDelivery({ ownerId: 'owner', channel: 'feishu', content: 'b' });
+      store.createDelivery({ ownerId: 'other', channel: 'feishu', content: 'c' });
+      const deliveries = store.listDeliveries('owner', [first.deliveryId, second.deliveryId]);
+      expect(deliveries.map((delivery) => delivery.deliveryId).sort()).toEqual(
+        [first.deliveryId, second.deliveryId].sort(),
+      );
+      expect(store.listDeliveries('owner', [])).toEqual([]);
+      expect(store.listDeliveries('owner', ['missing'])).toEqual([]);
+    } finally {
+      database.close();
+    }
+  });
+});

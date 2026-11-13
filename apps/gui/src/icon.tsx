@@ -1,6 +1,18 @@
 import type { CSSProperties } from 'react';
 
 const shapes = {
+  wechat: (
+    <>
+      <path d="M12 4C6.8 4 2.5 7.4 2.5 11.6c0 2.4 1.3 4.5 3.3 5.9l-.8 2.9 3.2-1.7c1.2.4 2.5.6 3.8.6 5.2 0 9.5-3.4 9.5-7.7S17.2 4 12 4Z" />
+      <path d="M8.5 10.5h.01M15.5 10.5h.01" />
+    </>
+  ),
+  feishu: (
+    <>
+      <path d="M21 3 3 10.8l6.2 2.4L21 3Z" />
+      <path d="m21 3-5.2 18-4.6-7.8" />
+    </>
+  ),
   panel: (
     <>
       <rect x="3" y="4" width="18" height="16" rx="2" />

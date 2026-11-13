@@ -1,5 +1,7 @@
 import { createRouterTransport } from '@connectrpc/connect';
 import {
+  ChannelId,
+  ChannelReferenceKind,
   create,
   InputMode,
   InputSchema,
@@ -8,6 +10,7 @@ import {
   MessageSchema,
   MessageSource,
   ToolCallSchema,
+  ToolResultStatus,
 } from '@kairos/contracts';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -205,5 +208,86 @@ describe('message provenance components', () => {
     expect(html).not.toContain('关联调用消息 #');
     expect(html).not.toContain('从此消息重新执行');
     expect(html).not.toContain('>修订</button>');
+  });
+});
+
+describe('channel message presentation', () => {
+  it('renders inbound channel messages with a platform bubble class and corner badge', () => {
+    const html = renderToStaticMarkup(
+      createElement(MessageCard, {
+        message: create(MessageSchema, {
+          messageId: 'channel-in-1',
+          threadId: 'main-1',
+          agentId: 'thread',
+          seq: 2n,
+          role: MessageRole.USER,
+          source: MessageSource.CHANNEL,
+          channel: { channel: ChannelId.WECHAT, kind: ChannelReferenceKind.INBOUND },
+          content: '来自微信的消息',
+        }),
+        delegationCall: null,
+        clients,
+        busy: false,
+        editing: false,
+        streaming: false,
+        thinkingExpansionChoices: {},
+        onThinkingExpansionChange: () => {},
+        onStartEditing: () => {},
+        onCancelEditing: () => {},
+        onRevise: async () => {},
+        onRerun: async () => {},
+      }),
+    );
+    expect(html).toContain('channel-inbound channel-wechat');
+    expect(html).toContain('channel-corner-badge channel-wechat');
+    expect(html).toContain('来自微信');
+    expect(html).not.toContain('channel-source');
+  });
+
+  it('renders delivery badges with a hover error marker for failed channel deliveries', () => {
+    const html = renderToStaticMarkup(
+      createElement(MessageCard, {
+        message: create(MessageSchema, {
+          messageId: 'tool-send-1',
+          threadId: 'main-1',
+          agentId: 'thread',
+          seq: 3n,
+          role: MessageRole.TOOL,
+          toolCallId: 'send-1',
+          toolName: 'send_to_user',
+          toolStatus: ToolResultStatus.SUCCESS,
+          content: JSON.stringify({
+            status: 'sent',
+            content: '同步到 IM。',
+            end_turn: true,
+            deliveries: [
+              { channel: 'feishu', delivery_id: 'd-1', status: 'queued' },
+              {
+                channel: 'wechat',
+                delivery_id: 'd-2',
+                status: 'failed',
+                error: '微信渠道未登录。',
+              },
+            ],
+          }),
+        }),
+        delegationCall: null,
+        clients,
+        busy: false,
+        editing: false,
+        streaming: false,
+        thinkingExpansionChoices: {},
+        onThinkingExpansionChange: () => {},
+        onStartEditing: () => {},
+        onCancelEditing: () => {},
+        onRevise: async () => {},
+        onRerun: async () => {},
+      }),
+    );
+    expect(html).toContain('channel-delivery-badge channel-feishu pending');
+    expect(html).toContain('channel-delivery-badge channel-wechat failed');
+    expect(html).toContain('channel-delivery-info');
+    expect(html).toContain('微信渠道未登录。');
+    expect(html).not.toContain('data-tip=""');
   });
 });

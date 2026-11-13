@@ -332,6 +332,17 @@ export class ChannelStore {
     return this.#toDelivery(deliveryRowSchema.parse(row));
   }
 
+  listDeliveries(ownerId: string, deliveryIds: readonly string[]): ChannelDeliveryRecord[] {
+    if (deliveryIds.length === 0) return [];
+    const placeholders = deliveryIds.map(() => '?').join(', ');
+    return this.database
+      .prepare(
+        `SELECT * FROM channel_deliveries WHERE owner_id = ? AND delivery_id IN (${placeholders})`,
+      )
+      .all(ownerId, ...deliveryIds)
+      .map((row) => this.#toDelivery(deliveryRowSchema.parse(row)));
+  }
+
   dueDeliveries(now: string, limit: number): ChannelDeliveryRecord[] {
     return this.database
       .prepare(

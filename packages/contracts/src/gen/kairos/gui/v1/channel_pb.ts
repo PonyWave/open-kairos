@@ -14,9 +14,79 @@ import { file_kairos_gui_v1_gui } from './gui_pb.js';
 export const file_kairos_gui_v1_channel: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChtrYWlyb3MvZ3VpL3YxL2NoYW5uZWwucHJvdG8SDWthaXJvcy5ndWkudjEi/gEKDENoYW5uZWxTdGF0ZRIpCgdjaGFubmVsGAEgASgOMhgua2Fpcm9zLmd1aS52MS5DaGFubmVsSWQSNQoLbG9naW5fc3RhdGUYAiABKA4yIC5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxMb2dpblN0YXRlEhIKCmNvbmZpZ3VyZWQYAyABKAgSFQoNYWNjb3VudF9sYWJlbBgEIAEoCRIeChZib3VuZF9leHRlcm5hbF91c2VyX2lkGAUgASgJEhUKDXN0YXR1c19yZWFzb24YBiABKAkSGQoMcGFpcmluZ19jb2RlGAcgASgJSACIAQFCDwoNX3BhaXJpbmdfY29kZSIZChdHZXRDaGFubmVsU3RhdGVzUmVxdWVzdCJHChhHZXRDaGFubmVsU3RhdGVzUmVzcG9uc2USKwoGc3RhdGVzGAEgAygLMhsua2Fpcm9zLmd1aS52MS5DaGFubmVsU3RhdGUiXwoYU3RhcnRDaGFubmVsTG9naW5SZXF1ZXN0EhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSKQoHY2hhbm5lbBgCIAEoDjIYLmthaXJvcy5ndWkudjEuQ2hhbm5lbElkIo8BChlTdGFydENoYW5uZWxMb2dpblJlc3BvbnNlEhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSKgoFc3RhdGUYAiABKAsyGy5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxTdGF0ZRISCgpxcl9jb250ZW50GAMgASgJEhgKEGxvZ2luX3Nlc3Npb25faWQYBCABKAkiMwoXUG9sbENoYW5uZWxMb2dpblJlcXVlc3QSGAoQbG9naW5fc2Vzc2lvbl9pZBgBIAEoCSJ+ChhQb2xsQ2hhbm5lbExvZ2luUmVzcG9uc2USNQoLbG9naW5fc3RhdGUYASABKA4yIC5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxMb2dpblN0YXRlEhUKDXN0YXR1c19yZWFzb24YAiABKAkSFAoMYXdhaXRpbmdfcGluGAMgASgIIkUKHFN1Ym1pdENoYW5uZWxMb2dpblBpblJlcXVlc3QSGAoQbG9naW5fc2Vzc2lvbl9pZBgBIAEoCRILCgNwaW4YAiABKAkigwEKHVN1Ym1pdENoYW5uZWxMb2dpblBpblJlc3BvbnNlEjUKC2xvZ2luX3N0YXRlGAEgASgOMiAua2Fpcm9zLmd1aS52MS5DaGFubmVsTG9naW5TdGF0ZRIVCg1zdGF0dXNfcmVhc29uGAIgASgJEhQKDGF3YWl0aW5nX3BpbhgDIAEoCCJcChxTYXZlRmVpc2h1Q3JlZGVudGlhbHNSZXF1ZXN0EhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSDgoGYXBwX2lkGAIgASgJEhIKCmFwcF9zZWNyZXQYAyABKAkiZQodU2F2ZUZlaXNodUNyZWRlbnRpYWxzUmVzcG9uc2USGAoQY2xpZW50X2FjdGlvbl9pZBgBIAEoCRIqCgVzdGF0ZRgCIAEoCzIbLmthaXJvcy5ndWkudjEuQ2hhbm5lbFN0YXRlIlsKFFVuYmluZENoYW5uZWxSZXF1ZXN0EhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSKQoHY2hhbm5lbBgCIAEoDjIYLmthaXJvcy5ndWkudjEuQ2hhbm5lbElkIl0KFVVuYmluZENoYW5uZWxSZXNwb25zZRIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEioKBXN0YXRlGAIgASgLMhsua2Fpcm9zLmd1aS52MS5DaGFubmVsU3RhdGUqvgEKEUNoYW5uZWxMb2dpblN0YXRlEiMKH0NIQU5ORUxfTE9HSU5fU1RBVEVfVU5TUEVDSUZJRUQQABIkCiBDSEFOTkVMX0xPR0lOX1NUQVRFX1VOQ09ORklHVVJFRBABEh8KG0NIQU5ORUxfTE9HSU5fU1RBVEVfUEVORElORxACEh4KGkNIQU5ORUxfTE9HSU5fU1RBVEVfQUNUSVZFEAMSHQoZQ0hBTk5FTF9MT0dJTl9TVEFURV9FUlJPUhAEMoYFCg5DaGFubmVsU2VydmljZRJjChBHZXRDaGFubmVsU3RhdGVzEiYua2Fpcm9zLmd1aS52MS5HZXRDaGFubmVsU3RhdGVzUmVxdWVzdBonLmthaXJvcy5ndWkudjEuR2V0Q2hhbm5lbFN0YXRlc1Jlc3BvbnNlEmYKEVN0YXJ0Q2hhbm5lbExvZ2luEicua2Fpcm9zLmd1aS52MS5TdGFydENoYW5uZWxMb2dpblJlcXVlc3QaKC5rYWlyb3MuZ3VpLnYxLlN0YXJ0Q2hhbm5lbExvZ2luUmVzcG9uc2USYwoQUG9sbENoYW5uZWxMb2dpbhImLmthaXJvcy5ndWkudjEuUG9sbENoYW5uZWxMb2dpblJlcXVlc3QaJy5rYWlyb3MuZ3VpLnYxLlBvbGxDaGFubmVsTG9naW5SZXNwb25zZRJyChVTdWJtaXRDaGFubmVsTG9naW5QaW4SKy5rYWlyb3MuZ3VpLnYxLlN1Ym1pdENoYW5uZWxMb2dpblBpblJlcXVlc3QaLC5rYWlyb3MuZ3VpLnYxLlN1Ym1pdENoYW5uZWxMb2dpblBpblJlc3BvbnNlEnIKFVNhdmVGZWlzaHVDcmVkZW50aWFscxIrLmthaXJvcy5ndWkudjEuU2F2ZUZlaXNodUNyZWRlbnRpYWxzUmVxdWVzdBosLmthaXJvcy5ndWkudjEuU2F2ZUZlaXNodUNyZWRlbnRpYWxzUmVzcG9uc2USWgoNVW5iaW5kQ2hhbm5lbBIjLmthaXJvcy5ndWkudjEuVW5iaW5kQ2hhbm5lbFJlcXVlc3QaJC5rYWlyb3MuZ3VpLnYxLlVuYmluZENoYW5uZWxSZXNwb25zZWIGcHJvdG8z',
+    'ChtrYWlyb3MvZ3VpL3YxL2NoYW5uZWwucHJvdG8SDWthaXJvcy5ndWkudjEiogEKE0NoYW5uZWxEZWxpdmVyeUluZm8SEwoLZGVsaXZlcnlfaWQYASABKAkSKQoHY2hhbm5lbBgCIAEoDjIYLmthaXJvcy5ndWkudjEuQ2hhbm5lbElkEjQKBnN0YXR1cxgDIAEoDjIkLmthaXJvcy5ndWkudjEuQ2hhbm5lbERlbGl2ZXJ5U3RhdHVzEhUKDWVycm9yX21lc3NhZ2UYBCABKAkiNAocTGlzdENoYW5uZWxEZWxpdmVyaWVzUmVxdWVzdBIUCgxkZWxpdmVyeV9pZHMYASADKAkiVwodTGlzdENoYW5uZWxEZWxpdmVyaWVzUmVzcG9uc2USNgoKZGVsaXZlcmllcxgBIAMoCzIiLmthaXJvcy5ndWkudjEuQ2hhbm5lbERlbGl2ZXJ5SW5mbyL+AQoMQ2hhbm5lbFN0YXRlEikKB2NoYW5uZWwYASABKA4yGC5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxJZBI1Cgtsb2dpbl9zdGF0ZRgCIAEoDjIgLmthaXJvcy5ndWkudjEuQ2hhbm5lbExvZ2luU3RhdGUSEgoKY29uZmlndXJlZBgDIAEoCBIVCg1hY2NvdW50X2xhYmVsGAQgASgJEh4KFmJvdW5kX2V4dGVybmFsX3VzZXJfaWQYBSABKAkSFQoNc3RhdHVzX3JlYXNvbhgGIAEoCRIZCgxwYWlyaW5nX2NvZGUYByABKAlIAIgBAUIPCg1fcGFpcmluZ19jb2RlIhkKF0dldENoYW5uZWxTdGF0ZXNSZXF1ZXN0IkcKGEdldENoYW5uZWxTdGF0ZXNSZXNwb25zZRIrCgZzdGF0ZXMYASADKAsyGy5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxTdGF0ZSJfChhTdGFydENoYW5uZWxMb2dpblJlcXVlc3QSGAoQY2xpZW50X2FjdGlvbl9pZBgBIAEoCRIpCgdjaGFubmVsGAIgASgOMhgua2Fpcm9zLmd1aS52MS5DaGFubmVsSWQijwEKGVN0YXJ0Q2hhbm5lbExvZ2luUmVzcG9uc2USGAoQY2xpZW50X2FjdGlvbl9pZBgBIAEoCRIqCgVzdGF0ZRgCIAEoCzIbLmthaXJvcy5ndWkudjEuQ2hhbm5lbFN0YXRlEhIKCnFyX2NvbnRlbnQYAyABKAkSGAoQbG9naW5fc2Vzc2lvbl9pZBgEIAEoCSIzChdQb2xsQ2hhbm5lbExvZ2luUmVxdWVzdBIYChBsb2dpbl9zZXNzaW9uX2lkGAEgASgJIn4KGFBvbGxDaGFubmVsTG9naW5SZXNwb25zZRI1Cgtsb2dpbl9zdGF0ZRgBIAEoDjIgLmthaXJvcy5ndWkudjEuQ2hhbm5lbExvZ2luU3RhdGUSFQoNc3RhdHVzX3JlYXNvbhgCIAEoCRIUCgxhd2FpdGluZ19waW4YAyABKAgiRQocU3VibWl0Q2hhbm5lbExvZ2luUGluUmVxdWVzdBIYChBsb2dpbl9zZXNzaW9uX2lkGAEgASgJEgsKA3BpbhgCIAEoCSKDAQodU3VibWl0Q2hhbm5lbExvZ2luUGluUmVzcG9uc2USNQoLbG9naW5fc3RhdGUYASABKA4yIC5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxMb2dpblN0YXRlEhUKDXN0YXR1c19yZWFzb24YAiABKAkSFAoMYXdhaXRpbmdfcGluGAMgASgIIlwKHFNhdmVGZWlzaHVDcmVkZW50aWFsc1JlcXVlc3QSGAoQY2xpZW50X2FjdGlvbl9pZBgBIAEoCRIOCgZhcHBfaWQYAiABKAkSEgoKYXBwX3NlY3JldBgDIAEoCSJlCh1TYXZlRmVpc2h1Q3JlZGVudGlhbHNSZXNwb25zZRIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEioKBXN0YXRlGAIgASgLMhsua2Fpcm9zLmd1aS52MS5DaGFubmVsU3RhdGUiWwoUVW5iaW5kQ2hhbm5lbFJlcXVlc3QSGAoQY2xpZW50X2FjdGlvbl9pZBgBIAEoCRIpCgdjaGFubmVsGAIgASgOMhgua2Fpcm9zLmd1aS52MS5DaGFubmVsSWQiXQoVVW5iaW5kQ2hhbm5lbFJlc3BvbnNlEhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSKgoFc3RhdGUYAiABKAsyGy5rYWlyb3MuZ3VpLnYxLkNoYW5uZWxTdGF0ZSq+AQoRQ2hhbm5lbExvZ2luU3RhdGUSIwofQ0hBTk5FTF9MT0dJTl9TVEFURV9VTlNQRUNJRklFRBAAEiQKIENIQU5ORUxfTE9HSU5fU1RBVEVfVU5DT05GSUdVUkVEEAESHwobQ0hBTk5FTF9MT0dJTl9TVEFURV9QRU5ESU5HEAISHgoaQ0hBTk5FTF9MT0dJTl9TVEFURV9BQ1RJVkUQAxIdChlDSEFOTkVMX0xPR0lOX1NUQVRFX0VSUk9SEAQq2AEKFUNoYW5uZWxEZWxpdmVyeVN0YXR1cxInCiNDSEFOTkVMX0RFTElWRVJZX1NUQVRVU19VTlNQRUNJRklFRBAAEiMKH0NIQU5ORUxfREVMSVZFUllfU1RBVFVTX1BFTkRJTkcQARImCiJDSEFOTkVMX0RFTElWRVJZX1NUQVRVU19ERUxJVkVSSU5HEAISJQohQ0hBTk5FTF9ERUxJVkVSWV9TVEFUVVNfU1VDQ0VFREVEEAMSIgoeQ0hBTk5FTF9ERUxJVkVSWV9TVEFUVVNfRkFJTEVEEAQy+gUKDkNoYW5uZWxTZXJ2aWNlEmMKEEdldENoYW5uZWxTdGF0ZXMSJi5rYWlyb3MuZ3VpLnYxLkdldENoYW5uZWxTdGF0ZXNSZXF1ZXN0Gicua2Fpcm9zLmd1aS52MS5HZXRDaGFubmVsU3RhdGVzUmVzcG9uc2USZgoRU3RhcnRDaGFubmVsTG9naW4SJy5rYWlyb3MuZ3VpLnYxLlN0YXJ0Q2hhbm5lbExvZ2luUmVxdWVzdBooLmthaXJvcy5ndWkudjEuU3RhcnRDaGFubmVsTG9naW5SZXNwb25zZRJjChBQb2xsQ2hhbm5lbExvZ2luEiYua2Fpcm9zLmd1aS52MS5Qb2xsQ2hhbm5lbExvZ2luUmVxdWVzdBonLmthaXJvcy5ndWkudjEuUG9sbENoYW5uZWxMb2dpblJlc3BvbnNlEnIKFVN1Ym1pdENoYW5uZWxMb2dpblBpbhIrLmthaXJvcy5ndWkudjEuU3VibWl0Q2hhbm5lbExvZ2luUGluUmVxdWVzdBosLmthaXJvcy5ndWkudjEuU3VibWl0Q2hhbm5lbExvZ2luUGluUmVzcG9uc2UScgoVTGlzdENoYW5uZWxEZWxpdmVyaWVzEisua2Fpcm9zLmd1aS52MS5MaXN0Q2hhbm5lbERlbGl2ZXJpZXNSZXF1ZXN0Giwua2Fpcm9zLmd1aS52MS5MaXN0Q2hhbm5lbERlbGl2ZXJpZXNSZXNwb25zZRJyChVTYXZlRmVpc2h1Q3JlZGVudGlhbHMSKy5rYWlyb3MuZ3VpLnYxLlNhdmVGZWlzaHVDcmVkZW50aWFsc1JlcXVlc3QaLC5rYWlyb3MuZ3VpLnYxLlNhdmVGZWlzaHVDcmVkZW50aWFsc1Jlc3BvbnNlEloKDVVuYmluZENoYW5uZWwSIy5rYWlyb3MuZ3VpLnYxLlVuYmluZENoYW5uZWxSZXF1ZXN0GiQua2Fpcm9zLmd1aS52MS5VbmJpbmRDaGFubmVsUmVzcG9uc2ViBnByb3RvMw',
     [file_kairos_gui_v1_gui],
   );
+
+/**
+ * @generated from message kairos.gui.v1.ChannelDeliveryInfo
+ */
+export type ChannelDeliveryInfo = Message<'kairos.gui.v1.ChannelDeliveryInfo'> & {
+  /**
+   * @generated from field: string delivery_id = 1;
+   */
+  deliveryId: string;
+
+  /**
+   * @generated from field: kairos.gui.v1.ChannelId channel = 2;
+   */
+  channel: ChannelId;
+
+  /**
+   * @generated from field: kairos.gui.v1.ChannelDeliveryStatus status = 3;
+   */
+  status: ChannelDeliveryStatus;
+
+  /**
+   * @generated from field: string error_message = 4;
+   */
+  errorMessage: string;
+};
+
+/**
+ * Describes the message kairos.gui.v1.ChannelDeliveryInfo.
+ * Use `create(ChannelDeliveryInfoSchema)` to create a new message.
+ */
+export const ChannelDeliveryInfoSchema: GenMessage<ChannelDeliveryInfo> =
+  /*@__PURE__*/
+  messageDesc(file_kairos_gui_v1_channel, 0);
+
+/**
+ * @generated from message kairos.gui.v1.ListChannelDeliveriesRequest
+ */
+export type ListChannelDeliveriesRequest = Message<'kairos.gui.v1.ListChannelDeliveriesRequest'> & {
+  /**
+   * @generated from field: repeated string delivery_ids = 1;
+   */
+  deliveryIds: string[];
+};
+
+/**
+ * Describes the message kairos.gui.v1.ListChannelDeliveriesRequest.
+ * Use `create(ListChannelDeliveriesRequestSchema)` to create a new message.
+ */
+export const ListChannelDeliveriesRequestSchema: GenMessage<ListChannelDeliveriesRequest> =
+  /*@__PURE__*/
+  messageDesc(file_kairos_gui_v1_channel, 1);
+
+/**
+ * @generated from message kairos.gui.v1.ListChannelDeliveriesResponse
+ */
+export type ListChannelDeliveriesResponse =
+  Message<'kairos.gui.v1.ListChannelDeliveriesResponse'> & {
+    /**
+     * @generated from field: repeated kairos.gui.v1.ChannelDeliveryInfo deliveries = 1;
+     */
+    deliveries: ChannelDeliveryInfo[];
+  };
+
+/**
+ * Describes the message kairos.gui.v1.ListChannelDeliveriesResponse.
+ * Use `create(ListChannelDeliveriesResponseSchema)` to create a new message.
+ */
+export const ListChannelDeliveriesResponseSchema: GenMessage<ListChannelDeliveriesResponse> =
+  /*@__PURE__*/
+  messageDesc(file_kairos_gui_v1_channel, 2);
 
 /**
  * @generated from message kairos.gui.v1.ChannelState
@@ -64,7 +134,7 @@ export type ChannelState = Message<'kairos.gui.v1.ChannelState'> & {
  */
 export const ChannelStateSchema: GenMessage<ChannelState> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 0);
+  messageDesc(file_kairos_gui_v1_channel, 3);
 
 /**
  * @generated from message kairos.gui.v1.GetChannelStatesRequest
@@ -77,7 +147,7 @@ export type GetChannelStatesRequest = Message<'kairos.gui.v1.GetChannelStatesReq
  */
 export const GetChannelStatesRequestSchema: GenMessage<GetChannelStatesRequest> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 1);
+  messageDesc(file_kairos_gui_v1_channel, 4);
 
 /**
  * @generated from message kairos.gui.v1.GetChannelStatesResponse
@@ -95,7 +165,7 @@ export type GetChannelStatesResponse = Message<'kairos.gui.v1.GetChannelStatesRe
  */
 export const GetChannelStatesResponseSchema: GenMessage<GetChannelStatesResponse> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 2);
+  messageDesc(file_kairos_gui_v1_channel, 5);
 
 /**
  * @generated from message kairos.gui.v1.StartChannelLoginRequest
@@ -118,7 +188,7 @@ export type StartChannelLoginRequest = Message<'kairos.gui.v1.StartChannelLoginR
  */
 export const StartChannelLoginRequestSchema: GenMessage<StartChannelLoginRequest> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 3);
+  messageDesc(file_kairos_gui_v1_channel, 6);
 
 /**
  * @generated from message kairos.gui.v1.StartChannelLoginResponse
@@ -151,7 +221,7 @@ export type StartChannelLoginResponse = Message<'kairos.gui.v1.StartChannelLogin
  */
 export const StartChannelLoginResponseSchema: GenMessage<StartChannelLoginResponse> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 4);
+  messageDesc(file_kairos_gui_v1_channel, 7);
 
 /**
  * @generated from message kairos.gui.v1.PollChannelLoginRequest
@@ -169,7 +239,7 @@ export type PollChannelLoginRequest = Message<'kairos.gui.v1.PollChannelLoginReq
  */
 export const PollChannelLoginRequestSchema: GenMessage<PollChannelLoginRequest> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 5);
+  messageDesc(file_kairos_gui_v1_channel, 8);
 
 /**
  * @generated from message kairos.gui.v1.PollChannelLoginResponse
@@ -197,7 +267,7 @@ export type PollChannelLoginResponse = Message<'kairos.gui.v1.PollChannelLoginRe
  */
 export const PollChannelLoginResponseSchema: GenMessage<PollChannelLoginResponse> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 6);
+  messageDesc(file_kairos_gui_v1_channel, 9);
 
 /**
  * @generated from message kairos.gui.v1.SubmitChannelLoginPinRequest
@@ -220,7 +290,7 @@ export type SubmitChannelLoginPinRequest = Message<'kairos.gui.v1.SubmitChannelL
  */
 export const SubmitChannelLoginPinRequestSchema: GenMessage<SubmitChannelLoginPinRequest> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 7);
+  messageDesc(file_kairos_gui_v1_channel, 10);
 
 /**
  * @generated from message kairos.gui.v1.SubmitChannelLoginPinResponse
@@ -249,7 +319,7 @@ export type SubmitChannelLoginPinResponse =
  */
 export const SubmitChannelLoginPinResponseSchema: GenMessage<SubmitChannelLoginPinResponse> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 8);
+  messageDesc(file_kairos_gui_v1_channel, 11);
 
 /**
  * @generated from message kairos.gui.v1.SaveFeishuCredentialsRequest
@@ -277,7 +347,7 @@ export type SaveFeishuCredentialsRequest = Message<'kairos.gui.v1.SaveFeishuCred
  */
 export const SaveFeishuCredentialsRequestSchema: GenMessage<SaveFeishuCredentialsRequest> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 9);
+  messageDesc(file_kairos_gui_v1_channel, 12);
 
 /**
  * @generated from message kairos.gui.v1.SaveFeishuCredentialsResponse
@@ -301,7 +371,7 @@ export type SaveFeishuCredentialsResponse =
  */
 export const SaveFeishuCredentialsResponseSchema: GenMessage<SaveFeishuCredentialsResponse> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 10);
+  messageDesc(file_kairos_gui_v1_channel, 13);
 
 /**
  * @generated from message kairos.gui.v1.UnbindChannelRequest
@@ -324,7 +394,7 @@ export type UnbindChannelRequest = Message<'kairos.gui.v1.UnbindChannelRequest'>
  */
 export const UnbindChannelRequestSchema: GenMessage<UnbindChannelRequest> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 11);
+  messageDesc(file_kairos_gui_v1_channel, 14);
 
 /**
  * @generated from message kairos.gui.v1.UnbindChannelResponse
@@ -347,7 +417,7 @@ export type UnbindChannelResponse = Message<'kairos.gui.v1.UnbindChannelResponse
  */
 export const UnbindChannelResponseSchema: GenMessage<UnbindChannelResponse> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_channel, 12);
+  messageDesc(file_kairos_gui_v1_channel, 15);
 
 /**
  * @generated from enum kairos.gui.v1.ChannelLoginState
@@ -387,6 +457,43 @@ export const ChannelLoginStateSchema: GenEnum<ChannelLoginState> =
   enumDesc(file_kairos_gui_v1_channel, 0);
 
 /**
+ * @generated from enum kairos.gui.v1.ChannelDeliveryStatus
+ */
+export enum ChannelDeliveryStatus {
+  /**
+   * @generated from enum value: CHANNEL_DELIVERY_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: CHANNEL_DELIVERY_STATUS_PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * @generated from enum value: CHANNEL_DELIVERY_STATUS_DELIVERING = 2;
+   */
+  DELIVERING = 2,
+
+  /**
+   * @generated from enum value: CHANNEL_DELIVERY_STATUS_SUCCEEDED = 3;
+   */
+  SUCCEEDED = 3,
+
+  /**
+   * @generated from enum value: CHANNEL_DELIVERY_STATUS_FAILED = 4;
+   */
+  FAILED = 4,
+}
+
+/**
+ * Describes the enum kairos.gui.v1.ChannelDeliveryStatus.
+ */
+export const ChannelDeliveryStatusSchema: GenEnum<ChannelDeliveryStatus> =
+  /*@__PURE__*/
+  enumDesc(file_kairos_gui_v1_channel, 1);
+
+/**
  * @generated from service kairos.gui.v1.ChannelService
  */
 export const ChannelService: GenService<{
@@ -421,6 +528,14 @@ export const ChannelService: GenService<{
     methodKind: 'unary';
     input: typeof SubmitChannelLoginPinRequestSchema;
     output: typeof SubmitChannelLoginPinResponseSchema;
+  };
+  /**
+   * @generated from rpc kairos.gui.v1.ChannelService.ListChannelDeliveries
+   */
+  listChannelDeliveries: {
+    methodKind: 'unary';
+    input: typeof ListChannelDeliveriesRequestSchema;
+    output: typeof ListChannelDeliveriesResponseSchema;
   };
   /**
    * @generated from rpc kairos.gui.v1.ChannelService.SaveFeishuCredentials
