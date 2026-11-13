@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## 2f7c001 - 2026-11-13
+
+来源分支：feat/agent-tooling-mcp，合并提交待补。
+
+### 新增
+
+- `glob`/`grep` 文件搜索工具：经设备通道 `FILE_SEARCH` 能力下发，Daemon spawn 内置 ripgrep 15.0.0 子进程执行（随发布物打包并校验哈希与平台），行数与字节数有上限。
+- bash `run_in_background` 后台执行：`background_tasks` 表登记，终态结果持久化后绑定回复 Thread 的持久根 Run 直接注入；`task_list`/`task_output`/`task_stop`/`task_wait` 管理后台任务（含 Subagent 任务）。
+- bash 大输出落盘：完整输出由执行端 Daemon 写入本机 `<身份目录>/logs/<operation_id>.log`（保留 7 天，单文件 64 MiB 上限），结果经 `output_file` 指向该文件，用 `read`/`grep` 以同一 `env_id` 继续读取；Server 输出分块只保留 16 KiB 头部。
+- MCP 工具桥接：`KAIROS_MCP_CONFIG` 配置 server 并绑定环境（`env_id` 缺省 `main`），工具命名 `mcp__<server>__<tool>`；单环境注册不提供 `env_id` 参数，多环境注册必须提供。远程 server 支持 OAuth：`mcp__<server>__authenticate` 工具、授权 URL 经工具进度事件推送（GUI 授权卡片带复制按钮）、`/mcp/oauth/callback` 回调、`mcp_oauth_credentials` 表存储与到期刷新。
+- GUI 工具卡片进度槽：WatchThread 新增 `tool_progress` 瞬态事件。
+
+### 变更
+
+- Automation 存储触发时间带确定性 jitter（周期 × 10% 上限 15 分钟；整点/半点的 once 提前至多 90 秒）；停机错过的触发恢复后合并为一次立即触发，投递输入注明原定时间与合并次数。
+- 工具结果截断提示、Subagent 任务状态查询统一走 task 工具；`subagent_status` 与 `subagent_cancel` 移除，由 `task_output`/`task_stop` 替代。
+- 新增表与列折入 v1 基线 schema：`background_tasks`、`mcp_oauth_credentials`、`environment_operations` 搜索列；Context 消息来源新增 `background_task`。
+
+### 移除
+
+- `read_output` 工具：bash 截断输出改经执行端日志文件读取。
+- 内置 `browser` 工具：Playwright 依赖移至仓库根，仅供 GUI 浏览器检查脚本使用。
+
 ## 6af0044 - 2026-11-13
 
 来源分支：main，合并提交 6af0044。
