@@ -89,4 +89,37 @@ describe('directory check', () => {
     expect(report.resources).toEqual([]);
     expect(report.reason).toContain('workspace resource');
   });
+
+  it('loads skills from in-home symlinked directories and rejects links escaping home', async () => {
+    const directory = await temporaryDirectory();
+    const shared = join(directory, 'shared-skills', 'review');
+    await mkdir(shared, { recursive: true });
+    await writeFile(join(shared, 'SKILL.md'), '# Review\n');
+    await mkdir(join(directory, '.agents', 'skills'), { recursive: true });
+    await symlink(shared, join(directory, '.agents', 'skills', 'review'));
+
+    const report = await checkDirectory(
+      directory,
+      true,
+      [DeviceCapability.DIRECTORY_CHECK],
+      directory,
+    );
+    expect(report.ready).toBe(true);
+    expect(report.resources.map((resource) => resource.path)).toEqual([
+      '.agents/skills/review/SKILL.md',
+    ]);
+
+    const outside = await temporaryDirectory();
+    await mkdir(join(outside, 'escape'), { recursive: true });
+    await writeFile(join(outside, 'escape', 'SKILL.md'), '# Escape\n');
+    await symlink(join(outside, 'escape'), join(directory, '.agents', 'skills', 'escape'));
+    const escaped = await checkDirectory(
+      directory,
+      true,
+      [DeviceCapability.DIRECTORY_CHECK],
+      directory,
+    );
+    expect(escaped.ready).toBe(false);
+    expect(escaped.resources).toEqual([]);
+  });
 });

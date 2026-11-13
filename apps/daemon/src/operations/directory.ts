@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, lstat, open, readdir, realpath, stat } from 'node:fs/promises';
+import { access, open, readdir, realpath, stat } from 'node:fs/promises';
 import { arch, homedir, platform } from 'node:os';
 import { isAbsolute, normalize, relative, resolve, sep } from 'node:path';
 import type { DeviceCapability } from '@kairos/contracts/device';
@@ -167,8 +167,8 @@ async function realDirectoryIfPresent(path: string): Promise<boolean> {
 }
 
 async function requireRealDirectory(path: string, label: string): Promise<void> {
-  const metadata = await lstat(path);
-  if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
+  const metadata = await stat(path);
+  if (!metadata.isDirectory()) {
     throw new Error(`${label} must be a real directory.`);
   }
 }
