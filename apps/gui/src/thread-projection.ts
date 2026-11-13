@@ -23,6 +23,7 @@ import {
   ThreadNotificationStatus,
   type ThreadSnapshot,
   ThreadType,
+  type ToolProgress,
   ToolResultStatus,
   validateAgentEnvironmentBinding,
   validateAttachment,
@@ -64,10 +65,17 @@ export interface HardCutProjection {
   error: string | null;
 }
 
+export interface ToolProgressState {
+  toolCallId: string;
+  text: string;
+  authorization?: { serverName: string; authorizationUrl: string; expiresAt: string };
+}
+
 export interface ThreadProjectionState {
   snapshot: ThreadSnapshot | null;
   throughSeq: bigint;
   transientResponses: readonly TransientResponse[];
+  toolProgress: ReadonlyMap<string, ToolProgressState>;
   bashOperations: readonly BashOperation[];
   hardCuts: readonly HardCutProjection[];
   invalidatedRecaps: Readonly<Record<string, string>>;
@@ -348,6 +356,7 @@ export class ThreadProjector {
   private throughSeq = 0n;
   private readonly eventIds = new Set<string>();
   private readonly transient = new Map<string, TransientResponse>();
+  private readonly toolProgress = new Map<string, ToolProgressState>();
   private readonly operations = new Map<string, BashOperation>();
   private readonly hardCutMap = new Map<string, HardCutProjection>();
   private readonly invalidRecaps: Record<string, string> = {};
@@ -359,6 +368,7 @@ export class ThreadProjector {
       snapshot: this.snapshot,
       throughSeq: this.throughSeq,
       transientResponses: [...this.transient.values()],
+      toolProgress: this.toolProgress,
       bashOperations: [...this.operations.values()],
       hardCuts: [...this.hardCutMap.values()],
       invalidatedRecaps: { ...this.invalidRecaps },
@@ -443,6 +453,7 @@ export class ThreadProjector {
 
   clearTransient(): void {
     this.transient.clear();
+    this.toolProgress.clear();
   }
 
   applyWatchResponse(response: WatchThreadResponse): void {
@@ -458,7 +469,32 @@ export class ThreadProjector {
       this.applyTransientDelta(response.payload.value, ContentBlockType.THINKING);
       return;
     }
+    if (response.payload.case === 'toolProgress') {
+      this.applyToolProgress(response.payload.value);
+      return;
+    }
     throw new UnsupportedEventError('收到未知事件负载，已停止应用后续事件。');
+  }
+
+  private applyToolProgress(progress: ToolProgress): void {
+    this.assertThread(progress.threadId);
+    if (progress.agentId !== 'thread') return;
+    this.toolProgress.set(progress.toolCallId, {
+      toolCallId: progress.toolCallId,
+      text: progress.text,
+      ...(progress.authorization === undefined || progress.authorization.expiresAt === undefined
+        ? {}
+        : {
+            authorization: {
+              serverName: progress.authorization.serverName,
+              authorizationUrl: progress.authorization.authorizationUrl,
+              expiresAt: new Date(
+                Number(progress.authorization.expiresAt.seconds) * 1000 +
+                  progress.authorization.expiresAt.nanos / 1_000_000,
+              ).toISOString(),
+            },
+          }),
+    });
   }
 
   private applyTransientDelta(
@@ -696,6 +732,7 @@ export class ThreadProjector {
     });
     this.messageIds.add(message.messageId);
     this.transient.delete(message.messageId);
+    if (message.role === MessageRole.TOOL) this.toolProgress.delete(message.toolCallId);
   }
 
   private updateRevision(revision: MessageRevision): void {
@@ -729,6 +766,7 @@ export class ThreadProjector {
       for (const [messageId, response] of this.transient) {
         if (response.runId === run.runId) this.transient.delete(messageId);
       }
+      this.toolProgress.clear();
     }
   }
 

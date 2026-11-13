@@ -219,6 +219,7 @@ describe('Automation management components', () => {
         status: 'live',
         error: null,
         transientResponses: [],
+        toolProgress: new Map(),
         bashOperations: [],
         hardCuts: [],
         invalidatedRecaps: {},

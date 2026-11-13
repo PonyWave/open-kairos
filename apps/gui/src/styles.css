@@ -1384,6 +1384,43 @@ button.thread-replies-footer {
   font-size: 12px;
   color: var(--muted);
 }
+.tool-progress {
+  font-size: 12px;
+  color: var(--muted);
+}
+.oauth-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--body);
+}
+.oauth-progress-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: 500;
+}
+.oauth-progress-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.oauth-progress-link a {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--accent, var(--body));
+  text-decoration: underline;
+}
+.oauth-progress-expiry {
+  margin: 0;
+  color: var(--muted);
+}
 .tool-result {
   color: var(--body);
   font-size: 12px;

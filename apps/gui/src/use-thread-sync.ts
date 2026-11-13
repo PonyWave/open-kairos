@@ -6,6 +6,7 @@ const initialState: ThreadSyncState = {
   snapshot: null,
   throughSeq: 0n,
   transientResponses: [],
+  toolProgress: new Map(),
   bashOperations: [],
   hardCuts: [],
   invalidatedRecaps: {},

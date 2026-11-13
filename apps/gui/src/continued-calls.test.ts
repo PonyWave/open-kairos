@@ -61,6 +61,7 @@ describe('continued Thread calls in the conversation', () => {
           status: 'live',
           error: null,
           transientResponses: [],
+          toolProgress: new Map(),
           bashOperations: [],
           hardCuts: [],
           invalidatedRecaps: {},

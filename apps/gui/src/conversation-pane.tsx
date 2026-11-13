@@ -700,6 +700,7 @@ export function ConversationPane({
           topicTitles={topicTitles}
           notifications={notifications}
           toolOutcomes={toolOutcomes}
+          toolProgress={threadSync.state.toolProgress}
           associatedToolResultIds={associatedToolResultIds}
           toolItems={item.value.toolItems}
           mergedThinkingBlockIndexes={item.value.mergedThinkingBlockIndexes}

@@ -118,6 +118,7 @@ describe('direct user message alignment', () => {
           status: 'live',
           error: null,
           transientResponses: [],
+          toolProgress: new Map(),
           bashOperations: [],
           hardCuts: [],
           invalidatedRecaps: {},

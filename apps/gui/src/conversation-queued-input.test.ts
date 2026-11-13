@@ -61,6 +61,7 @@ function renderConversation({
       status: 'live',
       error: null,
       transientResponses: [],
+      toolProgress: new Map(),
       bashOperations: [],
       hardCuts: [],
       invalidatedRecaps: {},
