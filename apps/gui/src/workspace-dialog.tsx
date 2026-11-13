@@ -7,20 +7,24 @@ import {
 import { useEffect, useId, useRef, useState } from 'react';
 import { AppDialog } from './app-dialog.js';
 import type { KairosClients } from './client.js';
+import { Dropdown } from './dropdown.js';
 import { workspaceSelectableEnvironments } from './environment-view.js';
 import { formatClientError } from './errors.js';
 import { Icon } from './icon.js';
+import { randomId } from './random.js';
 
 export function WorkspaceDialog({
   clients,
   workspace,
   onClose,
   onSaved,
+  onVisibilityChanged,
 }: {
   clients: KairosClients;
   workspace: Workspace | null;
   onClose: () => void;
   onSaved: () => void;
+  onVisibilityChanged?: (() => void) | undefined;
 }) {
   const formId = useId();
   const pathInputId = useId();
@@ -42,6 +46,9 @@ export function WorkspaceDialog({
   const [browsing, setBrowsing] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [discard, setDiscard] = useState(false);
+  const [hidden, setHidden] = useState(workspace?.hidden ?? false);
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const [visibilityError, setVisibilityError] = useState<string | null>(null);
   const request = useRef<AbortController | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const initial = useRef({
@@ -103,6 +110,15 @@ export function WorkspaceDialog({
       return next;
     });
   const selected = environments.find((e) => e.envId === envId);
+  const envLabel = loading
+    ? '正在加载设备…'
+    : !environments.length
+      ? '暂无可用设备'
+      : selected
+        ? selected.name || selected.envId
+        : envId === 'main'
+          ? '主环境'
+          : envId || '选择设备';
   const close = () => {
     if (busy) return;
     if (dirty) setDiscard(true);
@@ -119,6 +135,24 @@ export function WorkspaceDialog({
     setPreviewOpen(true);
     void list(path);
   };
+  async function toggleVisibility() {
+    if (!workspace || visibilityBusy) return;
+    setVisibilityBusy(true);
+    setVisibilityError(null);
+    try {
+      await clients.workspaces.updateWorkspace({
+        clientActionId: randomId(),
+        workspaceId: workspace.workspaceId,
+        hidden: !hidden,
+      });
+      setHidden(!hidden);
+      onVisibilityChanged?.();
+    } catch (cause) {
+      setVisibilityError(formatClientError(cause));
+    } finally {
+      setVisibilityBusy(false);
+    }
+  }
   async function list(dir: string, offset = 0, env: string = envId) {
     request.current?.abort();
     const abort = new AbortController();
@@ -171,14 +205,14 @@ export function WorkspaceDialog({
     try {
       if (workspace)
         await clients.workspaces.updateWorkspace({
-          clientActionId: crypto.randomUUID(),
+          clientActionId: randomId(),
           workspaceId: workspace.workspaceId,
           name: name.trim(),
           description: description.trim(),
         });
       else
         await clients.workspaces.createWorkspace({
-          clientActionId: crypto.randomUUID(),
+          clientActionId: randomId(),
           name: name.trim(),
           description: description.trim(),
           envId,
@@ -205,7 +239,7 @@ export function WorkspaceDialog({
       closeDisabled={busy}
       subtitle={
         workspace
-          ? '查看执行位置，调整名称和描述。'
+          ? '查看执行位置，调整名称、描述和侧边栏显示。'
           : '选择设备和工作目录，新话题会使用这个默认执行位置。'
       }
       actions={
@@ -275,45 +309,72 @@ export function WorkspaceDialog({
               />
             </label>
             {workspace ? (
-              <dl className="workspace-details">
-                <div>
-                  <dt>设备</dt>
-                  <dd>{selected?.name ?? (envId === 'main' ? '主环境' : envId)}</dd>
+              <>
+                <div className="settings-field">
+                  <span id={`${pathInputId}-label`}>工作目录</span>
+                  <span className="workspace-path-row">
+                    <span
+                      className="settings-select-trigger workspace-env-trigger workspace-env-static"
+                      aria-disabled="true"
+                      title="设备创建后不可修改"
+                    >
+                      <span className="workspace-env-name">
+                        {selected?.name ?? (envId === 'main' ? '主环境' : envId)}
+                      </span>
+                    </span>
+                    <span
+                      className="workspace-path-static"
+                      aria-labelledby={`${pathInputId}-label`}
+                      title="目录创建后不可修改"
+                    >
+                      {path}
+                    </span>
+                  </span>
                 </div>
-                <div>
-                  <dt>工作目录</dt>
-                  <dd>
-                    <code>{path}</code>
-                  </dd>
-                </div>
-                <div>
-                  <dt>侧边栏</dt>
-                  <dd>{workspace.hidden ? '已隐藏，可在全部工作空间恢复显示' : '显示'}</dd>
-                </div>
-                {workspace.createdAt && (
-                  <div>
-                    <dt>创建时间</dt>
-                    <dd>
-                      {new Date(Number(workspace.createdAt.seconds) * 1000).toLocaleString('zh-CN')}
-                    </dd>
-                  </div>
+                <label className="workspace-visibility-toggle">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={!hidden}
+                    aria-checked={!hidden}
+                    disabled={visibilityBusy}
+                    onChange={() => void toggleVisibility()}
+                  />
+                  <span className="workspace-switch-track" aria-hidden="true">
+                    <span className="workspace-switch-thumb" />
+                  </span>
+                  在侧边栏显示
+                </label>
+                {visibilityError && (
+                  <p className="settings-field-error" role="alert">
+                    {visibilityError}
+                  </p>
                 )}
-              </dl>
+              </>
             ) : (
               <>
                 <div className="settings-field">
                   <label htmlFor={pathInputId}>工作目录</label>
                   <span className="workspace-path-row">
-                    <select
-                      className="workspace-env-select"
-                      aria-label="设备"
+                    <Dropdown
+                      label="设备"
+                      trigger={
+                        <>
+                          <span className="workspace-env-name">{envLabel}</span>
+                          <Icon name="down" className="i-sm dropdown-chevron" />
+                        </>
+                      }
+                      triggerClassName="settings-select-trigger workspace-env-trigger"
                       value={envId}
-                      aria-invalid={Boolean(fieldErrors.envId)}
-                      disabled={loading}
-                      onChange={(e) => {
+                      items={environments.map((e) => ({
+                        value: e.envId,
+                        label: `${e.name || e.envId}${
+                          e.connectionStatus === EnvironmentConnectionStatus.ONLINE ? '' : ' · 离线'
+                        }`,
+                      }))}
+                      onSelect={(nextEnv) => {
                         request.current?.abort();
                         setBrowsing(false);
-                        const nextEnv = e.target.value;
                         const nextPath =
                           environments.find((v) => v.envId === nextEnv)?.recommendedPwd ?? '';
                         setEnvId(nextEnv);
@@ -323,18 +384,8 @@ export function WorkspaceDialog({
                         change('envId');
                         if (previewOpen) void list(nextPath, 0, nextEnv);
                       }}
-                    >
-                      {loading && <option value="">正在加载设备…</option>}
-                      {!loading && !environments.length && <option value="">暂无可用设备</option>}
-                      {environments.map((e) => (
-                        <option key={e.envId} value={e.envId}>
-                          {e.name || e.envId}
-                          {e.connectionStatus === EnvironmentConnectionStatus.ONLINE
-                            ? ''
-                            : ' · 离线'}
-                        </option>
-                      ))}
-                    </select>
+                      disabled={loading || environments.length === 0}
+                    />
                     <input
                       id={pathInputId}
                       value={path}

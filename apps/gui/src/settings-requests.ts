@@ -1,9 +1,10 @@
 import { Code, ConnectError } from '@connectrpc/connect';
+import { randomId } from './random.js';
 
 // Sensitive payloads stay in memory. The general persisted action queue is not used.
 export class SettingsRequests {
   pending: { actionId: string; retry: () => Promise<unknown> } | null = null;
-  constructor(private readonly createId: () => string = () => crypto.randomUUID()) {}
+  constructor(private readonly createId: () => string = () => randomId()) {}
   async execute<T>(operation: (actionId: string) => Promise<T>): Promise<T> {
     if (this.pending) throw new Error('上次保存结果未知，请先重试核对。');
     const actionId = this.createId();

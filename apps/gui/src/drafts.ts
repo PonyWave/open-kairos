@@ -1,5 +1,6 @@
 import type { StorageLike } from './actions.js';
 import type { AttachmentMetadata } from './attachments.js';
+import { randomId } from './random.js';
 
 export const localTaskDraftId = 'local:new-task';
 
@@ -35,7 +36,7 @@ export interface MessageDraft {
 }
 
 export function newDraft(): MessageDraft {
-  return { id: crypto.randomUUID(), text: '', attachments: [] };
+  return { id: randomId(), text: '', attachments: [] };
 }
 
 export function loadDraft(storage: StorageLike | undefined, threadId: string): MessageDraft {

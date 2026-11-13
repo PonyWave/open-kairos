@@ -15,6 +15,7 @@ import {
 import type { KairosClients } from './client.js';
 import type { DraftAttachment, MessageDraft } from './drafts.js';
 import { classifyActionFailure, formatClientError } from './errors.js';
+import { randomId } from './random.js';
 
 interface DraftAccess {
   getDraft: () => MessageDraft;
@@ -117,7 +118,7 @@ export class AttachmentUploader {
       sha256: prepared.sha256,
       status: 'uploading',
       error: undefined,
-      ...(item.actionId ? {} : { actionId: crypto.randomUUID() }),
+      ...(item.actionId ? {} : { actionId: randomId() }),
     });
     await this.start(item.actionKey, generation);
   }
@@ -139,7 +140,7 @@ export class AttachmentUploader {
   private reserve(file: File, draftId: string, source?: 'clipboard' | undefined): DraftAttachment {
     const draft = this.drafts.getDraft();
     if (draft.id !== draftId) throw new Error('草稿已变化，请重新选择文件。');
-    const localId = crypto.randomUUID();
+    const localId = randomId();
     const item: DraftAttachment = {
       localId,
       actionKey: `upload-attachment:${this.identity.composerOwner}:${this.identity.threadId}:${draft.id}:${localId}`,
@@ -165,7 +166,7 @@ export class AttachmentUploader {
         (candidate) => candidate.localId !== localId && candidate.sha256 === prepared.sha256,
       );
       if (duplicate) throw new Error('相同内容的文件在当前草稿中只能添加一次。');
-      const actionId = item.actionId ?? crypto.randomUUID();
+      const actionId = item.actionId ?? randomId();
       const updated = this.patch(
         localId,
         {

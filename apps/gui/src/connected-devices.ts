@@ -8,6 +8,7 @@ import {
 import type { KairosClients } from './client.js';
 import { isSelfHostedEnvironment } from './environment-view.js';
 import { classifyActionFailure, formatClientError } from './errors.js';
+import { randomId } from './random.js';
 
 export type DaemonCommandName = 'startCommand' | 'statusCommand' | 'stopCommand';
 
@@ -246,7 +247,7 @@ export class ConnectedDevices {
     const fingerprint = JSON.stringify(payload);
     const existing = this.mutationIds.get(key);
     if (existing?.fingerprint === fingerprint) return existing.id;
-    const id = crypto.randomUUID();
+    const id = randomId();
     this.mutationIds.set(key, { fingerprint, id });
     return id;
   }
@@ -323,7 +324,7 @@ export class ConnectedDevices {
     });
     try {
       const result = await this.client.beginDeviceConnection(
-        { clientActionId: crypto.randomUUID() },
+        { clientActionId: randomId() },
         { signal: request.signal, timeoutMs: 10_000 },
       );
       if (generation !== this.connectionGeneration) return;
@@ -556,7 +557,7 @@ export class ConnectedDevices {
     if (connection?.envId && connection.phase !== 'connected') {
       try {
         const result = await this.client.cancelDeviceConnection(
-          { clientActionId: crypto.randomUUID(), envId: connection.envId },
+          { clientActionId: randomId(), envId: connection.envId },
           { signal: this.lifetime.signal, timeoutMs: 5000 },
         );
         if (!this.lifetime.signal.aborted && result.environment) this.upsert(result.environment);
@@ -581,7 +582,7 @@ export class ConnectedDevices {
     if (previous.envId) {
       try {
         const result = await this.client.cancelDeviceConnection(
-          { clientActionId: crypto.randomUUID(), envId: previous.envId },
+          { clientActionId: randomId(), envId: previous.envId },
           { signal: this.lifetime.signal, timeoutMs: 5000 },
         );
         if (this.current.connection !== previous || this.lifetime.signal.aborted) return;

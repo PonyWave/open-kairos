@@ -16,6 +16,8 @@ import type { ConversationDisplayMode } from './conversation-display.js';
 import { Dropdown } from './dropdown.js';
 import { formatClientError } from './errors.js';
 import { Icon } from './icon.js';
+import { ModelIdField, type ModelIdOption } from './model-id-field.js';
+import { randomId } from './random.js';
 import { SettingsRequests } from './settings-requests.js';
 import { UserAvatar } from './user-avatar.js';
 
@@ -96,7 +98,7 @@ export function SettingsPage({
       ) : section === 'models' ? (
         <ModelSettingsPanel clients={clients} onDirtyChange={onDirtyChange} />
       ) : section === 'channels' ? (
-        <ChannelSettings clients={clients} />
+        <ChannelSettings clients={clients} onDirtyChange={onDirtyChange} />
       ) : (
         <>
           <AppearanceSettings theme={theme} onChange={onThemeChange} />
@@ -473,7 +475,7 @@ function AccountSettings({
 
 function newModel(): ConfiguredModel {
   return create(ConfiguredModelSchema, {
-    id: crypto.randomUUID(),
+    id: randomId(),
     name: '',
     modelId: '',
     contextWindow: 128000,
@@ -510,6 +512,13 @@ export function modelApiTypePresentation(apiType: ModelApiType): {
         baseUrlPlaceholder: 'https://api.anthropic.com',
         authentication: 'API key 通过 x-api-key 发送，请求包含 anthropic-version: 2023-06-01。',
       };
+    case ModelApiType.GOOGLE_GENAI:
+      return {
+        label: 'Google Gemini',
+        path: '/v1beta/models/…:streamGenerateContent',
+        baseUrlPlaceholder: 'https://generativelanguage.googleapis.com',
+        authentication: 'API key 通过 x-goog-api-key 发送。',
+      };
     default:
       throw new Error(`不支持的 API 类型：${String(apiType)}`);
   }
@@ -538,7 +547,7 @@ function connectionDraft(connection?: ModelConnection): ConnectionDraft {
         models: connection.models.map((model) => ({ ...model })),
       }
     : {
-        id: crypto.randomUUID(),
+        id: randomId(),
         name: '',
         apiType: ModelApiType.OPENAI_CHAT_COMPLETIONS,
         baseUrl: '',
@@ -768,6 +777,15 @@ function ModelSettingsPanel({
           setDraft={setDraft}
           defaultModelId={snapshot.defaultModelId}
           busy={busy || requests.pending !== null}
+          onDiscover={async (input) => {
+            const response = await clients.settings.discoverModels(input, {
+              signal: controller.current.signal,
+            });
+            return response.models.map((model) => ({
+              modelId: model.modelId,
+              displayName: model.displayName,
+            }));
+          }}
           onCancel={() => {
             if (dirty) setDiscarding(true);
             else setDraft(null);
@@ -927,6 +945,7 @@ function ConnectionEditor({
   onCancel,
   onSave,
   onDelete,
+  onDiscover,
   deleteDisabled = false,
 }: {
   draft: ConnectionDraft;
@@ -936,15 +955,53 @@ function ConnectionEditor({
   onCancel: () => void;
   onSave: () => void;
   onDelete?: (() => void) | undefined;
+  onDiscover: (input: {
+    apiType: ModelApiType;
+    baseUrl: string;
+    apiKey: string;
+    connectionId: string;
+  }) => Promise<ModelIdOption[]>;
   deleteDisabled?: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [discovered, setDiscovered] = useState<ModelIdOption[] | null>(null);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
+  const discoverGeneration = useRef(0);
   const update = (id: string, changes: Partial<ConfiguredModel>) =>
     setDraft({
       ...draft,
       models: draft.models.map((model) => (model.id === id ? { ...model, ...changes } : model)),
     });
+  function updateEndpoint(changes: Partial<ConnectionDraft>) {
+    discoverGeneration.current += 1;
+    setDiscovered(null);
+    setDiscoverError(null);
+    setDiscovering(false);
+    setDraft({ ...draft, ...changes });
+  }
+  async function discover() {
+    const generation = discoverGeneration.current;
+    setDiscovering(true);
+    setDiscoverError(null);
+    try {
+      const models = await onDiscover({
+        apiType: draft.apiType,
+        baseUrl: draft.baseUrl.trim(),
+        apiKey: draft.apiKey.trim(),
+        connectionId: draft.hasKey && !draft.removeKey ? draft.id : '',
+      });
+      if (generation !== discoverGeneration.current) return;
+      setDiscovered(models);
+    } catch (cause) {
+      if (generation !== discoverGeneration.current) return;
+      setDiscovered(null);
+      setDiscoverError(formatClientError(cause));
+    } finally {
+      if (generation === discoverGeneration.current) setDiscovering(false);
+    }
+  }
   const presentation = modelApiTypePresentation(draft.apiType);
   const fieldError = (key: string) =>
     errors[key] ? (
@@ -1040,15 +1097,20 @@ function ConnectionEditor({
                 value: String(ModelApiType.ANTHROPIC_MESSAGES),
                 label: modelApiTypePresentation(ModelApiType.ANTHROPIC_MESSAGES).label,
               },
+              {
+                value: String(ModelApiType.GOOGLE_GENAI),
+                label: modelApiTypePresentation(ModelApiType.GOOGLE_GENAI).label,
+              },
             ]}
             onSelect={(value) => {
               const apiType = [
                 ModelApiType.OPENAI_CHAT_COMPLETIONS,
                 ModelApiType.OPENAI_RESPONSES,
                 ModelApiType.ANTHROPIC_MESSAGES,
+                ModelApiType.GOOGLE_GENAI,
               ].find((candidate) => String(candidate) === value);
               if (apiType === undefined) throw new Error(`不支持的 API 类型：${value}`);
-              setDraft({ ...draft, apiType });
+              updateEndpoint({ apiType });
             }}
             disabled={busy}
           />
@@ -1062,7 +1124,7 @@ function ConnectionEditor({
             maxLength={2048}
             value={draft.baseUrl}
             aria-invalid={errors.baseUrl !== undefined}
-            onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })}
+            onChange={(event) => updateEndpoint({ baseUrl: event.target.value })}
             placeholder={presentation.baseUrlPlaceholder}
             autoComplete="off"
             spellCheck={false}
@@ -1104,15 +1166,38 @@ function ConnectionEditor({
         )}
         <div className="settings-model-editor-heading">
           <h3>模型</h3>
-          <button
-            type="button"
-            className="device-secondary"
-            disabled={draft.models.length >= 50}
-            onClick={() => setDraft({ ...draft, models: [...draft.models, newModel()] })}
-          >
-            添加模型
-          </button>
+          <div className="settings-model-editor-actions">
+            <button
+              type="button"
+              className="device-secondary"
+              disabled={discovering || !draft.baseUrl.trim()}
+              title={draft.baseUrl.trim() ? undefined : '填写基础 URL 后可从服务发现模型列表。'}
+              onClick={() => void discover()}
+            >
+              {discovering ? '正在获取…' : '获取模型列表'}
+            </button>
+            <button
+              type="button"
+              className="device-secondary"
+              disabled={draft.models.length >= 50}
+              onClick={() => setDraft({ ...draft, models: [...draft.models, newModel()] })}
+            >
+              添加模型
+            </button>
+          </div>
         </div>
+        {discoverError && (
+          <span className="settings-field-error" role="alert">
+            {discoverError}
+          </span>
+        )}
+        {!discoverError && discovered && (
+          <span className="settings-help">
+            {discovered.length > 0
+              ? `已从服务发现 ${discovered.length} 个模型，可在模型 ID 下拉中选择或手动输入。`
+              : '服务未返回模型列表，请手动填写模型 ID。'}
+          </span>
+        )}
         {draft.models.map((model, index) => (
           <div className="settings-model-editor" key={model.id}>
             <div className="settings-connection-heading">
@@ -1143,20 +1228,39 @@ function ConnectionEditor({
               />
               {fieldError(`model-${model.id}-name`)}
             </label>
-            <label className="settings-field">
-              模型 ID
-              <input
-                required
-                maxLength={200}
-                value={model.modelId}
-                aria-invalid={errors[`model-${model.id}-id`] !== undefined}
-                onChange={(event) => update(model.id, { modelId: event.target.value })}
-                placeholder="填写服务提供的准确模型 ID"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              {fieldError(`model-${model.id}-id`)}
-            </label>
+            {discovered && discovered.length > 0 ? (
+              <div className="settings-field">
+                模型 ID
+                <ModelIdField
+                  label={`模型 ${index + 1} 的模型 ID`}
+                  value={model.modelId}
+                  options={discovered}
+                  invalid={errors[`model-${model.id}-id`] !== undefined}
+                  onChange={(modelId, displayName) =>
+                    update(model.id, {
+                      modelId,
+                      ...(model.name.trim() ? {} : { name: displayName || modelId }),
+                    })
+                  }
+                />
+                {fieldError(`model-${model.id}-id`)}
+              </div>
+            ) : (
+              <label className="settings-field">
+                模型 ID
+                <input
+                  required
+                  maxLength={200}
+                  value={model.modelId}
+                  aria-invalid={errors[`model-${model.id}-id`] !== undefined}
+                  onChange={(event) => update(model.id, { modelId: event.target.value })}
+                  placeholder="填写服务提供的准确模型 ID"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                {fieldError(`model-${model.id}-id`)}
+              </label>
+            )}
             <details className="settings-advanced">
               <summary>高级设置</summary>
               <div className="settings-numeric-fields">

@@ -7,17 +7,20 @@ import {
   type RunAutomationNowResponse,
   type Thread,
   type UpdateAutomationResponse,
+  type Workspace,
 } from '@kairos/contracts';
 import {
   type FormEvent,
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { AppDialog } from './app-dialog.js';
 import {
   type AutomationFormValue,
@@ -45,10 +48,11 @@ import {
 } from './automation-schedule.js';
 import { automationTimeZoneLabel, automationTimeZoneOptions } from './automation-time-zone.js';
 import type { KairosClients } from './client.js';
-import { Dropdown } from './dropdown.js';
+import { Dropdown, dropdownPosition } from './dropdown.js';
 import { formatClientError } from './errors.js';
 import { FailureNotice } from './failure-notice.js';
 import { Icon } from './icon.js';
+import { randomId } from './random.js';
 import type { ActionExecutorView } from './use-action-executor.js';
 
 interface AutomationDetailState {
@@ -288,7 +292,7 @@ export function AutomationPage({
             type="button"
             className="device-primary"
             disabled={actions.busy}
-            onClick={() => setEditor({ session: crypto.randomUUID(), automation: null })}
+            onClick={() => setEditor({ session: randomId(), automation: null })}
           >
             <Icon name="plus" className="i-sm" />
             新建定时任务
@@ -360,7 +364,7 @@ export function AutomationPage({
                         `automation:update:${selectedAutomation.scheduleId}`,
                       )}
                       onClick={() =>
-                        setEditor({ session: crypto.randomUUID(), automation: selectedAutomation })
+                        setEditor({ session: randomId(), automation: selectedAutomation })
                       }
                     >
                       <Icon name="edit" className="i-sm" />
@@ -395,7 +399,7 @@ export function AutomationPage({
                 </div>
                 <dl className="automation-definition-grid">
                   <div>
-                    <dt>执行目标</dt>
+                    <dt>触发话题</dt>
                     <dd>{automationTargetText(selectedAutomation.target?.kind)}</dd>
                   </div>
                   <div>
@@ -633,75 +637,75 @@ export function AutomationFireHistory({
         <div className="automation-fire-list">
           {fires.map((fire) => (
             <article className="automation-fire" key={fire.fireId}>
-              <div className="automation-fire-heading">
-                <div>
-                  <strong>{automationTriggerText(fire.trigger)}</strong>
-                  <time>{automationTimestampText(fire.actualAt)}</time>
+              <div className="automation-fire-main">
+                <div className="automation-fire-heading">
+                  <div>
+                    <strong>{automationTriggerText(fire.trigger)}</strong>
+                    <time>{automationTimestampText(fire.actualAt)}</time>
+                  </div>
+                  <span className={`automation-fire-status status-${fire.status}`}>
+                    {automationFireStatusText(fire.status)}
+                  </span>
                 </div>
-                <span className={`automation-fire-status status-${fire.status}`}>
-                  {automationFireStatusText(fire.status)}
-                </span>
+                <dl className="automation-fire-facts">
+                  <div>
+                    <dt>计划时间</dt>
+                    <dd>{automationTimestampText(fire.scheduledAt)}</dd>
+                  </div>
+                  {fire.targetThreadId && (
+                    <div>
+                      <dt>
+                        {fire.targetKind === AutomationTargetKind.NEW_TASK ||
+                        fire.targetKind === AutomationTargetKind.NEW_AUTOMATION_ONLY
+                          ? '新话题'
+                          : '话题'}
+                      </dt>
+                      <dd>
+                        {fire.targetKind === AutomationTargetKind.MAIN
+                          ? '主对话'
+                          : fire.targetThreadTitle || '未命名话题'}
+                      </dd>
+                    </div>
+                  )}
+                  {fire.finishedAt && (
+                    <div>
+                      <dt>结束时间</dt>
+                      <dd>{automationTimestampText(fire.finishedAt)}</dd>
+                    </div>
+                  )}
+                  {fire.coalescedCount > 0 && (
+                    <div>
+                      <dt>重复计划合并</dt>
+                      <dd>额外合并 {fire.coalescedCount} 次较早计划</dd>
+                    </div>
+                  )}
+                </dl>
+                {fire.error && (
+                  <div className="automation-fire-error" role="alert">
+                    <strong>执行错误</strong>
+                    <p>{fire.error.message || 'Server 未提供错误正文。'}</p>
+                    <details className="automation-fire-error-detail">
+                      <summary>技术详情</summary>
+                      <code>error_code={fire.error.code}</code>
+                    </details>
+                  </div>
+                )}
               </div>
-              <dl className="automation-fire-facts">
-                <div>
-                  <dt>计划时间</dt>
-                  <dd>{automationTimestampText(fire.scheduledAt)}</dd>
-                </div>
-                {fire.targetThreadId && (
-                  <div>
-                    <dt>
-                      {fire.targetKind === AutomationTargetKind.NEW_TASK ||
-                      fire.targetKind === AutomationTargetKind.NEW_AUTOMATION_ONLY
-                        ? '新话题'
-                        : '话题'}
-                    </dt>
-                    <dd>
-                      {fire.targetKind === AutomationTargetKind.MAIN
-                        ? '主对话'
-                        : fire.targetThreadTitle || '未命名话题'}
-                    </dd>
-                  </div>
-                )}
-                {fire.finishedAt && (
-                  <div>
-                    <dt>结束时间</dt>
-                    <dd>{automationTimestampText(fire.finishedAt)}</dd>
-                  </div>
-                )}
-                {fire.coalescedCount > 0 && (
-                  <div>
-                    <dt>重复计划合并</dt>
-                    <dd>额外合并 {fire.coalescedCount} 次较早计划</dd>
-                  </div>
-                )}
-              </dl>
-              {fire.error && (
-                <div className="automation-fire-error" role="alert">
-                  <strong>执行错误</strong>
-                  <p>{fire.error.message || 'Server 未提供错误正文。'}</p>
-                  <details className="automation-fire-error-detail">
-                    <summary>技术详情</summary>
-                    <code>error_code={fire.error.code}</code>
-                  </details>
-                </div>
-              )}
               {fire.targetThreadId && (
-                <div className="automation-fire-footer">
-                  <button
-                    type="button"
-                    className="automation-target-link"
-                    onClick={() =>
-                      onOpenThread(
-                        fire.scheduleId,
-                        fire.targetThreadId ?? '',
-                        fire.targetKind === AutomationTargetKind.NEW_AUTOMATION_ONLY,
-                      )
-                    }
-                  >
-                    查看对话
-                    <Icon name="chevron" className="i-sm" />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className="automation-target-link automation-fire-open"
+                  onClick={() =>
+                    onOpenThread(
+                      fire.scheduleId,
+                      fire.targetThreadId ?? '',
+                      fire.targetKind === AutomationTargetKind.NEW_AUTOMATION_ONLY,
+                    )
+                  }
+                >
+                  查看对话
+                  <Icon name="chevron" className="i-sm" />
+                </button>
               )}
             </article>
           ))}
@@ -718,6 +722,242 @@ export function AutomationFireHistory({
         </button>
       )}
     </section>
+  );
+}
+
+function AutomationTimeFields({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  const [hour = '09', minute = '00'] = value.split(':');
+  return (
+    <span className="automation-time-fields">
+      <Dropdown
+        label="时间小时"
+        trigger={
+          <>
+            {hour}
+            <Icon name="down" className="i-sm dropdown-chevron" />
+          </>
+        }
+        triggerClassName="device-secondary automation-select automation-time-part"
+        value={hour}
+        items={Array.from({ length: 24 }, (_, v) => {
+          const padded = String(v).padStart(2, '0');
+          return { value: padded, label: `${padded} 时` };
+        })}
+        disabled={disabled}
+        onSelect={(next) => onChange(`${next}:${minute}`)}
+      />
+      <span className="automation-time-separator" aria-hidden="true">
+        :
+      </span>
+      <Dropdown
+        label="时间分钟"
+        trigger={
+          <>
+            {minute}
+            <Icon name="down" className="i-sm dropdown-chevron" />
+          </>
+        }
+        triggerClassName="device-secondary automation-select automation-time-part"
+        value={minute}
+        items={Array.from({ length: 60 }, (_, v) => {
+          const padded = String(v).padStart(2, '0');
+          return { value: padded, label: `${padded} 分` };
+        })}
+        disabled={disabled}
+        onSelect={(next) => onChange(`${hour}:${next}`)}
+      />
+    </span>
+  );
+}
+
+function WorkspaceThreadCascade({
+  threads,
+  workspaces,
+  value,
+  loading,
+  disabled,
+  onSelect,
+}: {
+  threads: readonly Thread[];
+  workspaces: readonly Workspace[];
+  value: string;
+  loading: boolean;
+  disabled: boolean;
+  onSelect: (threadId: string) => void;
+}) {
+  const id = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [groupId, setGroupId] = useState<string | null>(null);
+  const groups = useMemo(() => {
+    const byWorkspace = new Map<string, Thread[]>();
+    for (const thread of threads) {
+      const key = thread.workspaceId ?? '';
+      byWorkspace.set(key, [...(byWorkspace.get(key) ?? []), thread]);
+    }
+    return [
+      ...workspaces.map((workspace) => ({
+        id: workspace.workspaceId,
+        name: workspace.name,
+        threads: byWorkspace.get(workspace.workspaceId) ?? [],
+      })),
+      { id: '', name: '临时对话', threads: byWorkspace.get('') ?? [] },
+    ];
+  }, [threads, workspaces]);
+  const active = groups.find((group) => group.id === groupId) ?? null;
+  const selected = threads.find((thread) => thread.threadId === value);
+  const close = useCallback(() => {
+    setOpen(false);
+    setGroupId(null);
+  }, []);
+
+  useLayoutEffect(() => {
+    void groupId;
+    if (!open) return;
+    const panel = panelRef.current;
+    const trigger = triggerRef.current;
+    if (!panel || !trigger) return;
+    const anchor = trigger.getBoundingClientRect();
+    panel.style.minWidth = `${Math.min(Math.max(anchor.width, 220), window.innerWidth - 24)}px`;
+    const bounds = panel.getBoundingClientRect();
+    const result = dropdownPosition(
+      anchor,
+      { width: bounds.width, height: Math.max(bounds.height, panel.scrollHeight) },
+      { width: window.innerWidth, height: window.innerHeight },
+      'bottom',
+      'start',
+    );
+    panel.style.left = `${result.left}px`;
+    panel.style.top = `${result.top}px`;
+    panel.style.maxHeight = `${result.maxHeight}px`;
+  }, [open, groupId]);
+
+  useEffect(() => {
+    if (!open) return;
+    function dismiss(event: Event) {
+      if (
+        event.target instanceof Node &&
+        !triggerRef.current?.contains(event.target) &&
+        !panelRef.current?.contains(event.target)
+      )
+        close();
+    }
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, [open, close]);
+
+  const triggerLabel = loading
+    ? '正在加载话题…'
+    : selected?.title ||
+      (value
+        ? '当前话题'
+        : groups.every((group) => group.threads.length === 0)
+          ? '暂无可选话题'
+          : '请选择话题');
+
+  return (
+    <div className="dropdown automation-cascade">
+      <button
+        ref={triggerRef}
+        type="button"
+        className="dropdown-trigger device-secondary automation-select"
+        aria-label="已有话题"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        disabled={disabled || loading}
+        onClick={() => (open ? close() : setOpen(true))}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && open) {
+            event.preventDefault();
+            event.stopPropagation();
+            close();
+          }
+        }}
+      >
+        {triggerLabel}
+        <Icon name="down" className="dropdown-chevron" />
+      </button>
+      {open &&
+        createPortal(
+          <div
+            ref={panelRef}
+            id={id}
+            role="menu"
+            aria-label="已有话题"
+            className="dropdown-panel automation-cascade-panel"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                close();
+              }
+            }}
+          >
+            {active === null ? (
+              groups.map((group) => (
+                <button
+                  key={group.id || 'temporary'}
+                  type="button"
+                  role="menuitem"
+                  className="dropdown-item"
+                  onClick={() => setGroupId(group.id)}
+                >
+                  <span className="dropdown-item-copy">
+                    {group.name}
+                    <small>{group.threads.length} 个话题</small>
+                  </span>
+                  <Icon name="chevron" className="i-sm dropdown-chevron" />
+                </button>
+              ))
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="dropdown-item automation-cascade-back"
+                  onClick={() => setGroupId(null)}
+                >
+                  <Icon name="back" className="i-sm" />
+                  <span className="dropdown-item-copy">{active.name}</span>
+                </button>
+                <div className="automation-cascade-list">
+                  {active.threads.length === 0 ? (
+                    <div className="dropdown-section">该空间暂无话题</div>
+                  ) : (
+                    active.threads.map((thread) => (
+                      <button
+                        key={thread.threadId}
+                        type="button"
+                        role="menuitem"
+                        className="dropdown-item"
+                        onClick={() => {
+                          onSelect(thread.threadId);
+                          close();
+                        }}
+                      >
+                        <span className="dropdown-item-copy">{thread.title || '未命名话题'}</span>
+                        {thread.threadId === value && (
+                          <Icon name="check" className="i-sm dropdown-check selected" />
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </div>,
+          triggerRef.current?.closest('dialog') ?? document.body,
+        )}
+    </div>
   );
 }
 
@@ -743,6 +983,7 @@ export function AutomationEditor({
     automation ? automationFormValue(automation) : newAutomationForm(),
   );
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(false);
   const [threadsError, setThreadsError] = useState<string | null>(null);
   const [timeZoneSearch, setTimeZoneSearch] = useState('');
@@ -772,10 +1013,14 @@ export function AutomationEditor({
     const controller = new AbortController();
     setThreadsLoading(true);
     setThreadsError(null);
-    void listOrdinaryThreads(clients, controller.signal).then(
-      (values) => {
+    void Promise.all([
+      listOrdinaryThreads(clients, controller.signal),
+      clients.workspaces.listWorkspaces({}, { signal: controller.signal }),
+    ]).then(
+      ([values, workspaceResponse]) => {
         if (!controller.signal.aborted) {
           setThreads(values);
+          setWorkspaces(workspaceResponse.workspaces);
           setThreadsLoading(false);
         }
       },
@@ -823,14 +1068,6 @@ export function AutomationEditor({
     AutomationTargetKind.NEW_TASK,
     AutomationTargetKind.NEW_AUTOMATION_ONLY,
   ].map((kind) => ({ value: String(kind), label: automationTargetText(kind) }));
-  const selectedThread = threads.find((thread) => thread.threadId === form.targetThreadId);
-  const threadOptions = threads.map((thread) => ({
-    value: thread.threadId,
-    label: thread.title || '未命名话题',
-  }));
-  if (form.targetThreadId && !selectedThread) {
-    threadOptions.unshift({ value: form.targetThreadId, label: '当前话题' });
-  }
 
   return (
     <AppDialog
@@ -936,23 +1173,79 @@ export function AutomationEditor({
                   保留现有复杂重复规则。选择其他重复方式可重新设置时间。
                 </p>
               </div>
+            ) : form.repeat === 'once' ? (
+              <div className="automation-field">
+                <span>时间</span>
+                <span className="automation-time-fields">
+                  <input
+                    type="date"
+                    required
+                    aria-label="日期"
+                    value={form.runAtLocal.split('T')[0] ?? ''}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      update({
+                        runAtLocal: `${event.currentTarget.value}T${
+                          form.runAtLocal.split('T')[1] ?? '09:00'
+                        }`,
+                      })
+                    }
+                  />
+                  <AutomationTimeFields
+                    value={form.runAtLocal.split('T')[1] ?? '09:00'}
+                    disabled={disabled}
+                    onChange={(time) =>
+                      update({ runAtLocal: `${form.runAtLocal.split('T')[0] ?? ''}T${time}` })
+                    }
+                  />
+                </span>
+              </div>
             ) : (
-              <label>
-                时间
-                <input
-                  required
-                  type={form.repeat === 'once' ? 'datetime-local' : 'time'}
-                  value={form.repeat === 'once' ? form.runAtLocal : form.time}
-                  onChange={(event) =>
-                    update(
-                      form.repeat === 'once'
-                        ? { runAtLocal: event.currentTarget.value }
-                        : { time: event.currentTarget.value },
-                    )
-                  }
+              <div className="automation-field">
+                <span>时间</span>
+                <AutomationTimeFields
+                  value={form.time}
+                  disabled={disabled}
+                  onChange={(time) => update({ time })}
                 />
-              </label>
+              </div>
             )}
+            <div className="automation-field">
+              <span>时区</span>
+              <Dropdown
+                label="时区"
+                trigger={
+                  <>
+                    {automationTimeZoneLabel(form.timeZone)}
+                    <Icon name="down" className="dropdown-chevron" />
+                  </>
+                }
+                triggerClassName="device-secondary automation-select"
+                panelClassName="automation-time-zone-menu"
+                value={form.timeZone}
+                header={
+                  <input
+                    type="search"
+                    aria-label="搜索时区"
+                    placeholder="搜索时区或城市"
+                    value={timeZoneSearch}
+                    onChange={(event) => setTimeZoneSearch(event.currentTarget.value)}
+                    onKeyDown={(event) => {
+                      if (!['ArrowDown', 'ArrowUp', 'Escape', 'Tab'].includes(event.key))
+                        event.stopPropagation();
+                    }}
+                  />
+                }
+                items={timeZoneOptions.filter((option) =>
+                  option.label.toLowerCase().includes(timeZoneSearch.trim().toLowerCase()),
+                )}
+                disabled={disabled}
+                onSelect={(timeZone) => {
+                  update({ timeZone });
+                  setTimeZoneSearch('');
+                }}
+              />
+            </div>
           </div>
           {form.repeat === 'weekly' && (
             <fieldset className="automation-weekdays">
@@ -1000,46 +1293,9 @@ export function AutomationEditor({
             </div>
           )}
           <div className="automation-field">
-            <span>时区</span>
+            <span>触发话题</span>
             <Dropdown
-              label="时区"
-              trigger={
-                <>
-                  {automationTimeZoneLabel(form.timeZone)}
-                  <Icon name="down" className="dropdown-chevron" />
-                </>
-              }
-              triggerClassName="device-secondary automation-select"
-              panelClassName="automation-time-zone-menu"
-              value={form.timeZone}
-              header={
-                <input
-                  type="search"
-                  aria-label="搜索时区"
-                  placeholder="搜索时区或城市"
-                  value={timeZoneSearch}
-                  onChange={(event) => setTimeZoneSearch(event.currentTarget.value)}
-                  onKeyDown={(event) => {
-                    if (!['ArrowDown', 'ArrowUp', 'Escape', 'Tab'].includes(event.key))
-                      event.stopPropagation();
-                  }}
-                />
-              }
-              items={timeZoneOptions.filter((option) =>
-                option.label.toLowerCase().includes(timeZoneSearch.trim().toLowerCase()),
-              )}
-              disabled={disabled}
-              onSelect={(timeZone) => {
-                update({ timeZone });
-                setTimeZoneSearch('');
-              }}
-            />
-            <span className="automation-field-help">按该时区执行，默认使用当前设备时区。</span>
-          </div>
-          <div className="automation-field">
-            <span>执行目标</span>
-            <Dropdown
-              label="执行目标"
+              label="触发话题"
               trigger={
                 <>
                   {automationTargetText(form.targetKind)}
@@ -1069,25 +1325,12 @@ export function AutomationEditor({
           {form.targetKind === AutomationTargetKind.EXISTING_THREAD && (
             <div className="automation-field">
               <span>已有话题</span>
-              <Dropdown
-                label="已有话题"
-                trigger={
-                  <>
-                    {threadsLoading
-                      ? '正在加载话题…'
-                      : selectedThread?.title ||
-                        (form.targetThreadId
-                          ? '当前话题'
-                          : threads.length
-                            ? '请选择话题'
-                            : '暂无可选话题')}
-                    <Icon name="down" className="dropdown-chevron" />
-                  </>
-                }
-                triggerClassName="device-secondary automation-select"
+              <WorkspaceThreadCascade
+                threads={threads}
+                workspaces={workspaces}
                 value={form.targetThreadId}
-                items={threadOptions}
-                disabled={threadsLoading || disabled}
+                loading={threadsLoading}
+                disabled={disabled}
                 onSelect={(targetThreadId) => update({ targetThreadId })}
               />
               {threadsError && (

@@ -44,6 +44,7 @@ import {
   getNarrowViewportSnapshot,
   subscribeNarrowViewport,
 } from './narrow-viewport.js';
+import { randomId } from './random.js';
 import {
   SettingsPage,
   type SettingsSection,
@@ -60,6 +61,7 @@ import { useAuth } from './use-auth.js';
 import { useDrafts } from './use-drafts.js';
 import { useTopicPreviews } from './use-topic-previews.js';
 import { useWorkbench } from './use-workbench.js';
+import { useWorkspaceCards } from './use-workspace-cards.js';
 import type { WorkspaceGroup } from './use-workspaces.js';
 import { useWorkspaceDirectory } from './use-workspaces.js';
 import { UserAvatar, UserProfileProvider } from './user-avatar.js';
@@ -170,6 +172,12 @@ export function AccountWorkbench({
   }, [workspaceDirectory.groups, workspaceDirectory.temporary, identity.mainThreadId]);
   const drafts = useDrafts(storage);
   const directory = workbench.state;
+  const workspaceCards = useWorkspaceCards(
+    clients,
+    directory.page === 'workspaces',
+    workspaceDirectory.groups,
+    workspaceDirectory.temporary,
+  );
   const mainThread = directory.mainThread;
   const mainThreadId = identity.mainThreadId;
   const selectedThreadId = directory.page === 'thread' ? directory.selectedThreadId : null;
@@ -335,7 +343,7 @@ export function AccountWorkbench({
     setWorkspaceError(null);
     try {
       await clients.workspaces.updateWorkspace({
-        clientActionId: crypto.randomUUID(),
+        clientActionId: randomId(),
         workspaceId: workspace.workspaceId,
         hidden: !workspace.hidden,
       });
@@ -429,11 +437,11 @@ export function AccountWorkbench({
     (request: OpenTopicRequest) => {
       setNavigationOpen(false);
       topics.closeDirectory();
-      workbench.showMain();
+      workbench.showThreadPage();
       setActiveSubagent(null);
       setActiveTopic(request);
     },
-    [topics.closeDirectory, workbench.showMain],
+    [topics.closeDirectory, workbench.showThreadPage],
   );
 
   const closeDetail = useCallback(() => {
@@ -449,17 +457,18 @@ export function AccountWorkbench({
     (threadId: string, origin: AgentOrigin) => {
       setNavigationOpen(false);
       const invocationId = origin.delegation.sourceToolCallId;
-      if (origin.delegation.sourceThreadId === mainThreadId) {
-        setHighlightedCallId(invocationId);
-      } else {
-        setHighlightedCallId(null);
+      const sourceThreadId = origin.delegation.sourceThreadId;
+      setHighlightedCallId(invocationId);
+      if (sourceThreadId === mainThreadId) workbench.showMain();
+      else {
+        setFullTopic({ origin: null, invocationId: null });
+        workbench.openThread(sourceThreadId);
       }
       setActiveSubagent(null);
       setActiveTopic({ threadId, invocationId, origin });
       topics.closeDirectory();
-      workbench.showMain();
     },
-    [mainThreadId, topics.closeDirectory, workbench.showMain],
+    [mainThreadId, topics.closeDirectory, workbench.openThread, workbench.showMain],
   );
 
   const completeAction = useCallback<ActionCompletion>(
@@ -756,6 +765,36 @@ export function AccountWorkbench({
       if (navigationOpen) navigationButton.current?.focus({ preventScroll: true });
     };
   }, [navigationOpen]);
+
+  const renderTopicPane = () =>
+    activeTopic && (
+      <ConversationPane
+        key={activeTopic.threadId}
+        clients={clients}
+        threadSyncManager={threadSyncManager}
+        variant="topic"
+        composerOwner="topic"
+        threadId={activeTopic.threadId}
+        thread={activeThread}
+        mainThreadId={mainThreadId}
+        draftOwner={activeTopic.threadId}
+        actions={actions}
+        drafts={drafts}
+        topicCards={allCards}
+        previewRevision={previewRevision}
+        toolExpansionChoices={toolExpansionChoices}
+        onToolExpansionChange={onToolExpansionChange}
+        origin={activeTopic.origin}
+        invocationId={activeTopic.invocationId}
+        onOpenTopic={openTopic}
+        onOpenSubagent={openSubagent}
+        onOpenDirectory={openDirectory}
+        onOpenMain={openMain}
+        onCloseTopic={closeDetail}
+        onShowOrigin={showOrigin}
+        showNotice={showNotice}
+      />
+    );
 
   const renderSubagentPane = () =>
     activeSubagent && (
@@ -1087,34 +1126,7 @@ export function AccountWorkbench({
                     onShowOrigin={showOrigin}
                     showNotice={showNotice}
                   />
-                  {activeTopic && mainVisible && (
-                    <ConversationPane
-                      key={activeTopic.threadId}
-                      clients={clients}
-                      threadSyncManager={threadSyncManager}
-                      variant="topic"
-                      composerOwner="topic"
-                      threadId={activeTopic.threadId}
-                      thread={activeThread}
-                      mainThreadId={mainThreadId}
-                      draftOwner={activeTopic.threadId}
-                      actions={actions}
-                      drafts={drafts}
-                      topicCards={allCards}
-                      previewRevision={previewRevision}
-                      toolExpansionChoices={toolExpansionChoices}
-                      onToolExpansionChange={onToolExpansionChange}
-                      origin={activeTopic.origin}
-                      invocationId={activeTopic.invocationId}
-                      onOpenTopic={openTopic}
-                      onOpenSubagent={openSubagent}
-                      onOpenDirectory={openDirectory}
-                      onOpenMain={openMain}
-                      onCloseTopic={closeDetail}
-                      onShowOrigin={showOrigin}
-                      showNotice={showNotice}
-                    />
-                  )}
+                  {mainVisible && renderTopicPane()}
                   {activeSubagent && mainVisible && renderSubagentPane()}
                 </DualPaneLayout>
               )}
@@ -1178,6 +1190,10 @@ export function AccountWorkbench({
                 <WorkspacesPage
                   groups={workspaceDirectory.groups}
                   temporary={workspaceDirectory.temporary}
+                  cards={workspaceCards.cards}
+                  cardsError={workspaceCards.error}
+                  onCardsRetry={workspaceCards.reload}
+                  mainThreadId={mainThreadId}
                   busy={workspaceBusy}
                   onCreate={createWorkspace}
                   onEdit={editWorkspace}
@@ -1186,7 +1202,7 @@ export function AccountWorkbench({
                     setDeletingWorkspace(group);
                     setDeleteConfirmation('');
                     setWorkspaceError(null);
-                    deleteActionId.current = crypto.randomUUID();
+                    deleteActionId.current = randomId();
                   }}
                   onNewTopic={openDraft}
                   loading={workspaceDirectory.loading}
@@ -1252,7 +1268,7 @@ export function AccountWorkbench({
               ) : !mainVisible && selectedThreadId ? (
                 <DualPaneLayout
                   mainVisible
-                  hasTopic={activeSubagent !== null}
+                  hasTopic={activeTopic !== null || activeSubagent !== null}
                   narrowViewport={narrowViewport}
                 >
                   <ConversationPane
@@ -1282,6 +1298,7 @@ export function AccountWorkbench({
                     previewRevision={previewRevision}
                     toolExpansionChoices={toolExpansionChoices}
                     onToolExpansionChange={onToolExpansionChange}
+                    highlightedCallId={highlightedCallId}
                     origin={fullTopic.origin}
                     invocationId={fullTopic.invocationId}
                     onOpenTopic={openTopic}
@@ -1292,6 +1309,7 @@ export function AccountWorkbench({
                     onShowOrigin={showOrigin}
                     showNotice={showNotice}
                   />
+                  {renderTopicPane()}
                   {renderSubagentPane()}
                 </DualPaneLayout>
               ) : null}
@@ -1303,6 +1321,7 @@ export function AccountWorkbench({
             clients={clients}
             workspace={workspaceEditor.workspace}
             onClose={() => setWorkspaceEditor(null)}
+            onVisibilityChanged={() => workspaceDirectory.refresh()}
             onSaved={() => {
               setWorkspaceEditor(null);
               workspaceDirectory.refresh();

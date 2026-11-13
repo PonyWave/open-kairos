@@ -4,6 +4,7 @@ import { formatAttachmentSize } from './attachments.js';
 import { composerInputId, type DraftAttachment, type MessageDraft } from './drafts.js';
 import { Dropdown, dropdownFocusIndex } from './dropdown.js';
 import { Icon } from './icon.js';
+import { randomId } from './random.js';
 
 const slashCommands = [
   { name: '/reload', description: '重载提示词与 Skill' },
@@ -55,7 +56,7 @@ export function addComposerClipboardFiles(
       if (file.name) return file;
       const extension =
         file.type === 'image/png' ? 'png' : file.type === 'image/jpeg' ? 'jpg' : 'txt';
-      return new File([file], `pasted-${crypto.randomUUID()}.${extension}`, {
+      return new File([file], `pasted-${randomId()}.${extension}`, {
         type: file.type,
         lastModified: file.lastModified,
       });

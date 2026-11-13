@@ -1,3 +1,5 @@
+import { randomId } from './random.js';
+
 export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -88,7 +90,7 @@ export class ClientActionStore {
       return existing;
     }
     const record: ClientActionRecord = {
-      id: crypto.randomUUID(),
+      id: randomId(),
       key,
       kind,
       fingerprint,
