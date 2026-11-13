@@ -600,7 +600,7 @@ describe('real environment Operation execution', () => {
       status: OperationStatus.COMPLETED,
       outcome: {
         case: 'bash',
-        value: { exitCode: 0, outputComplete: true, endOffset: 0n },
+        value: { exitCode: 0, outputComplete: true, endOffset: 0n, logTruncated: false },
       },
       observedAt: new Date(),
     });

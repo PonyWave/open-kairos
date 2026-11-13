@@ -661,10 +661,6 @@ export async function startRealEnvironmentServer(
       mainEnvironmentOperationIds.has(input.operationId)
         ? mainEnvironmentOperations.readEnvironmentOperationOutput(input)
         : channel.readEnvironmentOperationOutput(input),
-    readEnvironmentOperationSpill: (operationId) =>
-      platformOperationIds.has(operationId)
-        ? platformOperations.readEnvironmentOperationSpill(operationId)
-        : channel.readEnvironmentOperationSpill(operationId),
   };
   const server = createServer(database, false, {
     ...options,

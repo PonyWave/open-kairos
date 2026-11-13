@@ -83,7 +83,7 @@ function directoryOutcome(): Extract<EnvironmentOperationOutcome, { case: 'direc
 function bashOutcome(endOffset = 0n): EnvironmentOperationOutcome {
   return {
     case: 'bash',
-    value: { exitCode: 0, outputComplete: true, endOffset },
+    value: { exitCode: 0, outputComplete: true, endOffset, logTruncated: false },
   };
 }
 
@@ -310,7 +310,7 @@ describe('EnvironmentOperationStore', () => {
       store.recordResult({
         ...resultTarget(input),
         status: OperationStatus.COMPLETED,
-        outcome: { case: 'bash', value: { outputComplete: false } },
+        outcome: { case: 'bash', value: { outputComplete: false, logTruncated: false } },
         observedAt: now,
       }),
     ).toThrowError(expect.objectContaining({ code: DeviceErrorCode.INVALID_MESSAGE }));
@@ -318,7 +318,10 @@ describe('EnvironmentOperationStore', () => {
       store.recordResult({
         ...resultTarget(input),
         status: OperationStatus.FAILED,
-        outcome: { case: 'bash', value: { exitCode: 0, outputComplete: false } },
+        outcome: {
+          case: 'bash',
+          value: { exitCode: 0, outputComplete: false, logTruncated: false },
+        },
         observedAt: now,
       }),
     ).toThrowError(expect.objectContaining({ code: DeviceErrorCode.INVALID_MESSAGE }));
