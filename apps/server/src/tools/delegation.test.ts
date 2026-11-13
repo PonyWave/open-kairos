@@ -23,6 +23,16 @@ function fixture() {
   return { database, store, main, run: store.getRunById(sent.runId) };
 }
 
+function toolOptions(store: SessionStore, source: ReturnType<SessionStore['getRunById']>) {
+  return {
+    store,
+    source,
+    scheduleThreadCall: () => Promise.resolve(),
+    waitForInteraction: () => Promise.resolve(),
+    cancelInteraction: () => Promise.reject(new Error('not used by workspace tools')),
+  };
+}
+
 function context(id: string) {
   return {
     call: { id, name: 'workspace_create', arguments: {} },
@@ -39,8 +49,8 @@ const createInput = {
 
 it('creates a workspace with its main conversation from the global main', async () => {
   const current = fixture();
-  const tool = createWorkspaceCreateTool({ store: current.store, source: current.run });
-  const result = await tool.execute(tool.validate(createInput), context('create-1'));
+  const tool = createWorkspaceCreateTool(toolOptions(current.store, current.run));
+  const result = await tool.execute(await tool.validate(createInput), context('create-1'));
   const payload = JSON.parse(typeof result === 'string' ? result : result.content);
   expect(payload.workspace_id).toBeTruthy();
   expect(payload.main_thread_id).toBeTruthy();
@@ -55,12 +65,12 @@ it('creates a workspace with its main conversation from the global main', async 
 
 it('rejects relative paths, duplicate device directories and non-main sources', async () => {
   const current = fixture();
-  const tool = createWorkspaceCreateTool({ store: current.store, source: current.run });
+  const tool = createWorkspaceCreateTool(toolOptions(current.store, current.run));
   expect(() => tool.validate({ ...createInput, path: 'relative/path' })).toThrow('absolute');
 
-  await tool.execute(tool.validate(createInput), context('create-1'));
+  await tool.execute(await tool.validate(createInput), context('create-1'));
   await expect(
-    tool.execute(tool.validate({ ...createInput, name: '重复' }), context('create-2')),
+    tool.execute(await tool.validate({ ...createInput, name: '重复' }), context('create-2')),
   ).rejects.toThrow('already exists');
 
   const workspace = current.store.listWorkspaces(ownerId)[0];
@@ -76,13 +86,12 @@ it('rejects relative paths, duplicate device directories and non-main sources', 
     text: '再建一个',
     mode: 'follow_up',
   });
-  const workspaceMainTool = createWorkspaceCreateTool({
-    store: current.store,
-    source: current.store.getRunById(sent.runId),
-  });
+  const workspaceMainTool = createWorkspaceCreateTool(
+    toolOptions(current.store, current.store.getRunById(sent.runId)),
+  );
   await expect(
     workspaceMainTool.execute(
-      workspaceMainTool.validate({ ...createInput, path: '/srv/other' }),
+      await workspaceMainTool.validate({ ...createInput, path: '/srv/other' }),
       context('create-3'),
     ),
   ).rejects.toThrow('Only the global main');
