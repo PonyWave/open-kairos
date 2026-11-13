@@ -12,6 +12,7 @@ enum DeviceCapability {
   DEVICE_CAPABILITY_FILE_EDIT = 4;
   DEVICE_CAPABILITY_DIRECTORY_CHECK = 5;
   DEVICE_CAPABILITY_DIRECTORY_LIST = 6;
+  DEVICE_CAPABILITY_FILE_SEARCH = 7;
 }
 
 enum BashStatus {
@@ -232,6 +233,33 @@ message BashAction {
   uint32 timeout_seconds = 3;
 }
 
+message GlobAction {
+  string pattern = 1;
+  string path = 2;
+  string cwd = 3;
+  optional uint32 head_limit = 4;
+  optional uint32 offset = 5;
+}
+
+enum GrepMode {
+  GREP_MODE_UNSPECIFIED = 0;
+  GREP_MODE_CONTENT = 1;
+  GREP_MODE_FILES_WITH_MATCHES = 2;
+  GREP_MODE_COUNT = 3;
+}
+
+message GrepAction {
+  string pattern = 1;
+  string path = 2;
+  string cwd = 3;
+  optional string include = 4;
+  bool case_insensitive = 5;
+  GrepMode mode = 6;
+  bool line_numbers = 7;
+  optional uint32 head_limit = 8;
+  optional uint32 offset = 9;
+}
+
 message DirectoryCheckAction {
   string path = 1;
   bool load_workspace = 2;
@@ -298,6 +326,36 @@ message BashOutcome {
   optional int32 exit_code = 1;
   bool output_complete = 2;
   optional uint64 end_offset = 3;
+  optional string log_file = 4;
+  optional uint64 log_size_bytes = 5;
+  bool log_truncated = 6;
+}
+
+message GlobOutcome {
+  string path = 1;
+  repeated string files = 2;
+  bool truncated = 3;
+  optional string reason = 4;
+}
+
+message GrepMatch {
+  string file = 1;
+  uint32 line = 2;
+  string text = 3;
+}
+
+message GrepFileCount {
+  string file = 1;
+  uint64 count = 2;
+}
+
+message GrepOutcome {
+  string path = 1;
+  repeated GrepMatch matches = 2;
+  repeated string files = 3;
+  repeated GrepFileCount counts = 4;
+  bool truncated = 5;
+  optional string reason = 6;
 }
 
 message DirectoryCheckOutcome {
@@ -329,6 +387,8 @@ message OperationStart {
     ReadImageAction read_image = 11;
     SyncScanAction sync_scan = 12;
     SyncReadAction sync_read = 13;
+    GlobAction glob = 14;
+    GrepAction grep = 15;
   }
 }
 
@@ -377,6 +437,8 @@ message OperationResult {
     ReadImageOutcome read_image = 12;
     SyncScanOutcome sync_scan = 13;
     SyncReadOutcome sync_read = 14;
+    GlobOutcome glob = 15;
+    GrepOutcome grep = 16;
   }
 }
 
@@ -435,6 +497,94 @@ message EnvironmentMaintenanceReport {
   uint64 active_operation_count = 6;
 }
 
+message McpSessionOpen {
+  string session_id = 1;
+  string server_name = 2;
+  string transport = 3;
+  string command = 4;
+  repeated string args = 5;
+  map<string, string> env = 6;
+  string url = 7;
+  map<string, string> headers = 8;
+}
+
+message McpSessionClose {
+  string session_id = 1;
+}
+
+message McpListTools {
+  string session_id = 1;
+  string request_id = 2;
+}
+
+message McpToolDescriptor {
+  string name = 1;
+  string description = 2;
+  string input_schema_json = 3;
+}
+
+message McpListToolsResult {
+  string session_id = 1;
+  string request_id = 2;
+  repeated McpToolDescriptor tools = 3;
+  string error = 4;
+}
+
+message McpCallTool {
+  string session_id = 1;
+  string request_id = 2;
+  string tool_name = 3;
+  string arguments_json = 4;
+}
+
+message McpCallToolResult {
+  string session_id = 1;
+  string request_id = 2;
+  string content_json = 3;
+  bool is_error = 4;
+  string error = 5;
+}
+
+message McpSessionOpenResult {
+  string session_id = 1;
+  string error = 2;
+  bool needs_auth = 3;
+}
+
+message McpAuthBegin {
+  string session_id = 1;
+  string request_id = 2;
+  string server_name = 3;
+  string transport = 4;
+  string url = 5;
+  map<string, string> headers = 6;
+  string redirect_uri = 7;
+  string access_token = 8;
+  string refresh_token = 9;
+}
+
+message McpAuthUrl {
+  string session_id = 1;
+  string request_id = 2;
+  string authorization_url = 3;
+  string error = 4;
+}
+
+message McpAuthCode {
+  string session_id = 1;
+  string request_id = 2;
+  string code = 3;
+}
+
+message McpAuthResult {
+  string session_id = 1;
+  string request_id = 2;
+  string access_token = 3;
+  string refresh_token = 4;
+  int64 expires_in_seconds = 5;
+  string error = 6;
+}
+
 message DaemonMessage {
   reserved 4, 5, 6, 7;
   reserved "bash_accepted", "bash_state", "bash_output_chunk", "bash_result";
@@ -449,6 +599,11 @@ message DaemonMessage {
     OperationResult operation_result = 12;
     EnvironmentRevoke environment_revoke = 13;
     EnvironmentMaintenanceQuery environment_maintenance_query = 14;
+    McpListToolsResult mcp_list_tools_result = 15;
+    McpCallToolResult mcp_call_tool_result = 16;
+    McpSessionOpenResult mcp_session_open_result = 17;
+    McpAuthUrl mcp_auth_url = 18;
+    McpAuthResult mcp_auth_result = 19;
   }
 }
 
@@ -467,5 +622,11 @@ message ServerMessage {
     OperationResultAck operation_result_ack = 14;
     EnvironmentRevokeAck environment_revoke_ack = 15;
     EnvironmentMaintenanceReport environment_maintenance_report = 16;
+    McpSessionOpen mcp_session_open = 17;
+    McpSessionClose mcp_session_close = 18;
+    McpListTools mcp_list_tools = 19;
+    McpCallTool mcp_call_tool = 20;
+    McpAuthBegin mcp_auth_begin = 21;
+    McpAuthCode mcp_auth_code = 22;
   }
 }

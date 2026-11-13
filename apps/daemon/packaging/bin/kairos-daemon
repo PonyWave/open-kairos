@@ -6,4 +6,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 RELEASE_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 KAIROS_DAEMON_VERSION=$(cat "$RELEASE_ROOT/VERSION")
 export KAIROS_DAEMON_VERSION
+if [ -x "$RELEASE_ROOT/bin/rg" ]; then
+  KAIROS_RG_PATH="$RELEASE_ROOT/bin/rg"
+  export KAIROS_RG_PATH
+fi
 exec "$RELEASE_ROOT/node/bin/node" "$RELEASE_ROOT/app/apps/daemon/dist/main.js" "$@"

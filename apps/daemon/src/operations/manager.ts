@@ -24,6 +24,7 @@ import {
   writeRemoteFile,
 } from './files.js';
 import { listRemoteDirectories } from './list-directories.js';
+import { runRemoteGlob, runRemoteGrep } from './search.js';
 import { readSyncChunk, scanSyncPath } from './sync.js';
 
 export type EnvironmentOperationResult = Extract<
@@ -74,6 +75,7 @@ export interface EnvironmentOperationManagerOptions {
   maxChunkBytes?: number;
   killGraceMilliseconds?: number;
   resourceHomeDirectory?: string;
+  bashLogDirectory?: string;
 }
 
 function canonicalJson(value: unknown): string {
@@ -182,6 +184,28 @@ function emptyOutcome(action: Action, reason?: string): Outcome {
       };
     case 'bash':
       return { case: 'bash', value: { outputComplete: false } };
+    case 'glob':
+      return {
+        case: 'glob',
+        value: {
+          path: action.value.path,
+          files: [],
+          truncated: false,
+          ...(reason === undefined ? {} : { reason }),
+        },
+      };
+    case 'grep':
+      return {
+        case: 'grep',
+        value: {
+          path: action.value.path,
+          matches: [],
+          files: [],
+          counts: [],
+          truncated: false,
+          ...(reason === undefined ? {} : { reason }),
+        },
+      };
     case 'syncScan':
       return {
         case: 'syncScan',
@@ -230,6 +254,9 @@ function requiredCapability(kind: ActionCase): DeviceCapability {
       return DeviceCapability.DIRECTORY_CHECK;
     case 'directoryList':
       return DeviceCapability.DIRECTORY_LIST;
+    case 'glob':
+    case 'grep':
+      return DeviceCapability.FILE_SEARCH;
   }
 }
 
@@ -274,6 +301,9 @@ export class EnvironmentOperationManager {
       ...(options.killGraceMilliseconds === undefined
         ? {}
         : { killGraceMilliseconds: options.killGraceMilliseconds }),
+      ...(options.bashLogDirectory === undefined
+        ? {}
+        : { logDirectory: options.bashLogDirectory }),
       send: (event) => this.sendBashEvent(event),
       onTransportError: options.onTransportError,
       onRetired: (operationId) => this.retireBash(operationId),
@@ -635,6 +665,18 @@ export class EnvironmentOperationManager {
             value: await listRemoteDirectories(action.value, operation.abortController.signal),
           };
           break;
+        case 'glob':
+          outcome = {
+            case: 'glob',
+            value: await runRemoteGlob(action.value, operation.abortController.signal),
+          };
+          break;
+        case 'grep':
+          outcome = {
+            case: 'grep',
+            value: await runRemoteGrep(action.value, operation.abortController.signal),
+          };
+          break;
         case 'directoryCheck': {
           const report = await checkDirectory(
             action.value.path,
@@ -833,6 +875,13 @@ export class EnvironmentOperationManager {
               ...(event.exitCode === undefined ? {} : { exitCode: event.exitCode }),
               outputComplete: event.outputComplete,
               ...(event.endOffset === undefined ? {} : { endOffset: event.endOffset }),
+              ...(event.logFile === undefined ? {} : { logFile: event.logFile }),
+              ...(event.logSizeBytes === undefined
+                ? {}
+                : { logSizeBytes: event.logSizeBytes }),
+              ...(event.logTruncated === undefined
+                ? {}
+                : { logTruncated: event.logTruncated }),
             },
           },
         };

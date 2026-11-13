@@ -19,6 +19,7 @@ import WebSocket from 'ws';
 import { BashOperationFailure } from '../bash/manager.js';
 import type { DaemonCapability, DaemonIdentity, DaemonIdentityStore } from '../identity.js';
 import { validateServerUrl } from '../identity.js';
+import { McpSessionHost } from '../mcp/host.js';
 import type { EnvironmentOperationResult } from '../operations/manager.js';
 import { EnvironmentOperationManager } from '../operations/manager.js';
 import type { DaemonStatus } from '../status.js';
@@ -106,6 +107,7 @@ export interface DaemonClientOptions {
   maxPendingOutputBytes?: number;
   maxOutputChunkBytes?: number;
   resourceHomeDirectory?: string;
+  bashLogDirectory?: string;
   status?: Pick<DaemonStatus, 'connection' | 'operation'>;
   onError?: (error: unknown) => void;
   onFatalError?: (error: Error) => void;
@@ -135,6 +137,7 @@ export class DaemonClient {
   private grantedCapabilities: DaemonCapability[] = [];
   private operationCapabilities: DeviceCapability[] = [];
   private readonly environmentOperations: EnvironmentOperationManager;
+  private readonly mcpHost: McpSessionHost;
   private readonly heartbeatIntervalMilliseconds: number;
   private readonly reconnectDelayMilliseconds: number;
   private readonly maxMessageBytes: number;
@@ -197,6 +200,10 @@ export class DaemonClient {
         throw new Error('Daemon connection limits must be positive safe integers.');
       }
     }
+    this.mcpHost = new McpSessionHost({
+      send: (message) => this.sendOperationMessage(message),
+      onError: (error) => this.options.onError?.(error),
+    });
     this.environmentOperations = new EnvironmentOperationManager({
       envId: () => this.envId,
       deviceBindingId: () => this.identity?.deviceBindingId ?? '',
@@ -223,6 +230,9 @@ export class DaemonClient {
       ...(options.resourceHomeDirectory === undefined
         ? {}
         : { resourceHomeDirectory: options.resourceHomeDirectory }),
+      ...(options.bashLogDirectory === undefined
+        ? {}
+        : { bashLogDirectory: options.bashLogDirectory }),
     });
   }
 
@@ -254,6 +264,7 @@ export class DaemonClient {
     if (this.reconnect !== undefined) clearTimeout(this.reconnect);
     if (this.heartbeat !== undefined) clearInterval(this.heartbeat);
     this.environmentOperations.close();
+    void this.mcpHost.closeAll().catch(() => undefined);
     if (!this.fatal) this.options.status?.connection('stopped');
     const peer = this.peer;
     if (peer !== undefined) {
@@ -526,6 +537,7 @@ export class DaemonClient {
                     : []),
                   DeviceCapability.DIRECTORY_CHECK,
                   DeviceCapability.DIRECTORY_LIST,
+                  DeviceCapability.FILE_SEARCH,
                 ],
             envId: this.envId,
             daemonVersion: this.daemonVersion,
@@ -609,6 +621,24 @@ export class DaemonClient {
         return;
       case 'operationResultAck':
         this.environmentOperations.acknowledgeResult(message.payload.value);
+        return;
+      case 'mcpSessionOpen':
+        await this.mcpHost.open(message.payload.value);
+        return;
+      case 'mcpSessionClose':
+        await this.mcpHost.close(message.payload.value.sessionId);
+        return;
+      case 'mcpListTools':
+        await this.mcpHost.listTools(message.payload.value);
+        return;
+      case 'mcpCallTool':
+        await this.mcpHost.callTool(message.payload.value);
+        return;
+      case 'mcpAuthBegin':
+        await this.mcpHost.beginAuth(message.payload.value);
+        return;
+      case 'mcpAuthCode':
+        this.mcpHost.submitAuthCode(message.payload.value);
         return;
       case 'environmentRevokeAck': {
         const value = message.payload.value;

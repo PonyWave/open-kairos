@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@kairos/contracts": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "ws": "8.22.1"
   },
   "devDependencies": {
