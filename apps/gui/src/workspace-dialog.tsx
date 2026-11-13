@@ -7,6 +7,7 @@ import {
 import { useEffect, useId, useRef, useState } from 'react';
 import { AppDialog } from './app-dialog.js';
 import type { KairosClients } from './client.js';
+import { workspaceSelectableEnvironments } from './environment-view.js';
 import { formatClientError } from './errors.js';
 import { Icon } from './icon.js';
 
@@ -22,6 +23,8 @@ export function WorkspaceDialog({
   onSaved: () => void;
 }) {
   const formId = useId();
+  const pathInputId = useId();
+  const previewId = useId();
   const [name, setName] = useState(workspace?.name ?? '');
   const [description, setDescription] = useState(workspace?.description ?? '');
   const [envId, setEnvId] = useState(workspace?.envId ?? '');
@@ -37,6 +40,7 @@ export function WorkspaceDialog({
     next: number | null;
   } | null>(null);
   const [browsing, setBrowsing] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [discard, setDiscard] = useState(false);
   const request = useRef<AbortController | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -56,14 +60,13 @@ export function WorkspaceDialog({
     void clients.environments
       .listEnvironments({}, { signal: abort.signal })
       .then((result) => {
-        setEnvironments(result.environments);
+        const usable = workspaceSelectableEnvironments(result.environments, workspace?.envId);
+        setEnvironments(usable);
         if (!workspace) {
           const main =
-            result.environments.find((e) => e.envId === 'main') ??
-            result.environments.find(
-              (e) => e.connectionStatus === EnvironmentConnectionStatus.ONLINE,
-            ) ??
-            result.environments[0];
+            usable.find((e) => e.envId === 'main') ??
+            usable.find((e) => e.connectionStatus === EnvironmentConnectionStatus.ONLINE) ??
+            usable[0];
           if (main) {
             initial.current.envId = main.envId;
             initial.current.path = main.recommendedPwd;
@@ -105,7 +108,18 @@ export function WorkspaceDialog({
     if (dirty) setDiscard(true);
     else onClose();
   };
-  async function list(path: string, offset = 0) {
+  const togglePreview = () => {
+    if (previewOpen) {
+      request.current?.abort();
+      setBrowsing(false);
+      setBrowse(null);
+      setPreviewOpen(false);
+      return;
+    }
+    setPreviewOpen(true);
+    void list(path);
+  };
+  async function list(dir: string, offset = 0, env: string = envId) {
     request.current?.abort();
     const abort = new AbortController();
     request.current = abort;
@@ -113,7 +127,7 @@ export function WorkspaceDialog({
     setError(null);
     try {
       const result = await clients.environments.listEnvironmentDirectories(
-        { envId, path, offset, limit: 100 },
+        { envId: env, path: dir, offset, limit: 100 },
         { signal: abort.signal },
       );
       if (abort.signal.aborted) return;
@@ -251,7 +265,7 @@ export function WorkspaceDialog({
               {fieldError('name')}
             </label>
             <label className="settings-field">
-              描述<span className="settings-help">可选，用于说明该工作空间的用途。</span>
+              描述
               <textarea
                 value={description}
                 maxLength={2000}
@@ -287,39 +301,42 @@ export function WorkspaceDialog({
               </dl>
             ) : (
               <>
-                <label className="settings-field">
-                  设备
-                  <select
-                    value={envId}
-                    aria-invalid={Boolean(fieldErrors.envId)}
-                    disabled={loading}
-                    onChange={(e) => {
-                      request.current?.abort();
-                      setBrowsing(false);
-                      setEnvId(e.target.value);
-                      setPath(
-                        environments.find((v) => v.envId === e.target.value)?.recommendedPwd ?? '',
-                      );
-                      setBrowse(null);
-                      setError(null);
-                      change('envId');
-                    }}
-                  >
-                    {loading && <option value="">正在加载设备…</option>}
-                    {!loading && !environments.length && <option value="">暂无可用设备</option>}
-                    {environments.map((e) => (
-                      <option key={e.envId} value={e.envId}>
-                        {e.name || e.envId}
-                        {e.connectionStatus === EnvironmentConnectionStatus.ONLINE ? '' : ' · 离线'}
-                      </option>
-                    ))}
-                  </select>
-                  {fieldError('envId')}
-                </label>
-                <label className="settings-field">
-                  工作目录
+                <div className="settings-field">
+                  <label htmlFor={pathInputId}>工作目录</label>
                   <span className="workspace-path-row">
+                    <select
+                      className="workspace-env-select"
+                      aria-label="设备"
+                      value={envId}
+                      aria-invalid={Boolean(fieldErrors.envId)}
+                      disabled={loading}
+                      onChange={(e) => {
+                        request.current?.abort();
+                        setBrowsing(false);
+                        const nextEnv = e.target.value;
+                        const nextPath =
+                          environments.find((v) => v.envId === nextEnv)?.recommendedPwd ?? '';
+                        setEnvId(nextEnv);
+                        setPath(nextPath);
+                        setBrowse(null);
+                        setError(null);
+                        change('envId');
+                        if (previewOpen) void list(nextPath, 0, nextEnv);
+                      }}
+                    >
+                      {loading && <option value="">正在加载设备…</option>}
+                      {!loading && !environments.length && <option value="">暂无可用设备</option>}
+                      {environments.map((e) => (
+                        <option key={e.envId} value={e.envId}>
+                          {e.name || e.envId}
+                          {e.connectionStatus === EnvironmentConnectionStatus.ONLINE
+                            ? ''
+                            : ' · 离线'}
+                        </option>
+                      ))}
+                    </select>
                     <input
+                      id={pathInputId}
                       value={path}
                       autoCapitalize="off"
                       spellCheck={false}
@@ -332,72 +349,93 @@ export function WorkspaceDialog({
                       }}
                     />
                     <button
-                      className="device-secondary"
                       type="button"
+                      className="icon-button workspace-preview-toggle"
+                      aria-expanded={previewOpen}
+                      aria-controls={previewId}
+                      aria-label={previewOpen ? '收起目录预览' : '展开目录预览'}
+                      title={previewOpen ? '收起目录预览' : '展开目录预览'}
                       disabled={
-                        browsing ||
-                        !envId ||
-                        selected?.connectionStatus !== EnvironmentConnectionStatus.ONLINE
+                        !envId || selected?.connectionStatus !== EnvironmentConnectionStatus.ONLINE
                       }
-                      onClick={() => void list(path)}
+                      onClick={togglePreview}
                     >
-                      {browsing ? '正在读取…' : '浏览'}
+                      <Icon
+                        name="down"
+                        className={`i-sm workspace-preview-chevron${previewOpen ? ' expanded' : ''}`}
+                      />
                     </button>
                   </span>
+                  {fieldError('envId')}
                   {fieldError('path')}
-                </label>
+                </div>
                 {selected?.connectionStatus !== EnvironmentConnectionStatus.ONLINE && !loading && (
                   <p className="settings-help">
                     设备当前离线，暂时无法浏览目录。可以填写目录创建空间，设备上线后再执行任务。
                   </p>
                 )}
-                {browse && (
-                  <div className="workspace-browse">
-                    <div className="workspace-browse-heading">
-                      <button
-                        className="device-secondary"
-                        type="button"
-                        disabled={browse.path === '/' || browsing}
-                        onClick={() =>
-                          void list(browse.path.split('/').slice(0, -1).join('/') || '/')
-                        }
-                      >
-                        上级目录
-                      </button>
-                      <code>{browse.path}</code>
-                    </div>
-                    {browse.entries.length === 0 ? (
-                      <p className="workspace-no-topics">此目录没有子目录，可以使用当前目录。</p>
-                    ) : (
-                      <ul>
-                        {browse.entries.map((e) => (
-                          <li key={e.path}>
+                <div
+                  id={previewId}
+                  className="workspace-preview"
+                  data-open={previewOpen || undefined}
+                >
+                  {previewOpen &&
+                    (browse ? (
+                      <>
+                        <div className="workspace-browse-heading">
+                          <button
+                            className="device-secondary"
+                            type="button"
+                            disabled={browse.path === '/' || browsing}
+                            onClick={() =>
+                              void list(browse.path.split('/').slice(0, -1).join('/') || '/')
+                            }
+                          >
+                            上级目录
+                          </button>
+                          <code>{browse.path}</code>
+                        </div>
+                        <div className="workspace-browse-list">
+                          {browse.entries.length === 0 ? (
+                            <p className="workspace-no-topics">
+                              此目录没有子目录，可以使用当前目录。
+                            </p>
+                          ) : (
+                            <ul>
+                              {browse.entries.map((e) => (
+                                <li key={e.path}>
+                                  <button
+                                    type="button"
+                                    className="workspace-browse-entry"
+                                    disabled={browsing}
+                                    onClick={() => void list(e.path)}
+                                  >
+                                    <Icon name="folder" className="i-sm" />
+                                    {e.name}
+                                    <Icon name="chevron" className="i-sm" />
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {browse.next !== null && (
                             <button
                               type="button"
-                              className="workspace-browse-entry"
+                              className="device-secondary"
                               disabled={browsing}
-                              onClick={() => void list(e.path)}
+                              onClick={() => void list(browse.path, browse.next ?? 0)}
                             >
-                              <Icon name="folder" className="i-sm" />
-                              {e.name}
-                              <Icon name="chevron" className="i-sm" />
+                              加载更多目录
                             </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {browse.next !== null && (
-                      <button
-                        type="button"
-                        className="device-secondary"
-                        disabled={browsing}
-                        onClick={() => void list(browse.path, browse.next ?? 0)}
-                      >
-                        加载更多目录
-                      </button>
-                    )}
-                  </div>
-                )}
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="workspace-preview-status">
+                        {browsing ? '正在读取目录…' : '目录已修改，收起后重新展开以读取。'}
+                      </p>
+                    ))}
+                </div>
               </>
             )}
           </fieldset>
