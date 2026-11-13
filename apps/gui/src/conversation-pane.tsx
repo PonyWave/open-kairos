@@ -51,6 +51,7 @@ import { useCallPreviews } from './use-call-previews.js';
 import { useChannelDeliveries } from './use-channel-deliveries.js';
 import { useConversationScroll } from './use-conversation-scroll.js';
 import type { useDrafts } from './use-drafts.js';
+import { useMessageEntrance } from './use-message-entrance.js';
 import { useSubagentViews } from './use-subagent-views.js';
 import { useThreadSync } from './use-thread-sync.js';
 import { canLocateAgentOrigin, originElementId } from './workbench-navigation.js';
@@ -167,6 +168,7 @@ export function ConversationPane({
     ComposerSubmission,
     { kind: 'action' }
   > | null>(null);
+  const [newConversationStarting, setNewConversationStarting] = useState(false);
   const [thinkingExpansionChoices, setThinkingExpansionChoices] =
     useState<ThinkingExpansionChoices>({});
   const root = useRef<HTMLElement>(null);
@@ -306,6 +308,11 @@ export function ConversationPane({
       startIndex: historyStartIndex,
       displayMode: usesDisplayMode ? effectiveDisplayMode : 'full',
     });
+  useMessageEntrance(
+    viewportRef,
+    !hidden && snapshot !== null && !isDraft,
+    `${historyKey}:${historyStartIndex}:${usesDisplayMode ? effectiveDisplayMode : 'full'}`,
+  );
 
   useEffect(() => {
     if (!snapshot || isDraft) return;
@@ -350,7 +357,7 @@ export function ConversationPane({
   ]);
 
   useEffect(() => {
-    if (hidden || variant !== 'main' || !highlightedCallId) return;
+    if (hidden || (variant !== 'main' && variant !== 'fullscreen') || !highlightedCallId) return;
     const key = `${activeThreadId}:${highlightedCallId}`;
     if (locatedHighlight.current === key) return;
     const frame = requestAnimationFrame(() => {
@@ -446,8 +453,14 @@ export function ConversationPane({
         : submission.payload;
     if (submission.actionKind === 'sendMessage' || submission.actionKind === 'createThread')
       followAfterSend();
-    const result = await actions.execute(submission.key, submission.actionKind, payload);
-    if (pendingNotice && result === undefined) showNotice('');
+    const startingNewConversation = submission.actionKind === 'startNewMain';
+    if (startingNewConversation) setNewConversationStarting(true);
+    try {
+      const result = await actions.execute(submission.key, submission.actionKind, payload);
+      if (pendingNotice && result === undefined) showNotice('');
+    } finally {
+      if (startingNewConversation) setNewConversationStarting(false);
+    }
   }
 
   async function removeDraftAttachment(attachment: DraftAttachment): Promise<void> {
@@ -719,7 +732,6 @@ export function ConversationPane({
           toolItems={item.value.toolItems}
           mergedThinkingBlockIndexes={item.value.mergedThinkingBlockIndexes}
           sentMessage={item.value.sentMessage}
-          sentCall={item.value.sentCall}
           channelDeliveries={channelDeliveries}
           hideContent={item.value.hideContent}
           compact={item.value.compact}
@@ -748,6 +760,17 @@ export function ConversationPane({
     >
       {variant !== 'main' && (
         <header className={`workspace-header${variant === 'fullscreen' ? ' task-head' : ''}`}>
+          {isAutomation && (
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="返回定时任务详情"
+              title="返回定时任务详情"
+              onClick={onCloseTopic}
+            >
+              <Icon name="back" />
+            </button>
+          )}
           <div className="workspace-heading">
             <div className="thread-title-row">
               {(selectedThread || isDraft) && (
@@ -784,20 +807,19 @@ export function ConversationPane({
           {onEditWorkspace && (
             <button
               type="button"
-              className="device-secondary workspace-edit-entry"
+              className="icon-button"
+              aria-label="工作空间设置"
+              title="工作空间设置"
               onClick={onEditWorkspace}
             >
-              <Icon name="edit" className="i-sm" />
-              编辑空间
+              <Icon name="settings" />
             </button>
           )}
-          {(variant === 'topic' || readOnly) && (
+          {(variant === 'topic' || (readOnly && !isAutomation)) && (
             <button
               type="button"
               className="icon-button"
-              aria-label={
-                isAutomation ? '返回定时任务详情' : readOnly ? '关闭子代理详情' : '关闭话题'
-              }
+              aria-label={readOnly ? '关闭子代理详情' : '关闭话题'}
               onClick={onCloseTopic}
             >
               <Icon name="close" />
@@ -857,32 +879,50 @@ export function ConversationPane({
               <span className="original-message">{origin.prompt}</span>
             </button>
           )}
-        {(variant === 'topic' || readOnly) && (
+        {(variant === 'topic' || (readOnly && !isAutomation)) && (
           <div className="reply-divider">
             <span>{visibleMessageCount} 条消息</span>
           </div>
         )}
         <div className="session-body" ref={contentRef}>
-          {variant === 'main' && selectedThread?.newConversation === true && (
+          {variant === 'main' && newConversationStarting ? (
+            <div className="chat-date new-conversation-marker" role="status">
+              <span className="new-conversation-loading">
+                <Icon name="spinner" className="i-sm spinning" />
+                正在开始新对话…
+              </span>
+            </div>
+          ) : variant === 'main' && selectedThread?.newConversation === true ? (
             <div className="chat-date new-conversation-marker" role="status">
               <span>已开始新对话</span>
             </div>
-          )}
+          ) : null}
           {!isDraft && threadSync.state.status === 'loading' && !snapshot ? (
             <p role="status">正在加载消息…</p>
           ) : conversationItems.length === 0 ? (
-            <div className="empty conversation-empty">
-              <h2>{readOnly ? '暂无消息' : isDraft ? '具体要求' : '开始新的对话'}</h2>
-              <p>
-                {readOnly
-                  ? isAutomation
-                    ? '该次定时执行的消息会在这里更新。'
-                    : '子代理的执行消息会在这里更新。'
-                  : isDraft
-                    ? '补充背景、资料与完成标准。'
-                    : '发送消息，或继续之前的工作。'}
-              </p>
-            </div>
+            variant === 'main' && !readOnly ? (
+              <div className="empty conversation-empty conversation-onboarding">
+                <EntityMark mainAgent className="onboarding-mark" />
+                <div className="onboarding-copy">
+                  <h2>欢迎来到 Kairos</h2>
+                  <p>
+                    在这里你可以进行对话，在不同的设备中管理、创建工作空间，使用话题和 Subagent
+                    完成各种任务。
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="empty conversation-empty">
+                <h2>{readOnly ? '暂无消息' : '具体要求'}</h2>
+                <p>
+                  {readOnly
+                    ? isAutomation
+                      ? '该次定时执行的消息会在这里更新。'
+                      : '子代理的执行消息会在这里更新。'
+                    : '补充背景、资料与完成标准。'}
+                </p>
+              </div>
+            )
           ) : (
             <div className="message-list">
               {hasEarlierTurns && (
@@ -974,6 +1014,7 @@ export function ConversationPane({
               <button
                 type="button"
                 className="device-secondary"
+                data-dialog-initial-focus=""
                 onClick={() => setNewConversationSubmission(null)}
               >
                 取消

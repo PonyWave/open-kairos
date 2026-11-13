@@ -3,6 +3,7 @@ import {
   create,
   MessageRole,
   MessageSchema,
+  MessageSource,
   ThreadSchema,
   ThreadSnapshotSchema,
 } from '@kairos/contracts';
@@ -47,6 +48,57 @@ function renderMessage(threadId: string, role = MessageRole.USER): string {
   );
 }
 
+function renderIncoming(sourceThreadId: string): string {
+  const message = create(MessageSchema, {
+    messageId: `incoming-${sourceThreadId}`,
+    threadId: 'task-1',
+    agentId: 'thread',
+    role: MessageRole.USER,
+    source: MessageSource.THREAD_CALL,
+    sourceThreadId,
+    content: '来自主对话的指令',
+  });
+  return renderToStaticMarkup(
+    createElement(MessageCard, {
+      message,
+      delegationCall: null,
+      clients: createKairosClients({ transport: createRouterTransport(() => {}) }),
+      busy: false,
+      editing: false,
+      streaming: false,
+      thinkingExpansionChoices: {},
+      mainThreadId: 'main-1',
+      onThinkingExpansionChange: () => {},
+      onStartEditing: () => {},
+      onCancelEditing: () => {},
+      onRevise: async () => {},
+      onRerun: async () => {},
+    }),
+  );
+}
+
+describe('incoming main messages', () => {
+  it('renders global main messages as left-aligned user bubbles with the main avatar', () => {
+    const html = renderIncoming('main-1');
+    expect(html).toContain('incoming-main');
+    expect(html).toContain('user-message-content');
+    expect(html).toContain('来自主对话');
+    expect(html).not.toContain('来自工作空间主对话');
+    expect(html).toContain('time-left');
+    expect(html.indexOf('message-avatar-container')).toBeLessThan(
+      html.indexOf('user-message-content'),
+    );
+  });
+
+  it('renders workspace main messages with the workspace main avatar and label', () => {
+    const html = renderIncoming('ws-main-1');
+    expect(html).toContain('incoming-main');
+    expect(html).toContain('user-message-content');
+    expect(html).toContain('来自工作空间主对话');
+    expect(html).toContain('time-left');
+  });
+});
+
 describe('direct user message alignment', () => {
   it('right-aligns users in both the main conversation and topics', () => {
     for (const threadId of ['main-1', 'task-1']) {
@@ -57,7 +109,6 @@ describe('direct user message alignment', () => {
       expect(html.indexOf('user-message-content')).toBeLessThan(html.indexOf('time-right'));
     }
   });
-
   it('keeps Agent avatars to the left of the body in both conversation types', () => {
     for (const threadId of ['main-1', 'task-1']) {
       const html = renderMessage(threadId, MessageRole.ASSISTANT);

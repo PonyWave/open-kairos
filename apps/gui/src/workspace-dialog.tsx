@@ -18,13 +18,11 @@ export function WorkspaceDialog({
   workspace,
   onClose,
   onSaved,
-  onVisibilityChanged,
 }: {
   clients: KairosClients;
   workspace: Workspace | null;
   onClose: () => void;
   onSaved: () => void;
-  onVisibilityChanged?: (() => void) | undefined;
 }) {
   const formId = useId();
   const pathInputId = useId();
@@ -47,8 +45,6 @@ export function WorkspaceDialog({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [discard, setDiscard] = useState(false);
   const [hidden, setHidden] = useState(workspace?.hidden ?? false);
-  const [visibilityBusy, setVisibilityBusy] = useState(false);
-  const [visibilityError, setVisibilityError] = useState<string | null>(null);
   const request = useRef<AbortController | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const initial = useRef({
@@ -56,12 +52,14 @@ export function WorkspaceDialog({
     description: workspace?.description ?? '',
     envId: workspace?.envId ?? '',
     path: workspace?.path ?? '',
+    hidden: workspace?.hidden ?? false,
   });
   const dirty =
     name !== initial.current.name ||
     description !== initial.current.description ||
     envId !== initial.current.envId ||
-    path !== initial.current.path;
+    path !== initial.current.path ||
+    hidden !== initial.current.hidden;
   useEffect(() => {
     const abort = new AbortController();
     void clients.environments
@@ -135,24 +133,6 @@ export function WorkspaceDialog({
     setPreviewOpen(true);
     void list(path);
   };
-  async function toggleVisibility() {
-    if (!workspace || visibilityBusy) return;
-    setVisibilityBusy(true);
-    setVisibilityError(null);
-    try {
-      await clients.workspaces.updateWorkspace({
-        clientActionId: randomId(),
-        workspaceId: workspace.workspaceId,
-        hidden: !hidden,
-      });
-      setHidden(!hidden);
-      onVisibilityChanged?.();
-    } catch (cause) {
-      setVisibilityError(formatClientError(cause));
-    } finally {
-      setVisibilityBusy(false);
-    }
-  }
   async function list(dir: string, offset = 0, env: string = envId) {
     request.current?.abort();
     const abort = new AbortController();
@@ -209,6 +189,7 @@ export function WorkspaceDialog({
           workspaceId: workspace.workspaceId,
           name: name.trim(),
           description: description.trim(),
+          ...(hidden !== initial.current.hidden ? { hidden } : {}),
         });
       else
         await clients.workspaces.createWorkspace({
@@ -237,11 +218,7 @@ export function WorkspaceDialog({
       wide
       onClose={close}
       closeDisabled={busy}
-      subtitle={
-        workspace
-          ? '查看执行位置，调整名称、描述和侧边栏显示。'
-          : '选择设备和工作目录，新话题会使用这个默认执行位置。'
-      }
+      subtitle={workspace ? undefined : '选择设备和工作目录，新话题会使用这个默认执行位置。'}
       actions={
         discard ? (
           <>
@@ -311,7 +288,7 @@ export function WorkspaceDialog({
             {workspace ? (
               <>
                 <div className="settings-field">
-                  <span id={`${pathInputId}-label`}>工作目录</span>
+                  <span>工作目录</span>
                   <span className="workspace-path-row">
                     <span
                       className="settings-select-trigger workspace-env-trigger workspace-env-static"
@@ -322,34 +299,24 @@ export function WorkspaceDialog({
                         {selected?.name ?? (envId === 'main' ? '主环境' : envId)}
                       </span>
                     </span>
-                    <span
-                      className="workspace-path-static"
-                      aria-labelledby={`${pathInputId}-label`}
-                      title="目录创建后不可修改"
-                    >
+                    <span className="workspace-path-static" title="目录创建后不可修改">
                       {path}
                     </span>
                   </span>
                 </div>
                 <label className="workspace-visibility-toggle">
+                  <span className="workspace-visibility-label">在侧边栏显示</span>
                   <input
                     type="checkbox"
                     role="switch"
                     checked={!hidden}
                     aria-checked={!hidden}
-                    disabled={visibilityBusy}
-                    onChange={() => void toggleVisibility()}
+                    onChange={(event) => setHidden(!event.currentTarget.checked)}
                   />
                   <span className="workspace-switch-track" aria-hidden="true">
                     <span className="workspace-switch-thumb" />
                   </span>
-                  在侧边栏显示
                 </label>
-                {visibilityError && (
-                  <p className="settings-field-error" role="alert">
-                    {visibilityError}
-                  </p>
-                )}
               </>
             ) : (
               <>

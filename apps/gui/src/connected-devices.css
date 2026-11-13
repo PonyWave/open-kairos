@@ -314,45 +314,37 @@ p.device-dialog-note {
 .device-daemon-guide > p {
   line-height: 1.6;
 }
-.device-daemon-command-list {
+.device-daemon-codeblock {
   display: grid;
-  gap: 8px;
+  gap: 2px;
   margin-top: 12px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--wash);
 }
-.device-daemon-command-row {
+.device-daemon-codeblock-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  padding: 3px 3px 3px 10px;
 }
-.device-daemon-command-row > div {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-.device-daemon-command-row code {
+.device-daemon-codeblock-row code {
   overflow-wrap: anywhere;
   color: var(--body);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.6;
 }
-.device-daemon-command-row span {
-  color: var(--muted);
-  font-size: 12px;
-}
-.device-daemon-command-row .device-secondary {
-  min-width: 82px;
+.device-daemon-codeblock-row .icon-button {
+  width: 28px;
+  height: 28px;
 }
 .device-daemon-guide-status {
   margin-top: 10px;
 }
 .device-daemon-guide-status .device-secondary {
   margin-top: 8px;
-}
-p.device-daemon-guide-note {
-  margin-top: 12px;
-  color: var(--muted);
-  font-size: 12px;
 }
 .device-connection-state {
   display: flex;

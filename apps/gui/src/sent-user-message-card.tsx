@@ -1,4 +1,4 @@
-import type { Message, ToolCall } from '@kairos/contracts';
+import type { Message } from '@kairos/contracts';
 import { FailureNotice } from './failure-notice.js';
 import { Icon } from './icon.js';
 import { MessageAvatar } from './message-avatar.js';
@@ -55,14 +55,12 @@ function DeliveryBadge({
 export function SentUserMessageCard({
   message,
   sent,
-  call,
   compact,
   continuation,
   deliveryStatuses,
 }: {
   message: Message;
   sent: SentUserMessage;
-  call?: ToolCall | undefined;
   compact: boolean;
   continuation: boolean;
   deliveryStatuses?: ReadonlyMap<string, ChannelDeliveryStatusInfo> | undefined;
@@ -96,33 +94,11 @@ export function SentUserMessageCard({
         />
       )}
       <div className="message-content">
-        {compact ? (
-          <div className="sent-message-bubble">
-            {badges}
-            <SafeMarkdown>{sent.content}</SafeMarkdown>
-          </div>
-        ) : (
-          <>
-            {badges}
-            <SafeMarkdown>{sent.content}</SafeMarkdown>
-          </>
-        )}
-        {!compact && (
-          <details className="sent-message-details">
-            <summary>
-              发送详情
-              <Icon name="chevron" className="i-sm" />
-            </summary>
-            {call && (
-              <>
-                <div className="tool-detail-heading">参数</div>
-                <pre>{call.argumentsJson}</pre>
-              </>
-            )}
-            <div className="tool-detail-heading">返回</div>
-            <pre>{message.content}</pre>
-          </details>
-        )}
+        <div className="sent-message-bubble">
+          {!compact && <span className="sent-message-tag">回复用户</span>}
+          {badges}
+          <SafeMarkdown>{sent.content}</SafeMarkdown>
+        </div>
       </div>
     </article>
   );

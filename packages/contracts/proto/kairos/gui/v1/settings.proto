@@ -9,6 +9,7 @@ enum ModelApiType {
   MODEL_API_TYPE_OPENAI_CHAT_COMPLETIONS = 1;
   MODEL_API_TYPE_OPENAI_RESPONSES = 2;
   MODEL_API_TYPE_ANTHROPIC_MESSAGES = 3;
+  MODEL_API_TYPE_GOOGLE_GENAI = 4;
 }
 
 message ConfiguredModel {
@@ -86,6 +87,20 @@ message TestConfiguredModelResponse {
   string message = 2;
 }
 
+message DiscoverModelsRequest {
+  ModelApiType api_type = 1;
+  string base_url = 2;
+  string api_key = 3;
+  string connection_id = 4;
+}
+message DiscoveredModel {
+  string model_id = 1;
+  string display_name = 2;
+}
+message DiscoverModelsResponse {
+  repeated DiscoveredModel models = 1;
+}
+
 message UpdateProfileRequest {
   string client_action_id = 1;
   uint32 expected_version = 2;
@@ -112,6 +127,7 @@ service SettingsService {
   rpc DeleteModelConnection(DeleteModelConnectionRequest) returns (DeleteModelConnectionResponse);
   rpc SetDefaultModel(SetDefaultModelRequest) returns (SetDefaultModelResponse);
   rpc TestConfiguredModel(TestConfiguredModelRequest) returns (TestConfiguredModelResponse);
+  rpc DiscoverModels(DiscoverModelsRequest) returns (DiscoverModelsResponse);
   rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
   rpc ReadAvatar(ReadAvatarRequest) returns (ReadAvatarResponse);
 }

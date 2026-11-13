@@ -74,16 +74,17 @@ export function modelFetch(allowedOrigins: readonly string[] = []): typeof globa
     const address = addresses[0];
     if (!address) throw new SessionError('failed_precondition', '模型地址无法解析。');
     const headers = Object.fromEntries(new Headers(init?.headers).entries());
-    if (typeof init?.body !== 'string')
+    if (init?.body !== undefined && typeof init.body !== 'string')
       throw new SessionError('invalid_argument', '模型请求正文无效。');
-    const body = init.body;
+    const method = init?.body === undefined ? 'GET' : 'POST';
+    const body = init?.body;
     return new Promise<Response>((resolve, reject) => {
       const request = (url.protocol === 'https:' ? https : http).request(
         url,
         {
-          method: 'POST',
+          method,
           headers,
-          signal: init.signal ?? undefined,
+          signal: init?.signal ?? undefined,
           lookup: (_hostname, options, callback) => {
             if (options.all) callback(null, [address]);
             else callback(null, address.address, address.family);
@@ -138,7 +139,7 @@ export function modelFetch(allowedOrigins: readonly string[] = []): typeof globa
       request.once('error', () =>
         reject(new SessionError('failed_precondition', '模型服务连接失败，请核对地址或稍后重试。')),
       );
-      request.end(body);
+      request.end(body ?? undefined);
     });
   };
 }

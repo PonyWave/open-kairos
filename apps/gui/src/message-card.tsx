@@ -7,7 +7,6 @@ import {
   MessageSource,
   type SubagentCallView,
   type ThreadNotification,
-  type ToolCall,
 } from '@kairos/contracts';
 import { type ReactNode, useState } from 'react';
 import { AttachmentList } from './attachment-list.js';
@@ -71,7 +70,6 @@ export interface MessageCardProps {
   toolItems?: ToolItem[] | undefined;
   mergedThinkingBlockIndexes?: ReadonlySet<number> | undefined;
   sentMessage?: SentUserMessage | null | undefined;
-  sentCall?: ToolCall | undefined;
   channelDeliveries?: ReadonlyMap<string, ChannelDeliveryStatusInfo> | undefined;
   displayId?: string | undefined;
   hideContent?: boolean | undefined;
@@ -111,7 +109,6 @@ export function MessageCard({
   toolItems: projectedToolItems,
   mergedThinkingBlockIndexes: projectedMergedThinking,
   sentMessage,
-  sentCall,
   channelDeliveries,
   displayId,
   hideContent = false,
@@ -148,7 +145,6 @@ export function MessageCard({
       <SentUserMessageCard
         message={message}
         sent={sent}
-        call={sentCall}
         compact={compact}
         continuation={continuation}
         deliveryStatuses={channelDeliveries}
@@ -243,6 +239,12 @@ export function MessageCard({
     sourceThreadId !== undefined && mainThreadId !== undefined
       ? sourceThreadId === mainThreadId
       : message.threadId === mainThreadId;
+  const incomingMain =
+    message.role === MessageRole.USER &&
+    message.source === MessageSource.THREAD_CALL &&
+    isRootAgent(message.agentId) &&
+    sourceThreadId !== undefined &&
+    sourceThreadId !== message.threadId;
   const avatar = (
     <MessageAvatar
       label={isUser ? '用户' : 'Kairos'}
@@ -266,6 +268,34 @@ export function MessageCard({
       {contentMessage === message && <EditedMarker revisionId={message.revisionId} />}
     </div>
   );
+  if (incomingMain && sourceThreadId) {
+    const fromGlobalMain = sourceThreadId === mainThreadId;
+    return (
+      <article
+        className={`message role-${message.role} incoming-main${streaming ? ' transient' : ''}`}
+        data-message-id={message.messageId}
+        data-display-id={displayId}
+        data-delegation-call-id={message.delegation?.sourceToolCallId}
+      >
+        <MessageAvatar
+          label={fromGlobalMain ? '主对话' : '工作空间主对话'}
+          timestamp={message.createdAt}
+          threadId={sourceThreadId}
+          mainAgent={fromGlobalMain}
+          side="left"
+        />
+        <div className="incoming-main-body">
+          <div className="reply-source">{fromGlobalMain ? '来自主对话' : '来自工作空间主对话'}</div>
+          {!hideContent && (
+            <div className="user-message-content">
+              <AttachmentList attachments={message.attachments} clients={clients} />
+              {renderText(message)}
+            </div>
+          )}
+        </div>
+      </article>
+    );
+  }
   const renderedToolItems = toolItems.map((item) => {
     if (item.kind === 'subagent') {
       const key = delegationKey(delegationForToolCall(message, item.call));

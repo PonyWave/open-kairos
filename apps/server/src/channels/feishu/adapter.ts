@@ -104,6 +104,16 @@ export class FeishuChannel implements OutboundChannel {
     this.#startWs(credentials.appId, credentials.appSecret);
   }
 
+  reconnect(): void {
+    this.#stopWs();
+    const ownerId = this.#ownerId();
+    const current = this.#store.getState(ownerId, 'feishu');
+    if (!current.hasCredentials)
+      throw new ChannelDeliveryError(false, 'not_configured', '请先保存飞书应用凭据。');
+    this.#store.setStatus(ownerId, 'feishu', 'pending_binding', '正在连接飞书服务…');
+    this.sync();
+  }
+
   stop(): void {
     this.#stopWs();
   }
@@ -176,24 +186,49 @@ export class FeishuChannel implements OutboundChannel {
   }
 
   #startWs(appId: string, appSecret: string): void {
+    this.#store.setStatus(this.#ownerId(), 'feishu', 'pending_binding', '正在连接飞书服务…');
+    const ready = () => {
+      if (this.#wsClient !== client) return;
+      const ownerId = this.#ownerId();
+      const state = this.#store.getState(ownerId, 'feishu');
+      this.#store.setStatus(
+        ownerId,
+        'feishu',
+        state.externalUserId ? 'active' : 'pending_binding',
+        '',
+      );
+    };
     const client = new lark.WSClient({
       appId,
       appSecret,
       domain: lark.Domain.Feishu,
       loggerLevel: lark.LoggerLevel.error,
+      onReady: ready,
+      onReconnected: ready,
+      onReconnecting: () => {
+        if (this.#wsClient === client)
+          this.#store.setStatus(
+            this.#ownerId(),
+            'feishu',
+            'pending_binding',
+            '正在重新连接飞书服务…',
+          );
+      },
       onError: (error) => {
+        if (this.#wsClient !== client) return;
         const ownerId = this.#ownerId();
         this.#store.setStatus(ownerId, 'feishu', 'error', `飞书长连接失败：${error.message}`);
       },
     });
     const dispatcher = new lark.EventDispatcher({}).register({
       'im.message.receive_v1': (data: unknown) => {
-        this.#handleEvent(data);
+        if (this.#wsClient === client) this.#handleEvent(data);
       },
     });
     this.#wsClient = client;
     this.#runningAppId = appId;
     void client.start({ eventDispatcher: dispatcher }).catch((error: unknown) => {
+      if (this.#wsClient !== client) return;
       const ownerId = this.#ownerId();
       this.#store.setStatus(
         ownerId,

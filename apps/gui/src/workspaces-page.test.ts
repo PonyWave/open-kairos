@@ -64,6 +64,8 @@ describe('WorkspacesPage', () => {
     const markup = renderToStaticMarkup(
       createElement(WorkspacesPage, {
         temporary: [],
+        cards: [],
+        mainThreadId: 'main-1',
         onCreate: vi.fn(),
         onEdit: vi.fn(),
         onVisibility: vi.fn(),
@@ -77,7 +79,8 @@ describe('WorkspacesPage', () => {
       }),
     );
 
-    expect(markup).toContain('添加工作空间');
+    expect(markup).toContain('创建');
+    expect(markup).toContain('aria-label="排序方式"');
     expect(markup).toContain('2 个话题');
     expect(markup).toContain('aria-expanded="false"');
     expect(markup).not.toContain('任务 0');
@@ -88,13 +91,84 @@ describe('WorkspacesPage', () => {
     expect(markup).toContain('编辑 Kairos 项目');
     expect(markup).toContain('隐藏 Kairos 项目');
     expect(markup).toContain('删除 Kairos 项目');
+    expect(markup).not.toContain('临时对话');
+  });
+
+  it('lists the temporary group only when temporary conversations exist', () => {
+    const temporaryThread = {
+      $typeName: 'kairos.gui.v1.Thread' as const,
+      threadId: 'tmp-1',
+      title: '临时任务',
+      seq: 9n,
+      createdAt: undefined,
+      updatedAt: undefined,
+      threadType: 2,
+    };
+    const markup = renderToStaticMarkup(
+      createElement(WorkspacesPage, {
+        temporary: [temporaryThread],
+        cards: [],
+        mainThreadId: 'main-1',
+        onCreate: vi.fn(),
+        onEdit: vi.fn(),
+        onVisibility: vi.fn(),
+        onDelete: vi.fn(),
+        onNewTopic: vi.fn(),
+        groups: [group('ws-1', 'Kairos 项目', '/srv/kairos', 0)],
+        loading: false,
+        error: null,
+        onChanged: vi.fn(),
+        onOpenThread: vi.fn(),
+      }),
+    );
+    expect(markup).toContain('临时对话');
+    expect(markup).toContain('1 个话题');
     expect(markup).not.toContain('隐藏 临时对话');
+  });
+
+  it('orders workspace groups by the latest conversation activity by default', () => {
+    const withActivity = (base: WorkspaceGroup, seconds: bigint): WorkspaceGroup => ({
+      ...base,
+      tasks: [
+        {
+          $typeName: 'kairos.gui.v1.Thread',
+          threadId: `${base.workspace?.workspaceId ?? ''}-task`,
+          title: '话题',
+          seq: 9n,
+          createdAt: undefined,
+          updatedAt: { $typeName: 'google.protobuf.Timestamp', seconds, nanos: 0 },
+          threadType: 2,
+        },
+      ],
+    });
+    const stale = withActivity(group('ws-1', '旧空间', '/srv/old', 0), 100n);
+    const active = withActivity(group('ws-2', '活跃空间', '/srv/new', 0), 300n);
+    const markup = renderToStaticMarkup(
+      createElement(WorkspacesPage, {
+        temporary: [],
+        cards: [],
+        mainThreadId: 'main-1',
+        onCreate: vi.fn(),
+        onEdit: vi.fn(),
+        onVisibility: vi.fn(),
+        onDelete: vi.fn(),
+        onNewTopic: vi.fn(),
+        groups: [stale, active],
+        loading: false,
+        error: null,
+        onChanged: vi.fn(),
+        onOpenThread: vi.fn(),
+      }),
+    );
+    expect(markup.indexOf('活跃空间')).toBeLessThan(markup.indexOf('旧空间'));
   });
 
   it('renders the empty state without workspaces', () => {
     const markup = renderToStaticMarkup(
       createElement(WorkspacesPage, {
         temporary: [],
+        cards: [],
+        mainThreadId: 'main-1',
         onCreate: vi.fn(),
         onEdit: vi.fn(),
         onVisibility: vi.fn(),

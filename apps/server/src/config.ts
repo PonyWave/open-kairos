@@ -174,7 +174,7 @@ const environmentSchema = z.object({
     .max(64 * 1024 * 1024)
     .default(DEFAULT_SQL_RECALL_LIMITS.maxIpcBytes),
   KAIROS_MODEL_API_TYPE: z
-    .enum(['openai_chat_completions', 'openai_responses', 'anthropic_messages'])
+    .enum(['openai_chat_completions', 'openai_responses', 'anthropic_messages', 'google_genai'])
     .default('openai_chat_completions'),
   KAIROS_MODEL_ALLOWED_ORIGINS: z
     .string()
@@ -539,6 +539,7 @@ export function readServerConfig(environment: NodeJS.ProcessEnv = process.env) {
     openai_chat_completions: ModelApiType.OPENAI_CHAT_COMPLETIONS,
     openai_responses: ModelApiType.OPENAI_RESPONSES,
     anthropic_messages: ModelApiType.ANTHROPIC_MESSAGES,
+    google_genai: ModelApiType.GOOGLE_GENAI,
   }[config.KAIROS_MODEL_API_TYPE];
   const model = readModelConfiguration(
     environment,

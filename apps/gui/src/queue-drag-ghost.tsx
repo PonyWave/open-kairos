@@ -1,6 +1,7 @@
 import type { Input } from '@kairos/contracts';
 import { createPortal } from 'react-dom';
 import { Icon } from './icon.js';
+import { queuedInputDisplay } from './queue-display.js';
 
 export interface QueueDragGhostState {
   input: Input;
@@ -15,6 +16,7 @@ export interface QueueDragGhostState {
 }
 
 export function QueueDragGhost({ ghost }: { ghost: QueueDragGhostState }) {
+  const display = queuedInputDisplay(ghost.input);
   return createPortal(
     <>
       <button
@@ -35,9 +37,12 @@ export function QueueDragGhost({ ghost }: { ghost: QueueDragGhostState }) {
         style={{ left: ghost.left, top: ghost.top, width: ghost.width, height: ghost.height }}
       >
         <Icon name="grip" className="i-sm" />
-        <span className="queue-text">
-          {ghost.input.text || ghost.input.attachments.map((file) => file.fileName).join('、')}
-        </span>
+        {display.channelKey && (
+          <span className={`queue-channel channel-${display.channelKey}`}>
+            <Icon name={display.channelKey === 'wechat' ? 'wechat' : 'feishu'} className="i-sm" />
+          </span>
+        )}
+        <span className="queue-text">{display.text}</span>
         {ghost.input.attachments.length > 0 && <Icon name="clip" className="i-sm" />}
         <Icon name="edit" className="i-sm" />
         <Icon name="trash" className="i-sm" />

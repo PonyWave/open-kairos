@@ -104,6 +104,8 @@ const messageSources: ReadonlySet<number> = new Set([
   MessageSource.SUBAGENT_RESPONSE,
   MessageSource.AUTOMATION,
   MessageSource.THREAD_NOTIFICATION,
+  MessageSource.CHANNEL,
+  MessageSource.BACKGROUND_TASK,
 ]);
 const notificationStatuses: ReadonlySet<number> = new Set([
   ThreadNotificationStatus.PENDING,

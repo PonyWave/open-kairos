@@ -72,10 +72,9 @@ export function Dropdown<Value extends string>({
       if (!panel || !trigger) return;
       const anchor = trigger.getBoundingClientRect();
       panel.style.minWidth = `${Math.min(anchor.width, window.innerWidth - 24)}px`;
-      const bounds = panel.getBoundingClientRect();
       const result = dropdownPosition(
         anchor,
-        { width: bounds.width, height: Math.max(bounds.height, panel.scrollHeight) },
+        { width: panel.offsetWidth, height: Math.max(panel.offsetHeight, panel.scrollHeight) },
         { width: window.innerWidth, height: window.innerHeight },
         placement,
         align,
@@ -83,6 +82,7 @@ export function Dropdown<Value extends string>({
       panel.style.left = `${result.left}px`;
       panel.style.top = `${result.top}px`;
       panel.style.maxHeight = `${result.maxHeight}px`;
+      panel.dataset.side = result.top >= anchor.bottom ? 'bottom' : 'top';
     }
     position();
     const options = enabledItems(panel);
@@ -121,7 +121,7 @@ export function Dropdown<Value extends string>({
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
-      close(true);
+      close();
       return;
     }
     if (event.key === 'Tab') {
@@ -146,6 +146,7 @@ export function Dropdown<Value extends string>({
     id,
     'aria-labelledby': `${id}-trigger`,
     className: `dropdown-panel ${panelClassName}`,
+    'data-align': align,
     onKeyDown: onPanelKeyDown,
   };
   const content = open && (

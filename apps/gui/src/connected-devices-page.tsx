@@ -563,14 +563,14 @@ function DaemonCommandGuide({
 }) {
   const commands = connection.daemonCommands;
   const rows = [
-    { name: 'startCommand', label: 'start', description: '启动已有 Daemon' },
-    { name: 'statusCommand', label: 'status', description: '观察进程与连接状态' },
-    { name: 'stopCommand', label: 'stop', description: '停止 Daemon 并断开连接' },
+    { name: 'startCommand', label: 'start' },
+    { name: 'statusCommand', label: 'status' },
+    { name: 'stopCommand', label: 'stop' },
   ] as const;
   return (
     <section className="device-daemon-guide" aria-label="Daemon 命令指南">
       <h3>Daemon 命令指南</h3>
-      <p>Daemon 已在后台运行。以下命令只管理现有安装，不重新绑定。</p>
+      <p>通过以下命令可以启动或暂停守护进程。</p>
       {connection.daemonCommandsLoading ? (
         <p className="device-daemon-guide-status" role="status">
           正在获取命令…
@@ -590,24 +590,18 @@ function DaemonCommandGuide({
         </div>
       ) : commands ? (
         <>
-          <div className="device-daemon-command-list">
+          <div className="device-daemon-codeblock">
             {rows.map((row) => {
-              const copying =
-                connection.daemonCopy?.name === row.name &&
-                connection.daemonCopy.state === 'copying';
               const copied =
                 connection.daemonCopy?.name === row.name &&
                 connection.daemonCopy.state === 'copied';
               return (
-                <div className="device-daemon-command-row" key={row.name}>
-                  <div>
-                    <code>{commands[row.name]}</code>
-                    <span>{row.description}</span>
-                  </div>
+                <div className="device-daemon-codeblock-row" key={row.name}>
+                  <code>{commands[row.name]}</code>
                   <button
                     type="button"
-                    className="device-secondary"
-                    aria-label={`复制 ${row.label} 命令`}
+                    className="icon-button"
+                    aria-label={copied ? `${row.label} 命令已复制` : `复制 ${row.label} 命令`}
                     aria-live="polite"
                     disabled={connection.daemonCopy?.state === 'copying'}
                     onClick={() =>
@@ -617,7 +611,6 @@ function DaemonCommandGuide({
                     }
                   >
                     <Icon name={copied ? 'check' : 'copy'} className="i-sm" />
-                    {copying ? '复制中…' : copied ? '已复制' : '复制'}
                   </button>
                 </div>
               );
@@ -630,10 +623,6 @@ function DaemonCommandGuide({
           )}
         </>
       ) : null}
-      <p className="device-daemon-guide-note">
-        start 只启动已有 Daemon；status 只观察状态，退出查看不影响 Daemon；stop
-        只断开连接，不解除绑定。
-      </p>
     </section>
   );
 }

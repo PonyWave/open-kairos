@@ -537,6 +537,9 @@ message ListThreadCardsRequest {
   uint32 limit = 1;
   ThreadCardSort sort = 2;
   optional ThreadCardCursor cursor = 3;
+  // 非空时按给定 Thread 返回卡片（限本人、非 automation_only 的 task 与 workspace_main），
+  // 忽略 sort 与 cursor 分页，limit 仍生效。
+  repeated string thread_ids = 4;
 }
 
 message ListThreadCardsResponse {

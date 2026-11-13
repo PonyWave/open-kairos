@@ -185,22 +185,23 @@ try {
   );
 
   const fullSend = page.locator('#full-send-fixture');
-  assert.equal(await fullSend.locator('.sent-user-message').count(), 0);
-  assert.equal(await fullSend.locator('[data-user-message-call-id]').count(), 0);
-  assert.equal(await fullSend.locator('details.tool-group').count(), 0);
-  const fullCall = fullSend.locator('[data-tool-call-id="send-1"]');
-  assert.equal(await fullCall.count(), 1);
-  await fullCall.locator(':scope > summary').click();
-  assert.equal(await fullCall.evaluate((element) => element.open), true);
+  assert.equal(await fullSend.locator('.sent-user-message').count(), 1);
+  assert.equal(await fullSend.locator('[data-user-message-call-id="send-1"]').count(), 1);
+  assert.equal(await fullSend.locator('.sent-message-bubble').count(), 1);
+  assert.equal(await fullSend.locator('.sent-message-tag').count(), 1);
+  assert.equal(await fullSend.locator('[data-tool-call-id="send-1"]').count(), 0);
   const fullText = await fullSend.textContent();
-  assert.ok(fullText?.includes('参数'));
-  assert.ok(fullText.includes('正式回复'));
-  assert.ok(fullText.includes('完成'));
+  assert.ok(fullText?.includes('回复用户'));
+  assert.ok(!fullText?.includes('发送详情'));
+  assert.ok(fullText?.includes('正式回复'));
   const compactSend = page.locator('#compact-send-fixture');
   assert.equal(await compactSend.locator('[data-tool-call-id="send-1"]').count(), 0);
   assert.equal(await compactSend.locator('[data-user-message-call-id="send-1"]').count(), 1);
   assert.equal(await compactSend.locator('.sent-message-bubble').count(), 1);
-  assert.ok((await compactSend.textContent())?.includes('正式回复'));
+  assert.equal(await compactSend.locator('.sent-message-tag').count(), 0);
+  const compactText = await compactSend.textContent();
+  assert.ok(compactText?.includes('正式回复'));
+  assert.ok(!compactText?.includes('发送详情'));
 
   assert.deepEqual(errors, []);
   assert.deepEqual(apiRequests, []);
@@ -219,7 +220,7 @@ try {
         'ordered-text-and-operations',
         'single-operation-lines',
         'two-thinking-capsule',
-        'full-send-ordinary-call',
+        'full-send-bubble',
         'compact-send-bubble',
         'no-api-requests',
       ],

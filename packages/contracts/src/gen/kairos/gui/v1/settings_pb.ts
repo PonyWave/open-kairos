@@ -14,7 +14,7 @@ import { file_kairos_gui_v1_auth } from './auth_pb.js';
 export const file_kairos_gui_v1_settings: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChxrYWlyb3MvZ3VpL3YxL3NldHRpbmdzLnByb3RvEg1rYWlyb3MuZ3VpLnYxIp0BCg9Db25maWd1cmVkTW9kZWwSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRIQCghtb2RlbF9pZBgDIAEoCRIWCg5jb250ZXh0X3dpbmRvdxgEIAEoDRIZChFtYXhfb3V0cHV0X3Rva2VucxgFIAEoDRISCgp0aW1lb3V0X21zGAYgASgNEhcKD3N1cHBvcnRzX3Zpc2lvbhgHIAEoCCKtAQoPTW9kZWxDb25uZWN0aW9uEgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSLQoIYXBpX3R5cGUYAyABKA4yGy5rYWlyb3MuZ3VpLnYxLk1vZGVsQXBpVHlwZRIQCghiYXNlX3VybBgEIAEoCRIPCgdoYXNfa2V5GAUgASgIEi4KBm1vZGVscxgGIAMoCzIeLmthaXJvcy5ndWkudjEuQ29uZmlndXJlZE1vZGVsIhQKEkdldFNldHRpbmdzUmVxdWVzdCK/AQoNTW9kZWxTZXR0aW5ncxIPCgd2ZXJzaW9uGAEgASgNEjMKC2Nvbm5lY3Rpb25zGAIgAygLMh4ua2Fpcm9zLmd1aS52MS5Nb2RlbENvbm5lY3Rpb24SGAoQZGVmYXVsdF9tb2RlbF9pZBgDIAEoCRI7Cg5wbGF0Zm9ybV9tb2RlbBgEIAEoCzIeLmthaXJvcy5ndWkudjEuQ29uZmlndXJlZE1vZGVsSACIAQFCEQoPX3BsYXRmb3JtX21vZGVsIkUKE0dldFNldHRpbmdzUmVzcG9uc2USLgoIc2V0dGluZ3MYASABKAsyHC5rYWlyb3MuZ3VpLnYxLk1vZGVsU2V0dGluZ3MiTQobU2F2ZU1vZGVsQ29ubmVjdGlvblJlc3BvbnNlEi4KCHNldHRpbmdzGAEgASgLMhwua2Fpcm9zLmd1aS52MS5Nb2RlbFNldHRpbmdzIk8KHURlbGV0ZU1vZGVsQ29ubmVjdGlvblJlc3BvbnNlEi4KCHNldHRpbmdzGAEgASgLMhwua2Fpcm9zLmd1aS52MS5Nb2RlbFNldHRpbmdzIkkKF1NldERlZmF1bHRNb2RlbFJlc3BvbnNlEi4KCHNldHRpbmdzGAEgASgLMhwua2Fpcm9zLmd1aS52MS5Nb2RlbFNldHRpbmdzIpYCChpTYXZlTW9kZWxDb25uZWN0aW9uUmVxdWVzdBIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEhgKEGV4cGVjdGVkX3ZlcnNpb24YAiABKA0SCgoCaWQYAyABKAkSDAoEbmFtZRgEIAEoCRItCghhcGlfdHlwZRgFIAEoDjIbLmthaXJvcy5ndWkudjEuTW9kZWxBcGlUeXBlEhAKCGJhc2VfdXJsGAYgASgJEhUKC3JlcGxhY2Vfa2V5GAcgASgJSAASFAoKcmVtb3ZlX2tleRgIIAEoCEgAEi4KBm1vZGVscxgJIAMoCzIeLmthaXJvcy5ndWkudjEuQ29uZmlndXJlZE1vZGVsQgwKCmtleV9jaGFuZ2UiXgocRGVsZXRlTW9kZWxDb25uZWN0aW9uUmVxdWVzdBIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEhgKEGV4cGVjdGVkX3ZlcnNpb24YAiABKA0SCgoCaWQYAyABKAkiXgoWU2V0RGVmYXVsdE1vZGVsUmVxdWVzdBIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEhgKEGV4cGVjdGVkX3ZlcnNpb24YAiABKA0SEAoIbW9kZWxfaWQYAyABKAkiSAoaVGVzdENvbmZpZ3VyZWRNb2RlbFJlcXVlc3QSEAoIbW9kZWxfaWQYASABKAkSGAoQZXhwZWN0ZWRfdmVyc2lvbhgCIAEoDSI+ChtUZXN0Q29uZmlndXJlZE1vZGVsUmVzcG9uc2USDgoGcGFzc2VkGAEgASgIEg8KB21lc3NhZ2UYAiABKAkioAEKFFVwZGF0ZVByb2ZpbGVSZXF1ZXN0EhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSGAoQZXhwZWN0ZWRfdmVyc2lvbhgCIAEoDRIQCgh1c2VybmFtZRgDIAEoCRIYCg5yZXBsYWNlX2F2YXRhchgEIAEoDEgAEhcKDXJlbW92ZV9hdmF0YXIYBSABKAhIAEIPCg1hdmF0YXJfY2hhbmdlIkIKFVVwZGF0ZVByb2ZpbGVSZXNwb25zZRIpCghpZGVudGl0eRgBIAEoCzIXLmthaXJvcy5ndWkudjEuSWRlbnRpdHkiJgoRUmVhZEF2YXRhclJlcXVlc3QSEQoJYXZhdGFyX2lkGAEgASgJIjkKElJlYWRBdmF0YXJSZXNwb25zZRIPCgdjb250ZW50GAEgASgMEhIKCm1lZGlhX3R5cGUYAiABKAkqpgEKDE1vZGVsQXBpVHlwZRIeChpNT0RFTF9BUElfVFlQRV9VTlNQRUNJRklFRBAAEioKJk1PREVMX0FQSV9UWVBFX09QRU5BSV9DSEFUX0NPTVBMRVRJT05TEAESIwofTU9ERUxfQVBJX1RZUEVfT1BFTkFJX1JFU1BPTlNFUxACEiUKIU1PREVMX0FQSV9UWVBFX0FOVEhST1BJQ19NRVNTQUdFUxADMsgFCg9TZXR0aW5nc1NlcnZpY2USVAoLR2V0U2V0dGluZ3MSIS5rYWlyb3MuZ3VpLnYxLkdldFNldHRpbmdzUmVxdWVzdBoiLmthaXJvcy5ndWkudjEuR2V0U2V0dGluZ3NSZXNwb25zZRJsChNTYXZlTW9kZWxDb25uZWN0aW9uEikua2Fpcm9zLmd1aS52MS5TYXZlTW9kZWxDb25uZWN0aW9uUmVxdWVzdBoqLmthaXJvcy5ndWkudjEuU2F2ZU1vZGVsQ29ubmVjdGlvblJlc3BvbnNlEnIKFURlbGV0ZU1vZGVsQ29ubmVjdGlvbhIrLmthaXJvcy5ndWkudjEuRGVsZXRlTW9kZWxDb25uZWN0aW9uUmVxdWVzdBosLmthaXJvcy5ndWkudjEuRGVsZXRlTW9kZWxDb25uZWN0aW9uUmVzcG9uc2USYAoPU2V0RGVmYXVsdE1vZGVsEiUua2Fpcm9zLmd1aS52MS5TZXREZWZhdWx0TW9kZWxSZXF1ZXN0GiYua2Fpcm9zLmd1aS52MS5TZXREZWZhdWx0TW9kZWxSZXNwb25zZRJsChNUZXN0Q29uZmlndXJlZE1vZGVsEikua2Fpcm9zLmd1aS52MS5UZXN0Q29uZmlndXJlZE1vZGVsUmVxdWVzdBoqLmthaXJvcy5ndWkudjEuVGVzdENvbmZpZ3VyZWRNb2RlbFJlc3BvbnNlEloKDVVwZGF0ZVByb2ZpbGUSIy5rYWlyb3MuZ3VpLnYxLlVwZGF0ZVByb2ZpbGVSZXF1ZXN0GiQua2Fpcm9zLmd1aS52MS5VcGRhdGVQcm9maWxlUmVzcG9uc2USUQoKUmVhZEF2YXRhchIgLmthaXJvcy5ndWkudjEuUmVhZEF2YXRhclJlcXVlc3QaIS5rYWlyb3MuZ3VpLnYxLlJlYWRBdmF0YXJSZXNwb25zZWIGcHJvdG8z',
+    'ChxrYWlyb3MvZ3VpL3YxL3NldHRpbmdzLnByb3RvEg1rYWlyb3MuZ3VpLnYxIp0BCg9Db25maWd1cmVkTW9kZWwSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRIQCghtb2RlbF9pZBgDIAEoCRIWCg5jb250ZXh0X3dpbmRvdxgEIAEoDRIZChFtYXhfb3V0cHV0X3Rva2VucxgFIAEoDRISCgp0aW1lb3V0X21zGAYgASgNEhcKD3N1cHBvcnRzX3Zpc2lvbhgHIAEoCCKtAQoPTW9kZWxDb25uZWN0aW9uEgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSLQoIYXBpX3R5cGUYAyABKA4yGy5rYWlyb3MuZ3VpLnYxLk1vZGVsQXBpVHlwZRIQCghiYXNlX3VybBgEIAEoCRIPCgdoYXNfa2V5GAUgASgIEi4KBm1vZGVscxgGIAMoCzIeLmthaXJvcy5ndWkudjEuQ29uZmlndXJlZE1vZGVsIhQKEkdldFNldHRpbmdzUmVxdWVzdCK/AQoNTW9kZWxTZXR0aW5ncxIPCgd2ZXJzaW9uGAEgASgNEjMKC2Nvbm5lY3Rpb25zGAIgAygLMh4ua2Fpcm9zLmd1aS52MS5Nb2RlbENvbm5lY3Rpb24SGAoQZGVmYXVsdF9tb2RlbF9pZBgDIAEoCRI7Cg5wbGF0Zm9ybV9tb2RlbBgEIAEoCzIeLmthaXJvcy5ndWkudjEuQ29uZmlndXJlZE1vZGVsSACIAQFCEQoPX3BsYXRmb3JtX21vZGVsIkUKE0dldFNldHRpbmdzUmVzcG9uc2USLgoIc2V0dGluZ3MYASABKAsyHC5rYWlyb3MuZ3VpLnYxLk1vZGVsU2V0dGluZ3MiTQobU2F2ZU1vZGVsQ29ubmVjdGlvblJlc3BvbnNlEi4KCHNldHRpbmdzGAEgASgLMhwua2Fpcm9zLmd1aS52MS5Nb2RlbFNldHRpbmdzIk8KHURlbGV0ZU1vZGVsQ29ubmVjdGlvblJlc3BvbnNlEi4KCHNldHRpbmdzGAEgASgLMhwua2Fpcm9zLmd1aS52MS5Nb2RlbFNldHRpbmdzIkkKF1NldERlZmF1bHRNb2RlbFJlc3BvbnNlEi4KCHNldHRpbmdzGAEgASgLMhwua2Fpcm9zLmd1aS52MS5Nb2RlbFNldHRpbmdzIpYCChpTYXZlTW9kZWxDb25uZWN0aW9uUmVxdWVzdBIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEhgKEGV4cGVjdGVkX3ZlcnNpb24YAiABKA0SCgoCaWQYAyABKAkSDAoEbmFtZRgEIAEoCRItCghhcGlfdHlwZRgFIAEoDjIbLmthaXJvcy5ndWkudjEuTW9kZWxBcGlUeXBlEhAKCGJhc2VfdXJsGAYgASgJEhUKC3JlcGxhY2Vfa2V5GAcgASgJSAASFAoKcmVtb3ZlX2tleRgIIAEoCEgAEi4KBm1vZGVscxgJIAMoCzIeLmthaXJvcy5ndWkudjEuQ29uZmlndXJlZE1vZGVsQgwKCmtleV9jaGFuZ2UiXgocRGVsZXRlTW9kZWxDb25uZWN0aW9uUmVxdWVzdBIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEhgKEGV4cGVjdGVkX3ZlcnNpb24YAiABKA0SCgoCaWQYAyABKAkiXgoWU2V0RGVmYXVsdE1vZGVsUmVxdWVzdBIYChBjbGllbnRfYWN0aW9uX2lkGAEgASgJEhgKEGV4cGVjdGVkX3ZlcnNpb24YAiABKA0SEAoIbW9kZWxfaWQYAyABKAkiSAoaVGVzdENvbmZpZ3VyZWRNb2RlbFJlcXVlc3QSEAoIbW9kZWxfaWQYASABKAkSGAoQZXhwZWN0ZWRfdmVyc2lvbhgCIAEoDSI+ChtUZXN0Q29uZmlndXJlZE1vZGVsUmVzcG9uc2USDgoGcGFzc2VkGAEgASgIEg8KB21lc3NhZ2UYAiABKAkigAEKFURpc2NvdmVyTW9kZWxzUmVxdWVzdBItCghhcGlfdHlwZRgBIAEoDjIbLmthaXJvcy5ndWkudjEuTW9kZWxBcGlUeXBlEhAKCGJhc2VfdXJsGAIgASgJEg8KB2FwaV9rZXkYAyABKAkSFQoNY29ubmVjdGlvbl9pZBgEIAEoCSI5Cg9EaXNjb3ZlcmVkTW9kZWwSEAoIbW9kZWxfaWQYASABKAkSFAoMZGlzcGxheV9uYW1lGAIgASgJIkgKFkRpc2NvdmVyTW9kZWxzUmVzcG9uc2USLgoGbW9kZWxzGAEgAygLMh4ua2Fpcm9zLmd1aS52MS5EaXNjb3ZlcmVkTW9kZWwioAEKFFVwZGF0ZVByb2ZpbGVSZXF1ZXN0EhgKEGNsaWVudF9hY3Rpb25faWQYASABKAkSGAoQZXhwZWN0ZWRfdmVyc2lvbhgCIAEoDRIQCgh1c2VybmFtZRgDIAEoCRIYCg5yZXBsYWNlX2F2YXRhchgEIAEoDEgAEhcKDXJlbW92ZV9hdmF0YXIYBSABKAhIAEIPCg1hdmF0YXJfY2hhbmdlIkIKFVVwZGF0ZVByb2ZpbGVSZXNwb25zZRIpCghpZGVudGl0eRgBIAEoCzIXLmthaXJvcy5ndWkudjEuSWRlbnRpdHkiJgoRUmVhZEF2YXRhclJlcXVlc3QSEQoJYXZhdGFyX2lkGAEgASgJIjkKElJlYWRBdmF0YXJSZXNwb25zZRIPCgdjb250ZW50GAEgASgMEhIKCm1lZGlhX3R5cGUYAiABKAkqxwEKDE1vZGVsQXBpVHlwZRIeChpNT0RFTF9BUElfVFlQRV9VTlNQRUNJRklFRBAAEioKJk1PREVMX0FQSV9UWVBFX09QRU5BSV9DSEFUX0NPTVBMRVRJT05TEAESIwofTU9ERUxfQVBJX1RZUEVfT1BFTkFJX1JFU1BPTlNFUxACEiUKIU1PREVMX0FQSV9UWVBFX0FOVEhST1BJQ19NRVNTQUdFUxADEh8KG01PREVMX0FQSV9UWVBFX0dPT0dMRV9HRU5BSRAEMqcGCg9TZXR0aW5nc1NlcnZpY2USVAoLR2V0U2V0dGluZ3MSIS5rYWlyb3MuZ3VpLnYxLkdldFNldHRpbmdzUmVxdWVzdBoiLmthaXJvcy5ndWkudjEuR2V0U2V0dGluZ3NSZXNwb25zZRJsChNTYXZlTW9kZWxDb25uZWN0aW9uEikua2Fpcm9zLmd1aS52MS5TYXZlTW9kZWxDb25uZWN0aW9uUmVxdWVzdBoqLmthaXJvcy5ndWkudjEuU2F2ZU1vZGVsQ29ubmVjdGlvblJlc3BvbnNlEnIKFURlbGV0ZU1vZGVsQ29ubmVjdGlvbhIrLmthaXJvcy5ndWkudjEuRGVsZXRlTW9kZWxDb25uZWN0aW9uUmVxdWVzdBosLmthaXJvcy5ndWkudjEuRGVsZXRlTW9kZWxDb25uZWN0aW9uUmVzcG9uc2USYAoPU2V0RGVmYXVsdE1vZGVsEiUua2Fpcm9zLmd1aS52MS5TZXREZWZhdWx0TW9kZWxSZXF1ZXN0GiYua2Fpcm9zLmd1aS52MS5TZXREZWZhdWx0TW9kZWxSZXNwb25zZRJsChNUZXN0Q29uZmlndXJlZE1vZGVsEikua2Fpcm9zLmd1aS52MS5UZXN0Q29uZmlndXJlZE1vZGVsUmVxdWVzdBoqLmthaXJvcy5ndWkudjEuVGVzdENvbmZpZ3VyZWRNb2RlbFJlc3BvbnNlEl0KDkRpc2NvdmVyTW9kZWxzEiQua2Fpcm9zLmd1aS52MS5EaXNjb3Zlck1vZGVsc1JlcXVlc3QaJS5rYWlyb3MuZ3VpLnYxLkRpc2NvdmVyTW9kZWxzUmVzcG9uc2USWgoNVXBkYXRlUHJvZmlsZRIjLmthaXJvcy5ndWkudjEuVXBkYXRlUHJvZmlsZVJlcXVlc3QaJC5rYWlyb3MuZ3VpLnYxLlVwZGF0ZVByb2ZpbGVSZXNwb25zZRJRCgpSZWFkQXZhdGFyEiAua2Fpcm9zLmd1aS52MS5SZWFkQXZhdGFyUmVxdWVzdBohLmthaXJvcy5ndWkudjEuUmVhZEF2YXRhclJlc3BvbnNlYgZwcm90bzM',
     [file_kairos_gui_v1_auth],
   );
 
@@ -399,6 +399,80 @@ export const TestConfiguredModelResponseSchema: GenMessage<TestConfiguredModelRe
   messageDesc(file_kairos_gui_v1_settings, 12);
 
 /**
+ * @generated from message kairos.gui.v1.DiscoverModelsRequest
+ */
+export type DiscoverModelsRequest = Message<'kairos.gui.v1.DiscoverModelsRequest'> & {
+  /**
+   * @generated from field: kairos.gui.v1.ModelApiType api_type = 1;
+   */
+  apiType: ModelApiType;
+
+  /**
+   * @generated from field: string base_url = 2;
+   */
+  baseUrl: string;
+
+  /**
+   * @generated from field: string api_key = 3;
+   */
+  apiKey: string;
+
+  /**
+   * @generated from field: string connection_id = 4;
+   */
+  connectionId: string;
+};
+
+/**
+ * Describes the message kairos.gui.v1.DiscoverModelsRequest.
+ * Use `create(DiscoverModelsRequestSchema)` to create a new message.
+ */
+export const DiscoverModelsRequestSchema: GenMessage<DiscoverModelsRequest> =
+  /*@__PURE__*/
+  messageDesc(file_kairos_gui_v1_settings, 13);
+
+/**
+ * @generated from message kairos.gui.v1.DiscoveredModel
+ */
+export type DiscoveredModel = Message<'kairos.gui.v1.DiscoveredModel'> & {
+  /**
+   * @generated from field: string model_id = 1;
+   */
+  modelId: string;
+
+  /**
+   * @generated from field: string display_name = 2;
+   */
+  displayName: string;
+};
+
+/**
+ * Describes the message kairos.gui.v1.DiscoveredModel.
+ * Use `create(DiscoveredModelSchema)` to create a new message.
+ */
+export const DiscoveredModelSchema: GenMessage<DiscoveredModel> =
+  /*@__PURE__*/
+  messageDesc(file_kairos_gui_v1_settings, 14);
+
+/**
+ * @generated from message kairos.gui.v1.DiscoverModelsResponse
+ */
+export type DiscoverModelsResponse = Message<'kairos.gui.v1.DiscoverModelsResponse'> & {
+  /**
+   * @generated from field: repeated kairos.gui.v1.DiscoveredModel models = 1;
+   */
+  models: DiscoveredModel[];
+};
+
+/**
+ * Describes the message kairos.gui.v1.DiscoverModelsResponse.
+ * Use `create(DiscoverModelsResponseSchema)` to create a new message.
+ */
+export const DiscoverModelsResponseSchema: GenMessage<DiscoverModelsResponse> =
+  /*@__PURE__*/
+  messageDesc(file_kairos_gui_v1_settings, 15);
+
+/**
  * @generated from message kairos.gui.v1.UpdateProfileRequest
  */
 export type UpdateProfileRequest = Message<'kairos.gui.v1.UpdateProfileRequest'> & {
@@ -444,7 +518,7 @@ export type UpdateProfileRequest = Message<'kairos.gui.v1.UpdateProfileRequest'>
  */
 export const UpdateProfileRequestSchema: GenMessage<UpdateProfileRequest> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_settings, 13);
+  messageDesc(file_kairos_gui_v1_settings, 16);
 
 /**
  * @generated from message kairos.gui.v1.UpdateProfileResponse
@@ -462,7 +536,7 @@ export type UpdateProfileResponse = Message<'kairos.gui.v1.UpdateProfileResponse
  */
 export const UpdateProfileResponseSchema: GenMessage<UpdateProfileResponse> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_settings, 14);
+  messageDesc(file_kairos_gui_v1_settings, 17);
 
 /**
  * @generated from message kairos.gui.v1.ReadAvatarRequest
@@ -480,7 +554,7 @@ export type ReadAvatarRequest = Message<'kairos.gui.v1.ReadAvatarRequest'> & {
  */
 export const ReadAvatarRequestSchema: GenMessage<ReadAvatarRequest> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_settings, 15);
+  messageDesc(file_kairos_gui_v1_settings, 18);
 
 /**
  * @generated from message kairos.gui.v1.ReadAvatarResponse
@@ -503,7 +577,7 @@ export type ReadAvatarResponse = Message<'kairos.gui.v1.ReadAvatarResponse'> & {
  */
 export const ReadAvatarResponseSchema: GenMessage<ReadAvatarResponse> =
   /*@__PURE__*/
-  messageDesc(file_kairos_gui_v1_settings, 16);
+  messageDesc(file_kairos_gui_v1_settings, 19);
 
 /**
  * @generated from enum kairos.gui.v1.ModelApiType
@@ -528,6 +602,11 @@ export enum ModelApiType {
    * @generated from enum value: MODEL_API_TYPE_ANTHROPIC_MESSAGES = 3;
    */
   ANTHROPIC_MESSAGES = 3,
+
+  /**
+   * @generated from enum value: MODEL_API_TYPE_GOOGLE_GENAI = 4;
+   */
+  GOOGLE_GENAI = 4,
 }
 
 /**
@@ -580,6 +659,14 @@ export const SettingsService: GenService<{
     methodKind: 'unary';
     input: typeof TestConfiguredModelRequestSchema;
     output: typeof TestConfiguredModelResponseSchema;
+  };
+  /**
+   * @generated from rpc kairos.gui.v1.SettingsService.DiscoverModels
+   */
+  discoverModels: {
+    methodKind: 'unary';
+    input: typeof DiscoverModelsRequestSchema;
+    output: typeof DiscoverModelsResponseSchema;
   };
   /**
    * @generated from rpc kairos.gui.v1.SettingsService.UpdateProfile

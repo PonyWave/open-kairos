@@ -14,3 +14,4 @@ createRoot(element).render(
 );
 
 import './settings.css';
+import './motion.css';

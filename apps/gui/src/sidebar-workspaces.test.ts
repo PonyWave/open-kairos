@@ -100,6 +100,20 @@ describe('sidebar workspace groups', () => {
     expect(html).toContain('thread-badge line');
   });
 
+  it('renders nothing when there are no temporary conversations', () => {
+    const html = renderToStaticMarkup(
+      createElement(TemporaryThreadsSection, {
+        threads: [],
+        selectedThreadId: null,
+        busy: false,
+        onOpenThread: noop,
+        onNewTopic: noop,
+        onRename: rename,
+      }),
+    );
+    expect(html).toBe('');
+  });
+
   it('shows only the three most recent tasks with an expand-all row', () => {
     const tasks = [1, 2, 3, 4].map((index) =>
       create(ThreadSchema, {

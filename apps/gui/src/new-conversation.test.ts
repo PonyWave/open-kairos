@@ -220,12 +220,19 @@ describe('new main conversation', () => {
       expect(warning).toContain('上下文将被清空，无法恢复');
       expect(warning).toContain('recall 也无法查询之前的内容');
       const buttons = dialog.actions.props.children as Array<
-        ReactElement<{ onClick: () => void; children: ReactNode; className?: string }>
+        ReactElement<{
+          onClick: () => void;
+          children: ReactNode;
+          className?: string;
+          'data-dialog-initial-focus'?: string;
+        }>
       >;
       expect(buttons[0]?.props.children).toBe('取消');
       expect(buttons[0]?.props.className).toBe('device-secondary');
+      expect(buttons[0]?.props['data-dialog-initial-focus']).toBe('');
       expect(buttons[1]?.props.children).toBe('清空并开始新对话');
       expect(buttons[1]?.props.className).toBe('device-primary device-danger');
+      expect(buttons[1]?.props['data-dialog-initial-focus']).toBeUndefined();
 
       controls.dialog = undefined;
       await act(async () => {

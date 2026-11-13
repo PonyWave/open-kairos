@@ -223,3 +223,37 @@ describe('approved workbench entry differences', () => {
     directory.showMain();
   });
 });
+
+describe('showThreadPage for side-pane topics', () => {
+  it('keeps the open conversation when a thread page is already selected', () => {
+    const directory = new ThreadDirectory({
+      mainThreadId: main.threadId,
+    });
+
+    directory.openThread(firstTask.threadId);
+    directory.showThreadPage();
+    expect(directory.state.page).toBe('thread');
+    expect(directory.state.selectedThreadId).toBe(firstTask.threadId);
+
+    directory.showMain();
+    directory.showThreadPage();
+    expect(directory.state.selectedThreadId).toBe(main.threadId);
+  });
+
+  it('falls back to the main conversation from pages without a selected thread', () => {
+    const directory = new ThreadDirectory({
+      mainThreadId: main.threadId,
+    });
+
+    directory.openDraft();
+    directory.showThreadPage();
+    expect(directory.state.page).toBe('thread');
+    expect(directory.state.selectedThreadId).toBe(main.threadId);
+
+    directory.openAutomationThread('schedule-1', 'hidden-1');
+    directory.showThreadPage();
+    expect(directory.state.selectedThreadId).toBe(main.threadId);
+    expect(directory.state.automationScheduleId).toBeNull();
+    expect(directory.state.automationThreadId).toBeNull();
+  });
+});

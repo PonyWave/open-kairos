@@ -1,0 +1,352 @@
+/* Shared timing keeps navigation, controls and transient surfaces in the same rhythm. */
+:root {
+  --motion-fast: 120ms;
+  --motion-feedback: 180ms;
+  --motion-enter: 260ms;
+  --motion-expand: 240ms;
+  --motion-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --motion-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:where(button, a, summary, input, textarea, select),
+:where(
+  .workspace-group-header,
+  .workspace-task-item,
+  .workspace-overview-row,
+  .automation-row,
+  .settings-display-option
+) {
+  transition:
+    color var(--motion-fast) ease,
+    background-color var(--motion-feedback) ease,
+    border-color var(--motion-feedback) ease,
+    box-shadow var(--motion-feedback) ease,
+    opacity var(--motion-feedback) ease,
+    translate var(--motion-feedback) var(--motion-out),
+    scale var(--motion-fast) var(--motion-out);
+}
+
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+
+:is(.primary, .device-primary, .device-secondary, .icon-button, .send-btn):active:not(:disabled) {
+  scale: 0.96;
+  transition-duration: 70ms;
+}
+
+.composer {
+  transition:
+    border-color var(--motion-feedback) ease,
+    box-shadow var(--motion-enter) ease,
+    background-color var(--motion-feedback) ease;
+}
+.composer:focus-within {
+  border-color: var(--muted);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--ink) 5%, transparent),
+    0 3px 16px #00000005;
+}
+.send-btn > .icon:not(.spinning),
+.theme-toggle > .icon,
+.conversation-card-footer > .icon {
+  transition: transform var(--motion-enter) var(--motion-out);
+}
+.send-btn > .icon {
+  animation: motion-fade-in var(--motion-feedback) ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :is(.device-primary, .primary):hover:not(:disabled) {
+    translate: 0 -1px;
+    box-shadow: 0 3px 9px #00000012;
+  }
+  .conversation-card:hover:not(:disabled) {
+    translate: 0 -2px;
+    box-shadow: 0 5px 16px #00000008;
+  }
+  .conversation-card:hover .conversation-card-footer > .icon {
+    transform: translateX(2px);
+  }
+  .send-btn:not(.stop-btn):hover:not(:disabled) > .icon:not(.spinning) {
+    transform: translateY(-2px);
+  }
+  .theme-toggle:hover > .icon {
+    transform: rotate(18deg);
+  }
+}
+
+/* Page containers only fade: a transform would change fixed menu positioning. */
+:is(
+  .workspaces-page,
+  .conversation-list-page,
+  .settings-page,
+  .connected-devices-page,
+  .automation-page,
+  .conversation-pane:not([hidden]),
+  .login-card
+) {
+  animation: motion-fade-in var(--motion-enter) var(--motion-out);
+}
+:is(.page-heading, .device-page-heading, .automation-page-heading, .settings-page > h1) {
+  animation: motion-rise-in var(--motion-enter) var(--motion-out);
+}
+:is(.settings-form, .channel-settings, .automation-definition, .automation-history) {
+  animation: motion-fade-in var(--motion-enter) var(--motion-out);
+}
+.conversation-pane.conversation-topic:not([hidden]) {
+  animation: motion-pane-in 300ms var(--motion-out);
+}
+:is(.conversation-empty, .workspace-empty, .device-empty, .automation-empty) {
+  animation: motion-rise-in 360ms var(--motion-out);
+}
+
+:is(.workspace-overview, .conversation-list, .device-list, .automation-list)
+  > :is(.workspace-overview-group, .conversation-card, .connected-device-row, .automation-row) {
+  animation: motion-rise-in var(--motion-enter) var(--motion-out) both;
+}
+:is(.workspace-overview, .conversation-list, .device-list, .automation-list) > :nth-child(2) {
+  animation-delay: 24ms;
+}
+:is(.workspace-overview, .conversation-list, .device-list, .automation-list) > :nth-child(3) {
+  animation-delay: 48ms;
+}
+:is(.workspace-overview, .conversation-list, .device-list, .automation-list) > :nth-child(4) {
+  animation-delay: 72ms;
+}
+:is(.workspace-overview, .conversation-list, .device-list, .automation-list) > :nth-child(n + 5) {
+  animation-delay: 96ms;
+}
+
+/* Menus grow from their actual placement, including when viewport edges flip it. */
+.dropdown-panel {
+  --menu-offset: -4px;
+  transform-origin: top left;
+  animation: motion-menu-in var(--motion-feedback) var(--motion-out);
+}
+.dropdown-panel[data-align="end"] {
+  transform-origin: top right;
+}
+.dropdown-panel[data-side="top"],
+.dropdown-panel.slash-command-menu {
+  --menu-offset: 4px;
+  transform-origin: bottom left;
+}
+.dropdown-panel[data-side="top"][data-align="end"] {
+  transform-origin: bottom right;
+}
+.dropdown-trigger > .dropdown-chevron,
+.workspace-chevron,
+.workspace-preview-chevron {
+  transition: transform var(--motion-expand) var(--motion-out);
+}
+.dropdown-trigger[aria-expanded="true"] > .dropdown-chevron {
+  transform: rotate(180deg);
+}
+
+/* Native dialogs stay untransformed so their fixed-position menu portals stay aligned. */
+.device-dialog[open] {
+  animation: motion-dialog-in var(--motion-enter) var(--motion-out);
+}
+.device-dialog[open]::backdrop {
+  animation: motion-fade-in var(--motion-enter) ease;
+}
+.device-dialog-head h2 {
+  animation: motion-rise-in var(--motion-enter) var(--motion-out);
+}
+
+.motion-disclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--motion-expand) var(--motion-out),
+    opacity var(--motion-feedback) ease,
+    visibility 0s var(--motion-expand);
+}
+.motion-disclosure[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+.motion-disclosure-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+.workspace-overview-topics {
+  /* Leave room for card hover movement and keyboard focus inside the clipped region. */
+  padding: 4px;
+}
+.motion-disclosure[data-open="true"] .workspace-tasks {
+  animation: motion-fade-in var(--motion-expand) ease;
+}
+.workspace-preview {
+  transition-timing-function: var(--motion-out);
+}
+.workspace-switch-thumb {
+  transition: transform var(--motion-expand) var(--motion-out);
+}
+
+:is(.tool-operation, .call-payload, .queue-management) > summary .icon:last-child,
+.queue-management-chevron {
+  transition: transform var(--motion-expand) var(--motion-out);
+}
+:is(.tool-operation, .tool-group, .call-payload, .queue-management)[open] > :not(summary),
+.thinking-detail {
+  animation: motion-fade-in var(--motion-feedback) ease;
+}
+:is(.workspace-notice, .settings-notice, .device-connection-state.connected, .attachment) {
+  animation: motion-rise-in var(--motion-enter) var(--motion-out);
+}
+.failure-notice,
+.settings-error,
+.channel-error {
+  animation: motion-fade-in var(--motion-feedback) ease;
+}
+
+@media (max-width: 1020px) {
+  .thread-sidebar {
+    transition: transform 300ms var(--motion-out);
+  }
+  .phone-scrim,
+  .navigation-open .phone-scrim {
+    display: block;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      opacity var(--motion-expand) ease,
+      visibility 0s var(--motion-expand);
+  }
+  .navigation-open .phone-scrim {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
+  /* Preserve drawer content during its closing transition. The app manages inert. */
+  .thread-sidebar :is(.brand-wordmark, .nav-label, .sidebar-section, .profile-info) {
+    display: block;
+  }
+  .thread-sidebar .brand-row {
+    justify-content: flex-start;
+    padding: 0 6px 12px;
+    position: relative;
+  }
+  .thread-sidebar .brand-row > .icon-button {
+    display: none;
+  }
+  .thread-sidebar .brand-row > .drawer-close {
+    display: inline-flex;
+    position: absolute;
+    right: 0;
+    top: -2px;
+    width: 44px;
+    height: 44px;
+  }
+  .thread-sidebar :is(.thread-list > button, .connection-banner) {
+    justify-content: flex-start;
+    min-height: 44px;
+    padding: 0 10px;
+  }
+  .thread-sidebar .thread-list kbd {
+    display: none;
+  }
+  .thread-sidebar .profile {
+    flex-direction: row;
+    padding: 12px 8px 0;
+  }
+  .thread-sidebar :is(.workspace-group-header, .sidebar-label) {
+    min-height: 44px;
+  }
+  .thread-sidebar
+    :is(.sidebar-label, .workspace-group-actions, .workspace-group-header)
+    > .icon-button,
+  .thread-sidebar .sidebar-label-actions > .icon-button {
+    min-width: 44px;
+    height: 44px;
+  }
+  .thread-sidebar .workspace-task-open,
+  .thread-sidebar .workspace-task-more {
+    min-height: 40px;
+  }
+  .thread-sidebar .workspace-task-open {
+    font-size: 13px;
+  }
+}
+
+@keyframes motion-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes motion-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes motion-pane-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes motion-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--menu-offset)) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes motion-dialog-in {
+  from {
+    opacity: 0;
+    box-shadow: 0 8px 24px #00000008;
+  }
+  to {
+    opacity: 1;
+    box-shadow: var(--shadow-big);
+  }
+}
+
+/* Covers existing spinners, drag settling and newly added motion, including pseudo-elements. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after,
+  *::backdrop {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  :is(.primary, .device-primary, .device-secondary, .icon-button, .send-btn, .conversation-card) {
+    translate: none !important;
+    scale: none !important;
+  }
+  .send-btn > .icon:not(.spinning),
+  .theme-toggle > .icon,
+  .conversation-card-footer > .icon,
+  .workspace-main-open .workspace-avatar {
+    transform: none !important;
+  }
+}

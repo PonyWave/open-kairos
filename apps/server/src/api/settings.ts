@@ -14,6 +14,7 @@ export function registerSettingsRoutes(
   authentication: GuiAuthentication,
 ): void {
   const activeTests = new Set<string>();
+  const activeDiscoveries = new Set<string>();
   const handle = async <T>(effect: () => T | Promise<T>): Promise<T> => {
     try {
       return await effect();
@@ -65,6 +66,37 @@ export function registerSettingsRoutes(
           throw error;
         } finally {
           activeTests.delete(ownerId);
+        }
+      }),
+    discoverModels: (request, context) =>
+      handle(async () => {
+        const ownerId = requireOwner(context, authentication);
+        if (activeDiscoveries.has(ownerId) || activeDiscoveries.size >= 4)
+          throw new SessionError('failed_precondition', '已有模型发现请求正在执行，请稍后重试。');
+        activeDiscoveries.add(ownerId);
+        try {
+          return await settings.discover(ownerId, request, context.signal);
+        } catch (error) {
+          if (error instanceof ProviderError) {
+            const status = error.status;
+            throw new SessionError(
+              'failed_precondition',
+              status === 401 || status === 403
+                ? '模型服务拒绝鉴权，请核对 API key 和权限。'
+                : status === 404
+                  ? '模型列表端点不存在，请核对基础 URL 和 API 类型。'
+                  : status === 429
+                    ? '模型服务已限流或额度不足，请稍后重试。'
+                    : error.code === 'request_timeout'
+                      ? '模型发现超时。'
+                      : error.code === 'invalid_response'
+                        ? '模型服务未返回标准的模型列表，请手动填写模型 ID。'
+                        : '模型发现失败，请核对服务状态、API 类型和基础 URL。',
+            );
+          }
+          throw error;
+        } finally {
+          activeDiscoveries.delete(ownerId);
         }
       }),
     updateProfile: (request, context) =>

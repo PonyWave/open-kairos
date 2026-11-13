@@ -31,6 +31,7 @@ export interface ThreadPreviewGateway {
       limit: number;
       sort: TopicSort;
       cursor: ThreadCardCursor | null;
+      threadIds?: readonly string[];
     },
     signal?: AbortSignal,
   ): Promise<TopicCardPage>;
@@ -68,14 +69,16 @@ const runStatuses = new Set<number>([
 
 export function createThreadPreviewGateway(clients: KairosClients): ThreadPreviewGateway {
   return {
-    async listCards({ limit, sort, cursor }, signal) {
+    async listCards({ limit, sort, cursor, threadIds }, signal) {
       const protocolSort =
         sort === 'createdAt' ? ThreadCardSort.CREATED_AT : ThreadCardSort.LAST_MESSAGE_AT;
+      const byIds = threadIds !== undefined && threadIds.length > 0;
       const response = await clients.thread.listThreadCards(
         {
           limit,
           sort: protocolSort,
-          ...(cursor === null ? {} : { cursor }),
+          ...(byIds || cursor === null ? {} : { cursor }),
+          ...(byIds ? { threadIds: [...threadIds] } : {}),
         },
         signal === undefined ? {} : { signal },
       );
@@ -130,8 +133,8 @@ export function createThreadPreviewGateway(clients: KairosClients): ThreadPrevie
 function parseTopicCard(value: unknown): TopicCardView {
   const card = objectValue(value, 'ThreadCard');
   const thread = parseThread(card.thread);
-  if (thread.threadType !== ThreadType.TASK) {
-    throw new Error('ListThreadCards 返回了非任务 Thread。');
+  if (thread.threadType !== ThreadType.TASK && thread.threadType !== ThreadType.WORKSPACE_MAIN) {
+    throw new Error('ListThreadCards 返回了非话题 Thread。');
   }
   const sourceCall = card.sourceCall === undefined ? null : parseCallReference(card.sourceCall);
   return {

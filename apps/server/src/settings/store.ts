@@ -11,6 +11,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import {
   type ConfiguredModel,
   ConfiguredModelSchema,
+  type DiscoverModelsRequest,
   fromJsonString,
   ModelApiType,
   type SaveModelConnectionRequest,
@@ -18,6 +19,7 @@ import {
   type UpdateProfileRequest,
 } from '@kairos/contracts';
 import { z } from 'zod';
+import { listProviderModels } from '../providers/discovery.js';
 import { createModelProvider, providerIdForApiType } from '../providers/factory.js';
 import { requireText, SessionError } from '../sessions/errors.js';
 import type { RunRecord } from '../sessions/records.js';
@@ -26,11 +28,12 @@ import { inTransaction } from '../storage/transaction.js';
 import { normalizeAvatar } from './avatar.js';
 import { modelFetch, validateModelUrl } from './model-network.js';
 
+const apiTypeSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]);
 const rowSchema = z.object({
   id: z.string(),
   tenant_id: z.string(),
   name: z.string(),
-  api_type: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  api_type: apiTypeSchema,
   base_url: z.string(),
   encrypted_key: z.string().nullable(),
   models_json: z.string(),
@@ -50,7 +53,7 @@ const snapshotSchema = z.object({
   id: z.string(),
   modelId: z.string(),
   providerId: z.string(),
-  apiType: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+  apiType: apiTypeSchema.optional(),
   contextWindow: z.number().int().positive(),
   maxOutputTokens: z.number().int().nonnegative(),
   timeoutMs: z.number().int().positive(),
@@ -123,11 +126,12 @@ export class SettingsStore {
     if (
       input.apiType !== ModelApiType.OPENAI_CHAT_COMPLETIONS &&
       input.apiType !== ModelApiType.OPENAI_RESPONSES &&
-      input.apiType !== ModelApiType.ANTHROPIC_MESSAGES
+      input.apiType !== ModelApiType.ANTHROPIC_MESSAGES &&
+      input.apiType !== ModelApiType.GOOGLE_GENAI
     )
       throw new SessionError(
         'invalid_argument',
-        'API 类型仅支持 OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages。',
+        'API 类型仅支持 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 或 Google Gemini。',
       );
     const baseUrl = validateModelUrl(input.baseUrl, this.#allowedOrigins);
     if (input.models.length < 1 || input.models.length > 50)
@@ -425,6 +429,44 @@ export class SettingsStore {
         ? '流式响应、工具调用和用量信息测试通过。'
         : '模型未返回有效工具调用，请核对模型能力与 API 类型。',
     };
+  }
+
+  async discover(ownerId: string, input: DiscoverModelsRequest, signal: AbortSignal) {
+    if (
+      input.apiType !== ModelApiType.OPENAI_CHAT_COMPLETIONS &&
+      input.apiType !== ModelApiType.OPENAI_RESPONSES &&
+      input.apiType !== ModelApiType.ANTHROPIC_MESSAGES &&
+      input.apiType !== ModelApiType.GOOGLE_GENAI
+    )
+      throw new SessionError(
+        'invalid_argument',
+        'API 类型仅支持 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 或 Google Gemini。',
+      );
+    const baseUrl = validateModelUrl(input.baseUrl, this.#allowedOrigins);
+    let apiKey = input.apiKey.trim();
+    if (/[\r\n\0]/.test(apiKey) || apiKey.length > 8192)
+      throw new SessionError('invalid_argument', 'API key 过长或包含无效字符。');
+    if (!apiKey && input.connectionId) {
+      const row = this.#connection(ownerId, input.connectionId);
+      if (row.encrypted_key !== null) {
+        if (
+          new URL(row.base_url).origin !== new URL(baseUrl).origin ||
+          row.api_type !== input.apiType
+        )
+          throw new SessionError(
+            'invalid_argument',
+            '连接的服务地址或 API 类型已变化，请重新输入 API key。',
+          );
+        apiKey = this.#decrypt(ownerId, row.encrypted_key);
+      }
+    }
+    const models = await listProviderModels(
+      input.apiType,
+      { baseUrl, ...(apiKey ? { apiKey } : {}) },
+      signal,
+      this.#fetch,
+    );
+    return { models: models.map((model) => ({ ...model })) };
   }
 
   #runtime(ownerId: string, config: Snapshot, key: string | null): RuntimeModelConfiguration {

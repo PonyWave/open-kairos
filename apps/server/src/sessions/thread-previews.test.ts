@@ -91,6 +91,146 @@ function collectCardIds(store: SessionStore, sort: ThreadCardSort) {
   throw new Error('Thread card pagination did not finish.');
 }
 
+it('returns cards for explicit thread ids including workspace mains', () => {
+  const { database, store, advance } = fixture();
+  try {
+    store.getOrCreateMainThread(ownerId);
+    const task = createThread(store, 'create-task', '任务话题');
+    appendDirect(store, task.threadId, 'send-task', '任务问题', '任务回答');
+    const workspace = store.createWorkspace({
+      ownerId,
+      name: '空间一',
+      envId: 'main',
+      path: '/srv/one',
+    });
+    appendDirect(store, workspace.mainThread.threadId, 'send-ws', '空间问题', '空间回答');
+    createThread(store, 'create-other', '未请求话题');
+    advance(1000);
+
+    const result = listThreadCards(store, ownerId, {
+      sort: 'last_message_at',
+      limit: 10,
+      threadIds: [workspace.mainThread.threadId, task.threadId],
+    });
+    expect(result.hasMore).toBe(false);
+    expect(result.nextCursor).toBeNull();
+    expect(result.cards.map((card) => card.thread.threadId)).toEqual([
+      task.threadId,
+      workspace.mainThread.threadId,
+    ]);
+    const mainCard = result.cards.find(
+      (card) => card.thread.threadId === workspace.mainThread.threadId,
+    );
+    expect(mainCard?.thread.threadType).toBe('workspace_main');
+    expect(mainCard?.messages.map((message) => message.text)).toEqual(['空间问题', '空间回答']);
+
+    const foreign = listThreadCards(store, 'other-owner', {
+      sort: 'last_message_at',
+      limit: 10,
+      threadIds: [task.threadId],
+    });
+    expect(foreign.cards).toEqual([]);
+  } finally {
+    database.close();
+  }
+});
+
+it('falls back to the send_to_user content when the response text is empty', () => {
+  const { database, store } = fixture();
+  try {
+    store.getOrCreateMainThread(ownerId);
+    const thread = createThread(store, 'create-silent', '静默话题');
+    const sent = store.sendMessage(
+      action('SendMessage', 'send-silent', {
+        threadId: thread.threadId,
+        text: '开始',
+        mode: 'follow_up',
+      }),
+    );
+    store.appendModelMessage({
+      runId: sent.runId,
+      inputId: sent.input.inputId,
+      message: { role: 'user', content: '开始' },
+    });
+    store.appendModelMessage({
+      runId: sent.runId,
+      message: {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            id: 'stu-1',
+            name: 'send_to_user',
+            arguments: { content: '只发给用户的消息', end_turn: true },
+          },
+        ],
+      },
+    });
+    store.appendModelMessage({
+      runId: sent.runId,
+      message: {
+        role: 'tool',
+        content: JSON.stringify({ status: 'sent', content: '只发给用户的消息', end_turn: true }),
+        tool_call_id: 'stu-1',
+        tool_name: 'send_to_user',
+      },
+    });
+    store.appendModelMessage({
+      runId: sent.runId,
+      message: {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'bash-1', name: 'bash', arguments: { command: 'ls' } }],
+      },
+    });
+    store.appendModelMessage({
+      runId: sent.runId,
+      message: {
+        role: 'tool',
+        content: '{"status":"completed"}',
+        tool_call_id: 'bash-1',
+        tool_name: 'bash',
+      },
+    });
+    store.appendModelMessage({
+      runId: sent.runId,
+      message: {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            id: 'stu-2',
+            name: 'send_to_user',
+            arguments: { content: '第二条用户消息', end_turn: true },
+          },
+        ],
+      },
+    });
+    store.appendModelMessage({
+      runId: sent.runId,
+      message: {
+        role: 'tool',
+        content: JSON.stringify({ status: 'sent', content: '第二条用户消息', end_turn: true }),
+        tool_call_id: 'stu-2',
+        tool_name: 'send_to_user',
+      },
+    });
+
+    const card = listThreadCards(store, ownerId, {
+      sort: 'last_message_at',
+      limit: 4,
+      threadIds: [thread.threadId],
+    }).cards[0];
+    expect(card?.messages.map((message) => message.text)).toEqual([
+      '开始',
+      '只发给用户的消息',
+      '第二条用户消息',
+    ]);
+  } finally {
+    database.close();
+  }
+});
+
 it('lists only task cards with stable sorting, bounded text and immutable message times', () => {
   const { database, store, advance } = fixture();
   try {

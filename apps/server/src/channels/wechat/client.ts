@@ -37,30 +37,27 @@ const qrStatusResponseSchema = z.object({
   redirect_host: z.string().optional(),
 });
 
-export const weixinMessageSchema = z
-  .object({
-    message_id: z.number().optional(),
-    from_user_id: z.string().optional(),
-    to_user_id: z.string().optional(),
-    create_time_ms: z.number().optional(),
-    message_type: z.number().optional(),
-    message_state: z.number().optional(),
-    context_token: z.string().optional(),
-    item_list: z
-      .array(
-        z
-          .object({
-            type: z.number().optional(),
-            text_item: z.object({ text: z.string().optional() }).optional(),
-            file_item: z.object({ file_name: z.string().optional() }).optional(),
-            voice_item: z.object({ text: z.string().optional() }).optional(),
-          })
-          .strict()
-          .optional(),
-      )
-      .optional(),
-  })
-  .strict();
+export const weixinMessageSchema = z.object({
+  message_id: z.number().optional(),
+  from_user_id: z.string().optional(),
+  to_user_id: z.string().optional(),
+  create_time_ms: z.number().optional(),
+  message_type: z.number().optional(),
+  message_state: z.number().optional(),
+  context_token: z.string().optional(),
+  item_list: z
+    .array(
+      z
+        .object({
+          type: z.number().optional(),
+          text_item: z.object({ text: z.string().optional() }).optional(),
+          file_item: z.object({ file_name: z.string().optional() }).optional(),
+          voice_item: z.object({ text: z.string().optional() }).optional(),
+        })
+        .optional(),
+    )
+    .optional(),
+});
 export type WeixinMessage = z.infer<typeof weixinMessageSchema>;
 
 const getUpdatesResponseSchema = z.object({
@@ -203,17 +200,17 @@ export class WechatClient implements WechatClientApi {
     const url = new URL('/ilink/bot/get_qrcode_status', this.#baseUrl);
     url.searchParams.set('qrcode', qrcode);
     if (verifyCode !== undefined) url.searchParams.set('verify_code', verifyCode);
-    let response: Response;
-    try {
-      response = await this.#fetch(url, {
-        method: 'GET',
-        headers: this.#headers(null),
-        ...(signal === undefined ? {} : { signal }),
-      });
-    } catch {
-      return { status: 'wait' };
-    }
-    if (!response.ok) return { status: 'wait' };
+    const response = await this.#fetch(url, {
+      method: 'GET',
+      headers: this.#headers(null),
+      signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(35_000)]),
+    });
+    if (!response.ok)
+      throw new ChannelDeliveryError(
+        true,
+        `http_${response.status}`,
+        `微信登录查询返回 HTTP ${response.status}。`,
+      );
     return qrStatusResponseSchema.parse(await response.json());
   }
 

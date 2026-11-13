@@ -25,7 +25,7 @@ export type ComposerSubmission =
       key: string;
       actionKind: ActionKind;
       payload: unknown;
-      pendingNotice?: string;
+      pendingNotice?: string | undefined;
       requiresConfirmation?: 'newConversation' | undefined;
     };
 
@@ -59,7 +59,7 @@ export function planComposerSubmission(context: ComposerSubmissionContext): Comp
         ? '正在重载提示词与 Skill…'
         : parsed.command === 'compact'
           ? '正在压缩上下文…'
-          : '正在开始新对话…';
+          : undefined;
     return {
       kind: 'action',
       key: `slash-command:${parsed.command}:${context.selectedThreadId}:${context.draftId}`,

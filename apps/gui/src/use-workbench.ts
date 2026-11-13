@@ -16,6 +16,7 @@ export function useWorkbench(mainThreadId: string) {
   const operations = useMemo(
     () => ({
       showMain: () => directory.showMain(),
+      showThreadPage: () => directory.showThreadPage(),
       openDirectory: () => directory.openDirectory(),
       openDraft: (workspaceId?: string | null) => directory.openDraft(workspaceId ?? null),
       openDevices: () => directory.openDevices(),

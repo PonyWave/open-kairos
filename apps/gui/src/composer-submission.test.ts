@@ -34,10 +34,12 @@ describe('planComposerSubmission slash commands', () => {
         ? '正在重载提示词与 Skill…'
         : command === 'compact'
           ? '正在压缩上下文…'
-          : '正在开始新对话…',
+          : undefined,
     );
     expect(submission.requiresConfirmation).toBe(command === 'new' ? 'newConversation' : undefined);
-    expect(submission.pendingNotice).not.toContain('Run');
+    if (submission.pendingNotice !== undefined) {
+      expect(submission.pendingNotice).not.toContain('Run');
+    }
   });
 
   it('requires the main conversation and a second confirmation for /new', () => {

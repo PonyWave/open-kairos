@@ -192,7 +192,7 @@ describe('conversation display settings', () => {
 });
 
 describe('sent user messages', () => {
-  it('gives consecutive compact sends one bubble each while keeping every message paragraph together', () => {
+  it('gives consecutive sends one bubble each in both views while keeping every message paragraph together', () => {
     const contents = ['开始执行。\n\n正在检查现有配置。', '检查完成。\n\n修改已保存。'];
     for (const compact of [true, false]) {
       const html = contents
@@ -210,16 +210,22 @@ describe('sent user messages', () => {
       expect(html.match(/data-user-message-call-id="send-[01]"/g)).toHaveLength(2);
       expect(html.match(/<article\b/g)).toHaveLength(2);
       expect(html.match(/<p>/g)).toHaveLength(4);
-      expect(html.match(/class="sent-message-bubble"/g) ?? []).toHaveLength(compact ? 2 : 0);
+      expect(html.match(/class="sent-message-bubble"/g)).toHaveLength(2);
+      expect(html).not.toContain('发送详情');
       if (compact) {
         expect(html).toContain(
           '<div class="sent-message-bubble"><div class="markdown"><p>开始执行。</p>\n<p>正在检查现有配置。</p></div></div>',
+        );
+        expect(html).not.toContain('回复用户');
+      } else {
+        expect(html).toContain(
+          '<div class="sent-message-bubble"><span class="sent-message-tag">回复用户</span><div class="markdown"><p>开始执行。</p>\n<p>正在检查现有配置。</p></div></div>',
         );
       }
     }
   });
 
-  it('accepts only a successful persisted send result, including when its call is on another page', () => {
+  it('accepts only a successful persisted send result', () => {
     const result = sendResult();
     expect(sentUserMessage(result)).toEqual({
       content: '**正式回复**',
@@ -236,7 +242,15 @@ describe('sent user messages', () => {
     expect(html).toContain('<strong>正式回复</strong>');
     expect(html).toContain('data-message-id="sent"');
     expect(html).not.toContain('发送详情');
+    expect(html).not.toContain('回复用户');
     expect(html).not.toContain('tool-result');
+    const fullHtml = render(projectConversationDisplay(projected, [], 'full'), [result]);
+    expect(fullHtml).toContain('<strong>正式回复</strong>');
+    expect(fullHtml).toContain('sent-message-bubble');
+    expect(fullHtml).toContain('sent-message-tag');
+    expect(fullHtml).toContain('回复用户');
+    expect(fullHtml).not.toContain('发送详情');
+    expect(fullHtml).not.toContain('tool-result');
   });
 
   it.each([
@@ -254,7 +268,7 @@ describe('sent user messages', () => {
     expect(sentUserMessage(sendResult('result', changes))).toBeNull();
   });
 
-  it('renders send_to_user as an ordinary call in full view and keeps the compact bubble', () => {
+  it('renders send_to_user as a bubble card in both views and keeps it out of the tool group', () => {
     const messages = [
       message('read', MessageRole.ASSISTANT, {
         content: '',
@@ -273,7 +287,14 @@ describe('sent user messages', () => {
         sendToUserEnabled: true,
         toolCalls: [call('send-1', 'send_to_user', { content: '**正式回复**', end_turn: false })],
       }),
-      sendResult(),
+      sendResult('sent', {
+        content: JSON.stringify({
+          status: 'sent',
+          content: '**正式回复**',
+          end_turn: true,
+          deliveries: [{ channel: 'feishu', delivery_id: 'd-1', status: 'queued' }],
+        }),
+      }),
       message('bash', MessageRole.ASSISTANT, {
         content: '',
         sendToUserEnabled: true,
@@ -283,29 +304,35 @@ describe('sent user messages', () => {
     const projected = projectConversation({ threadId, messages, runs: [], transientResponses: [] });
     const full = projectConversationDisplay(projected, [], 'full');
     const html = render(full, messages);
-    expect(html).not.toContain('sent-user-message');
-    expect(html).not.toContain('data-user-message-call-id');
+    expect(html).toContain('sent-user-message');
+    expect(html).toContain('data-user-message-call-id="send-1"');
+    expect(html).toContain('<strong>正式回复</strong>');
+    expect(html).toContain('sent-message-bubble');
+    expect(html).toContain('回复用户');
     expect(html).not.toContain('发送详情');
-    expect(html).toContain('data-tool-call-id="send-1"');
-    expect(html).toContain('&quot;content&quot;: &quot;**正式回复**&quot;');
+    expect(html).toContain('channel-delivery-badge channel-feishu');
+    expect(html).not.toContain('data-tool-call-id="send-1"');
     expect(html).toContain('data-message-id="read"');
     expect(html).not.toContain('data-message-id="send"');
-    expect(html).not.toContain('data-message-id="sent"');
+    expect(html).toContain('data-message-id="sent"');
     const first = full.find((item) => item.key === 'read');
     const last = full.find((item) => item.key === 'bash');
     expect(
       first?.kind === 'message' &&
         first.value.toolItems?.[0]?.kind === 'ordinary' &&
         first.value.toolItems[0].calls.map((item) => item.toolCallId),
-    ).toEqual(['read-1', 'send-1', 'bash-1']);
+    ).toEqual(['read-1', 'bash-1']);
     expect(last?.kind === 'message' && last.value.toolItems).toEqual([]);
     expect(full.find((item) => item.key === 'sent')).toMatchObject({
-      value: { sentMessage: null },
+      value: { sentMessage: { content: '**正式回复**', endTurn: true } },
     });
 
     const compactHtml = render(projectConversationDisplay(projected, [], 'compact'), messages);
     expect(compactHtml).toContain('data-user-message-call-id="send-1"');
     expect(compactHtml).toContain('<strong>正式回复</strong>');
+    expect(compactHtml).toContain('channel-delivery-badge channel-feishu');
+    expect(compactHtml).not.toContain('发送详情');
+    expect(compactHtml).not.toContain('回复用户');
     expect(compactHtml).not.toContain('data-tool-call-id="send-1"');
   });
 });
@@ -639,5 +666,7 @@ describe('compact conversation projection', () => {
     expect(conversationTurnStarts(full)).toHaveLength(10);
     const duplicated = projectConversationDisplay([...loaded, ...loaded.slice(-1)], [], 'compact');
     expect(duplicated.filter((item) => item.key === 'sent-11')).toHaveLength(1);
+    const duplicatedFull = projectConversationDisplay([...loaded, ...loaded.slice(-1)], [], 'full');
+    expect(duplicatedFull.filter((item) => item.key === 'sent-11')).toHaveLength(1);
   });
 });

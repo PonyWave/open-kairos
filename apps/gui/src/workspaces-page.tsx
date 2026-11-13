@@ -1,13 +1,22 @@
 import type { Thread, Workspace } from '@kairos/contracts';
 import { type ReactNode, useState } from 'react';
-import { EntityMark, ThreadBadge } from './entity-mark.js';
+import { AnimatedDisclosure } from './animated-disclosure.js';
+import { Dropdown } from './dropdown.js';
+import { EntityMark } from './entity-mark.js';
 import { FailureNotice } from './failure-notice.js';
 import { Icon } from './icon.js';
+import { TopicCard } from './thread-list-page.js';
+import type { TopicSort } from './thread-preview-gateway.js';
+import type { TopicCardView } from './thread-view.js';
 import type { WorkspaceGroup } from './use-workspaces.js';
 
 export function WorkspacesPage({
   groups,
   temporary,
+  cards,
+  cardsError = null,
+  onCardsRetry,
+  mainThreadId,
   loading,
   error,
   busy = false,
@@ -21,6 +30,10 @@ export function WorkspacesPage({
 }: {
   groups: readonly WorkspaceGroup[];
   temporary: readonly Thread[];
+  cards: readonly TopicCardView[];
+  cardsError?: string | null;
+  onCardsRetry?: () => void;
+  mainThreadId: string | null;
   loading: boolean;
   error: string | null;
   busy?: boolean;
@@ -32,16 +45,58 @@ export function WorkspacesPage({
   onDelete: (group: WorkspaceGroup) => void;
   onNewTopic: (workspaceId: string | null) => void;
 }) {
+  const [sort, setSort] = useState<TopicSort>('lastMessageAt');
+  const activityByThread = new Map(
+    cards.map((card) => [card.thread.threadId, card.lastMessageAt ?? card.createdAt]),
+  );
+  const groupActivity = (group: WorkspaceGroup): bigint => {
+    let latest = 0n;
+    for (const thread of [group.mainThread, ...group.tasks]) {
+      if (!thread) continue;
+      const at = activityByThread.get(thread.threadId) ?? thread.updatedAt ?? thread.createdAt;
+      const seconds = at?.seconds ?? 0n;
+      if (seconds > latest) latest = seconds;
+    }
+    return latest;
+  };
+  const sortedGroups = [...groups].sort((left, right) => {
+    const leftKey =
+      sort === 'createdAt' ? (left.workspace?.createdAt?.seconds ?? 0n) : groupActivity(left);
+    const rightKey =
+      sort === 'createdAt' ? (right.workspace?.createdAt?.seconds ?? 0n) : groupActivity(right);
+    return Number(rightKey - leftKey);
+  });
   return (
     <section className="workspaces-page" aria-labelledby="workspaces-heading">
       <header className="page-heading">
         <div>
           <h1 id="workspaces-heading">全部工作空间</h1>
         </div>
-        <button type="button" className="device-primary" onClick={onCreate}>
-          <Icon name="plus" className="i-sm" />
-          添加工作空间
-        </button>
+        <div className="workspaces-heading-actions">
+          <Dropdown<TopicSort>
+            className="conversation-sort"
+            triggerClassName="sort-trigger"
+            label="排序方式"
+            value={sort}
+            align="end"
+            trigger={
+              <>
+                <Icon name="history" className="i-sm" />
+                <span>{sort === 'createdAt' ? '创建时间' : '更新时间'}</span>
+                <Icon name="down" className="i-sm dropdown-chevron" />
+              </>
+            }
+            items={[
+              { value: 'lastMessageAt', label: '更新时间' },
+              { value: 'createdAt', label: '创建时间' },
+            ]}
+            onSelect={setSort}
+          />
+          <button type="button" className="device-primary" onClick={onCreate}>
+            <Icon name="plus" className="i-sm" />
+            创建
+          </button>
+        </div>
       </header>
       {error && (
         <FailureNotice
@@ -49,6 +104,14 @@ export function WorkspacesPage({
           message={error}
           busy={loading}
           onRetry={onChanged}
+        />
+      )}
+      {cardsError && (
+        <FailureNotice
+          label="话题预览加载失败"
+          message={cardsError}
+          busy={false}
+          onRetry={onCardsRetry ?? onChanged}
         />
       )}
       {loading && groups.length === 0 ? <p role="status">正在加载工作空间…</p> : null}
@@ -60,7 +123,7 @@ export function WorkspacesPage({
         </div>
       ) : null}
       <div className="workspace-overview">
-        {groups.map(
+        {sortedGroups.map(
           (group) =>
             group.workspace && (
               <WorkspaceOverviewGroup
@@ -69,6 +132,8 @@ export function WorkspacesPage({
                 deviceName={group.deviceName}
                 mainThread={group.mainThread}
                 tasks={group.tasks}
+                cards={cards}
+                mainThreadId={mainThreadId}
                 busy={busy}
                 onOpenThread={onOpenThread}
                 onNewTopic={() => onNewTopic(group.workspace?.workspaceId ?? null)}
@@ -110,14 +175,18 @@ export function WorkspacesPage({
               />
             ),
         )}
-        <WorkspaceOverviewGroup
-          workspace={null}
-          mainThread={null}
-          tasks={temporary}
-          onOpenThread={onOpenThread}
-          onNewTopic={() => onNewTopic(null)}
-          busy={busy}
-        />
+        {temporary.length > 0 && (
+          <WorkspaceOverviewGroup
+            workspace={null}
+            mainThread={null}
+            tasks={temporary}
+            cards={cards}
+            mainThreadId={mainThreadId}
+            onOpenThread={onOpenThread}
+            onNewTopic={() => onNewTopic(null)}
+            busy={busy}
+          />
+        )}
       </div>
     </section>
   );
@@ -128,6 +197,8 @@ function WorkspaceOverviewGroup({
   mainThread,
   deviceName,
   tasks,
+  cards,
+  mainThreadId,
   actions,
   busy,
   onOpenThread,
@@ -137,6 +208,8 @@ function WorkspaceOverviewGroup({
   mainThread: Thread | null;
   deviceName?: string | undefined;
   tasks: readonly Thread[];
+  cards: readonly TopicCardView[];
+  mainThreadId: string | null;
   actions?: ReactNode;
   busy: boolean;
   onOpenThread: (threadId: string) => void;
@@ -144,6 +217,10 @@ function WorkspaceOverviewGroup({
 }) {
   const [expanded, setExpanded] = useState(false);
   const name = workspace?.name ?? '临时对话';
+  const cardsByThread = new Map(cards.map((card) => [card.thread.threadId, card]));
+  const sortedTasks = [...tasks].sort(
+    (a, b) => Number(b.updatedAt?.seconds ?? 0n) - Number(a.updatedAt?.seconds ?? 0n),
+  );
   return (
     <section className="workspace-overview-group" aria-label={name}>
       <div className="workspace-overview-row">
@@ -155,11 +232,7 @@ function WorkspaceOverviewGroup({
             <Icon name="monitor" className="i-xs" />
             <span>{deviceName || (workspace.envId === 'main' ? '主环境' : workspace.envId)}</span>
             <Icon name="chevron" className="i-xs" />
-            <code>
-              {workspace.path.split('/').filter(Boolean).length > 2
-                ? `…/${workspace.path.split('/').filter(Boolean).slice(-2).join('/')}`
-                : workspace.path}
-            </code>
+            <code>{workspace.path}</code>
             {workspace.hidden && (
               <span className="workspace-hidden-label">
                 <Icon name="eyeOff" className="i-xs" />
@@ -187,36 +260,28 @@ function WorkspaceOverviewGroup({
           <div className="workspace-overview-actions">{actions}</div>
         </div>
       </div>
-      {expanded && workspace?.description && (
-        <p className="workspace-overview-description">{workspace.description}</p>
-      )}
-      {expanded && (
-        <div className="workspace-overview-threads">
-          {mainThread && (
-            <button
-              type="button"
-              className="workspace-overview-thread"
-              onClick={() => onOpenThread(mainThread.threadId)}
-            >
-              <EntityMark threadId={mainThread.threadId} />
-              <strong>主对话</strong>
-              <Icon name="chevron" className="i-sm" />
-            </button>
+      <AnimatedDisclosure open={expanded}>
+        <div className="workspace-overview-topics">
+          {workspace?.description && (
+            <p className="workspace-overview-description">{workspace.description}</p>
           )}
-          {[...tasks]
-            .sort((a, b) => Number(b.updatedAt?.seconds ?? 0n) - Number(a.updatedAt?.seconds ?? 0n))
-            .map((task) => (
-              <button
-                type="button"
-                className="workspace-overview-thread"
-                key={task.threadId}
-                onClick={() => onOpenThread(task.threadId)}
-              >
-                <ThreadBadge threadId={task.threadId} />
-                <span>{task.title || '未命名话题'}</span>
-                <Icon name="chevron" className="i-sm" />
-              </button>
-            ))}
+          {mainThread && (
+            <TopicCard
+              card={cardsByThread.get(mainThread.threadId) ?? taskCard(mainThread)}
+              sort="lastMessageAt"
+              mainThreadId={mainThreadId}
+              onOpen={(card) => onOpenThread(card.thread.threadId)}
+            />
+          )}
+          {sortedTasks.map((task) => (
+            <TopicCard
+              key={task.threadId}
+              card={cardsByThread.get(task.threadId) ?? taskCard(task)}
+              sort="lastMessageAt"
+              mainThreadId={mainThreadId}
+              onOpen={(card) => onOpenThread(card.thread.threadId)}
+            />
+          ))}
           {tasks.length === 0 && <p className="workspace-no-topics">尚无话题。</p>}
           <button
             type="button"
@@ -228,7 +293,17 @@ function WorkspaceOverviewGroup({
             {workspace ? '新建话题' : '新建临时对话'}
           </button>
         </div>
-      )}
+      </AnimatedDisclosure>
     </section>
   );
+}
+
+function taskCard(thread: Thread): TopicCardView {
+  return {
+    thread,
+    createdAt: thread.createdAt,
+    ...(thread.updatedAt === undefined ? {} : { lastMessageAt: thread.updatedAt }),
+    replies: [],
+    origin: null,
+  };
 }

@@ -31,24 +31,32 @@
   list-style: none;
 }
 .automation-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 16px 0;
+  padding: 12px;
   border-bottom: 1px solid var(--line);
+  border-radius: 8px;
+}
+.automation-row:hover,
+.automation-row:focus-within {
+  background: var(--wash);
 }
 .automation-row-main {
   display: grid;
   flex: 1;
   min-width: 0;
   gap: 4px;
-  padding: 4px 8px;
-  border-radius: 8px;
+  padding: 4px;
   color: var(--muted);
   text-align: left;
 }
-.automation-row-main:hover {
-  background: var(--wash);
+.automation-row-main::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
 }
 .automation-row-title {
   display: flex;
@@ -76,7 +84,15 @@
   background: var(--wash);
 }
 .automation-run-compact {
+  position: relative;
+  z-index: 1;
   flex-shrink: 0;
+}
+.automation-run-compact:hover:not(:disabled),
+.automation-run-compact:focus-visible {
+  background: var(--selected);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 .automation-empty {
   padding: 64px 20px;
@@ -179,6 +195,10 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.automation-prompt p {
+  max-height: 220px;
+  overflow-y: auto;
+}
 .automation-history {
   margin-top: 28px;
 }
@@ -195,15 +215,25 @@
   gap: 12px;
 }
 .automation-fire {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface);
 }
+.automation-fire-main {
+  flex: 1;
+  min-width: 0;
+}
+.automation-fire-open {
+  flex-shrink: 0;
+}
 .automation-fire-heading {
   align-items: center;
 }
-.automation-fire-heading > div {
+.automation-fire-heading > div:first-child {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
@@ -244,15 +274,6 @@
   display: block;
   margin-top: 6px;
   font-size: 11px;
-}
-.automation-fire-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
 }
 .automation-form fieldset {
   min-width: 0;
@@ -331,8 +352,40 @@ button.automation-select {
 }
 .automation-form-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr 1fr 2fr;
   gap: 12px;
+}
+.automation-time-fields {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.automation-time-fields > input[type="date"] {
+  flex: 1;
+  min-width: 0;
+}
+.automation-time-part {
+  flex: 1;
+  min-width: 0;
+  justify-content: space-between;
+}
+.automation-time-separator {
+  color: var(--muted);
+}
+.automation-cascade {
+  width: 100%;
+}
+.automation-cascade-panel {
+  display: flex;
+  flex-direction: column;
+}
+.automation-cascade-back {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.automation-cascade-list {
+  min-height: 0;
+  overflow-y: auto;
 }
 .automation-field-help {
   color: var(--muted);
@@ -398,9 +451,5 @@ button.automation-select {
   }
   .automation-actions .device-secondary {
     flex: 1 1 calc(50% - 8px);
-  }
-  .automation-fire-footer {
-    align-items: flex-start;
-    flex-direction: column;
   }
 }

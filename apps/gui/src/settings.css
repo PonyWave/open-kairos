@@ -228,6 +228,55 @@
   color: var(--muted);
   flex-shrink: 0;
 }
+.model-id-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-id-placeholder {
+  color: var(--muted);
+}
+.model-id-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.model-id-options {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.model-id-empty {
+  margin: 0;
+  padding: 10px 9px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.model-id-manual {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.model-id-manual input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 5px 9px;
+  font: inherit;
+}
+.model-id-manual input:focus-visible {
+  border-color: var(--ink);
+}
+.model-id-manual .device-secondary {
+  min-height: 0;
+  padding: 5px 10px;
+  font-size: 12px;
+}
 .settings-form-actions {
   display: flex;
   flex-wrap: wrap;
@@ -317,6 +366,11 @@
   justify-content: space-between;
   align-items: center;
   margin: 28px 0 12px;
+}
+.settings-model-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .settings-model-editor {
   padding: 16px;

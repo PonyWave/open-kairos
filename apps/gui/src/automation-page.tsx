@@ -295,7 +295,7 @@ export function AutomationPage({
             onClick={() => setEditor({ session: randomId(), automation: null })}
           >
             <Icon name="plus" className="i-sm" />
-            新建定时任务
+            新建
           </button>
         )}
       </header>

@@ -9,6 +9,7 @@ import {
 import type { ChannelManager } from '../channels/manager.js';
 import type { ChannelStateRecord } from '../channels/store.js';
 import { ChannelDeliveryError } from '../channels/store.js';
+import type { WechatLoginSession } from '../channels/wechat/adapter.js';
 import { requireText, SessionError } from '../sessions/errors.js';
 import type { GuiAuthentication } from './auth.js';
 import { requireOwner } from './auth.js';
@@ -48,6 +49,22 @@ function toStateResponse(state: ChannelStateRecord) {
   };
 }
 
+function toLoginResponse(session: WechatLoginSession) {
+  return {
+    loginSessionId: session.id,
+    qrContent: session.qrContent,
+    loginState:
+      session.status === 'confirmed'
+        ? ChannelLoginState.ACTIVE
+        : session.status === 'failed'
+          ? ChannelLoginState.ERROR
+          : ChannelLoginState.PENDING,
+    statusReason: session.reason,
+    awaitingPin: session.awaitingPin,
+    pollingFailed: session.pollingFailed,
+  };
+}
+
 export function registerChannelRoutes(
   router: ConnectRouter,
   channels: ChannelManager,
@@ -63,9 +80,11 @@ export function registerChannelRoutes(
   };
   router.service(ChannelService, {
     getChannelStates: (_request, context) =>
-      handle(() => ({
-        states: channels.store.listStates(owner(context)).map(toStateResponse),
-      })),
+      handle(() => {
+        const states = channels.store.listStates(owner(context)).map(toStateResponse);
+        const session = channels.wechat.currentLogin(owner(context));
+        return { states, ...(session ? { wechatLogin: toLoginResponse(session) } : {}) };
+      }),
     startChannelLogin: (request, context) =>
       handle(async () => {
         const ownerId = owner(context);
@@ -76,7 +95,8 @@ export function registerChannelRoutes(
             '飞书渠道通过保存应用凭证接入，不需要扫码登录。',
           );
         }
-        const login = await channels.wechat.startLogin();
+        requireText(request.clientActionId, '操作编号', 200);
+        const login = await channels.wechat.startLogin(request.clientActionId, ownerId);
         return {
           clientActionId: request.clientActionId,
           state: toStateResponse(channels.store.getState(ownerId, 'wechat')),
@@ -87,17 +107,8 @@ export function registerChannelRoutes(
     pollChannelLogin: (request, context) =>
       handle(() => {
         owner(context);
-        const session = channels.wechat.pollLogin(request.loginSessionId);
-        return {
-          loginState:
-            session.status === 'confirmed'
-              ? ChannelLoginState.ACTIVE
-              : session.status === 'failed'
-                ? ChannelLoginState.ERROR
-                : ChannelLoginState.PENDING,
-          statusReason: session.reason,
-          awaitingPin: session.awaitingPin,
-        };
+        const session = channels.wechat.pollLogin(request.loginSessionId, owner(context));
+        return toLoginResponse(session);
       }),
     submitChannelLoginPin: (request, context) =>
       handle(() => {
@@ -106,17 +117,9 @@ export function registerChannelRoutes(
           const session = channels.wechat.submitLoginPin(
             request.loginSessionId,
             request.pin.trim(),
+            owner(context),
           );
-          return {
-            loginState:
-              session.status === 'confirmed'
-                ? ChannelLoginState.ACTIVE
-                : session.status === 'failed'
-                  ? ChannelLoginState.ERROR
-                  : ChannelLoginState.PENDING,
-            statusReason: session.reason,
-            awaitingPin: session.awaitingPin,
-          };
+          return toLoginResponse(session);
         } catch (error) {
           if (error instanceof ChannelDeliveryError) {
             throw new SessionError('invalid_argument', error.message);
@@ -127,24 +130,57 @@ export function registerChannelRoutes(
     saveFeishuCredentials: (request, context) =>
       handle(() => {
         const ownerId = owner(context);
+        requireText(request.clientActionId, '操作编号', 200);
         const appId = requireText(request.appId.trim(), 'App ID', 200);
-        const appSecret = requireText(request.appSecret.trim(), 'App Secret', 200);
+        if (!/^cli_[0-9a-fA-F]{16}$/.test(appId))
+          throw new SessionError(
+            'invalid_argument',
+            'App ID 格式无效，请从飞书应用的凭证页面复制。',
+          );
+        const previous = channels.store.getCredentials(ownerId, 'feishu');
+        const appSecret =
+          request.preserveSecret &&
+          !request.appSecret.trim() &&
+          previous?.kind === 'feishu' &&
+          previous.appId === appId
+            ? previous.appSecret
+            : requireText(request.appSecret.trim(), 'App Secret', 200);
         const pairingCode = String(randomInt(100_000, 1_000_000));
         channels.store.saveFeishuCredentials(
           ownerId,
           { kind: 'feishu', appId, appSecret },
           pairingCode,
         );
-        channels.feishu.sync();
+        channels.feishu.reconnect();
         return {
           clientActionId: request.clientActionId,
           state: toStateResponse(channels.store.getState(ownerId, 'feishu')),
         };
       }),
+    cancelChannelLogin: (request, context) =>
+      handle(() => {
+        owner(context);
+        requireText(request.loginSessionId, '登录会话', 200);
+        channels.wechat.cancelLogin(request.loginSessionId, owner(context));
+        return {};
+      }),
+    reconnectChannel: (request, context) =>
+      handle(() => {
+        const ownerId = owner(context);
+        requireText(request.clientActionId, '操作编号', 200);
+        if (toChannelId(request.channel) !== 'feishu')
+          throw new SessionError('invalid_argument', '请重新扫码连接微信。');
+        const state = channels.store.getState(ownerId, 'feishu');
+        if (!state.hasCredentials)
+          throw new SessionError('failed_precondition', '请先填写飞书应用凭据。');
+        channels.feishu.reconnect();
+        return { state: toStateResponse(channels.store.getState(ownerId, 'feishu')) };
+      }),
     unbindChannel: (request, context) =>
       handle(() => {
         const ownerId = owner(context);
         const channel = toChannelId(request.channel);
+        if (channel === 'wechat') channels.wechat.cancelLogin(undefined, ownerId);
         const state = channels.store.unbind(ownerId, channel);
         if (channel === 'wechat') channels.wechat.sync();
         else channels.feishu.sync();

@@ -3,6 +3,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { projectQueuedInputs } from './conversation.js';
 import { FailureNotice } from './failure-notice.js';
 import { Icon } from './icon.js';
+import { queuedInputDisplay } from './queue-display.js';
 import { reorderQueuedIds } from './queue-draft.js';
 import { QueueDragGhost, type QueueDragGhostState } from './queue-drag-ghost.js';
 import { queueDragTargetIndex } from './queue-drag-position.js';
@@ -214,6 +215,7 @@ export function QueueStack({
         {displayIds.map((id, index) => {
           const input = byId.get(id);
           if (!input) return null;
+          const display = queuedInputDisplay(input);
           return (
             <li key={id} data-queued-id={id} className={dragging === id ? 'dragging' : ''}>
               <button
@@ -253,11 +255,21 @@ export function QueueStack({
               >
                 <Icon name="grip" className="i-sm" />
               </button>
-              <span
-                className="queue-text"
-                title={input.text || input.attachments.map((file) => file.fileName).join('、')}
-              >
-                {input.text || input.attachments.map((file) => file.fileName).join('、')}
+              {display.channelKey && (
+                <span
+                  className={`queue-channel channel-${display.channelKey}`}
+                  role="img"
+                  aria-label={display.channelKey === 'wechat' ? '来自微信' : '来自飞书'}
+                  title={display.channelKey === 'wechat' ? '来自微信' : '来自飞书'}
+                >
+                  <Icon
+                    name={display.channelKey === 'wechat' ? 'wechat' : 'feishu'}
+                    className="i-sm"
+                  />
+                </span>
+              )}
+              <span className="queue-text" title={display.text}>
+                {display.text}
               </span>
               {input.attachments.length > 0 && (
                 <span

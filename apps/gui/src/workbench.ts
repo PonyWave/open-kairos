@@ -55,6 +55,11 @@ export class ThreadDirectory {
     });
   }
 
+  showThreadPage(): void {
+    if (this.current.page === 'thread' && this.current.selectedThreadId !== null) return;
+    this.showMain();
+  }
+
   openDirectory(): void {
     this.patch({
       page: 'directory',

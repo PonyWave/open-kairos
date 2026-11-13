@@ -16,6 +16,7 @@ import { projectConversationDisplay } from './conversation-display-projection.js
 import { MessageCard } from './message-card.js';
 import { type ConversationItem, projectConversation } from './response-projection.js';
 import './styles.css';
+import './motion.css';
 import {
   type ThinkingExpansionChoices,
   thinkingBlockKey,

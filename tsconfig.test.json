@@ -4,6 +4,11 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["apps/**/*.test.ts", "packages/**/*.test.ts", "vitest.config.ts"],
+  "include": [
+    "apps/**/*.test.ts",
+    "apps/gui/src/vite-env.d.ts",
+    "packages/**/*.test.ts",
+    "vitest.config.ts"
+  ],
   "exclude": ["reference", "node_modules", "**/dist"]
 }

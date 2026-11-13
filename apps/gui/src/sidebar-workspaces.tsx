@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AnimatedDisclosure } from './animated-disclosure.js';
 import { EntityMark, ThreadBadge } from './entity-mark.js';
 import { Icon } from './icon.js';
 import { TitleEditor } from './thread-title.js';
@@ -78,7 +79,7 @@ export function WorkspaceGroupSection({
         </span>
       </div>
       {!main && <p className="muted">工作空间主对话缺失</p>}
-      {expanded && visibleTasks.length > 0 && (
+      <AnimatedDisclosure open={expanded && visibleTasks.length > 0}>
         <div className="workspace-tasks">
           {visibleTasks.map((thread) => (
             <WorkspaceTaskItem
@@ -96,7 +97,7 @@ export function WorkspaceGroupSection({
             </button>
           )}
         </div>
-      )}
+      </AnimatedDisclosure>
     </div>
   );
 }
@@ -163,6 +164,7 @@ export function TemporaryThreadsSection({
 }) {
   const [expanded, setExpanded] = useState(true);
   const [showAll, setShowAll] = useState(false);
+  if (threads.length === 0) return null;
   const sortedThreads = [...threads].sort(
     (left, right) => Number(right.updatedAt?.seconds ?? 0n) - Number(left.updatedAt?.seconds ?? 0n),
   );
@@ -205,7 +207,7 @@ export function TemporaryThreadsSection({
           </button>
         </span>
       </div>
-      {expanded && visibleThreads.length > 0 && (
+      <AnimatedDisclosure open={expanded && visibleThreads.length > 0}>
         <div className="workspace-tasks">
           {visibleThreads.map((thread) => (
             <WorkspaceTaskItem
@@ -224,7 +226,7 @@ export function TemporaryThreadsSection({
             </button>
           )}
         </div>
-      )}
+      </AnimatedDisclosure>
     </div>
   );
 }

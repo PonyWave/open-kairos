@@ -1,6 +1,7 @@
 import {
   ConfiguredModelSchema,
   create,
+  DiscoverModelsRequestSchema,
   SaveModelConnectionRequestSchema,
   UpdateProfileRequestSchema,
 } from '@kairos/contracts';
@@ -343,6 +344,109 @@ describe('account and model settings', () => {
     expect(JSON.parse(restored?.configurationId ?? '{}')).not.toHaveProperty('apiType');
     settings.recordRequest('a', 'legacy-request', restored ?? current);
     expect(settings.acceptRecap('legacy-request', expectedId)).toBe(true);
+  });
+});
+
+describe('model discovery', () => {
+  function discoverFixture(fetchImplementation: typeof fetch) {
+    const database = openDatabase(':memory:');
+    databases.push(database);
+    seedTestSession(database, 'a', 'a-token');
+    const settings = new SettingsStore(database, {
+      secret: 'settings-test-secret-at-least-32-characters',
+      fetch: fetchImplementation,
+    });
+    return settings;
+  }
+  function discoverRequest(overrides: object = {}) {
+    return create(DiscoverModelsRequestSchema, {
+      apiType: 1,
+      baseUrl: 'https://models.example.com/v1',
+      ...overrides,
+    });
+  }
+  const jsonList = (body: unknown) =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+
+  it('lists models with an inline key without persisting it', async () => {
+    const calls: { url: string; authorization: string | undefined }[] = [];
+    const settings = discoverFixture(async (input, init) => {
+      calls.push({
+        url: String(input),
+        authorization: new Headers(init?.headers).get('authorization') ?? undefined,
+      });
+      return jsonList({ data: [{ id: 'model-a' }, { id: 'model-b' }] });
+    });
+    const result = await settings.discover(
+      'a',
+      discoverRequest({ apiKey: 'inline-key-not-real' }),
+      new AbortController().signal,
+    );
+    expect(result.models).toEqual([
+      { modelId: 'model-a', displayName: '' },
+      { modelId: 'model-b', displayName: '' },
+    ]);
+    expect(calls).toEqual([
+      { url: 'https://models.example.com/v1/models', authorization: 'Bearer inline-key-not-real' },
+    ]);
+  });
+
+  it('reuses the saved key only for an unchanged endpoint and API type', async () => {
+    const authorizations: (string | null)[] = [];
+    const settings = discoverFixture(async (_input, init) => {
+      authorizations.push(new Headers(init?.headers).get('authorization'));
+      return jsonList({ data: [{ id: 'model-a' }] });
+    });
+    settings.save('a', connection());
+    await settings.discover(
+      'a',
+      discoverRequest({ connectionId: 'connection-1' }),
+      new AbortController().signal,
+    );
+    expect(authorizations).toEqual(['Bearer test-api-key-not-real']);
+    await expect(
+      settings.discover(
+        'a',
+        discoverRequest({ baseUrl: 'https://other.example.com/v1', connectionId: 'connection-1' }),
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow(/重新输入 API key/);
+    await expect(
+      settings.discover(
+        'a',
+        discoverRequest({ apiType: 3, connectionId: 'connection-1' }),
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow(/重新输入 API key/);
+    await expect(
+      settings.discover(
+        'a',
+        discoverRequest({ connectionId: 'missing-connection' }),
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow(/不存在/);
+  });
+
+  it('validates the API type and base URL before requesting', async () => {
+    let requested = 0;
+    const settings = discoverFixture(async () => {
+      requested += 1;
+      return jsonList({ data: [] });
+    });
+    await expect(
+      settings.discover('a', discoverRequest({ apiType: 0 }), new AbortController().signal),
+    ).rejects.toThrow(/API 类型/);
+    await expect(
+      settings.discover(
+        'a',
+        discoverRequest({ baseUrl: 'http://models.example.com' }),
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow(/HTTPS/);
+    expect(requested).toBe(0);
   });
 });
 

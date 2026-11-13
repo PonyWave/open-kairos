@@ -11,7 +11,6 @@ import {
   RecapValidity,
   type Run,
   RunStatus,
-  type ToolCall,
 } from '@kairos/contracts';
 import { delegationForToolCall, delegationKey } from './delegation.js';
 import { isRootAgent } from './labels.js';
@@ -40,7 +39,6 @@ export interface DisplayMessage {
   toolItems?: ToolItem[];
   mergedThinkingBlockIndexes?: ReadonlySet<number>;
   sentMessage?: SentUserMessage | null;
-  sentCall?: ToolCall | undefined;
   hideContent?: boolean;
   compact?: boolean;
   sendFailure?: boolean;
@@ -95,24 +93,16 @@ export function projectConversation({
     messages.filter((message) => message.threadId === threadId && !message.supersededByRunId),
   );
   const persistedIds = new Set(currentMessages.map((message) => message.messageId));
-  const sentCalls = new Map<string, ToolCall>();
-  for (const message of currentMessages) {
-    if (message.role !== MessageRole.ASSISTANT) continue;
-    for (const call of message.toolCalls) {
-      if (call.toolName === 'send_to_user') sentCalls.set(call.toolCallId, call);
-    }
-  }
   const displayMessages: DisplayMessage[] = currentMessages.map((message) => {
     const matches = message.delegation
       ? sourceCalls.get(delegationKey(message.delegation))
       : undefined;
     const sent = sentUserMessage(message);
-    const sentCall = sentCalls.get(message.toolCallId);
     return {
       message,
       streaming: false,
       delegationCall: matches?.length === 1 ? (matches[0] ?? null) : null,
-      ...(sent ? { sentMessage: sent, ...(sentCall ? { sentCall } : {}) } : {}),
+      ...(sent ? { sentMessage: sent } : {}),
     };
   });
   for (const response of transientResponses) {
@@ -249,6 +239,10 @@ function projectMixedOperationGroups(
 ): ConversationItem[] {
   const outcomes = projectToolOutcomes(messages);
   const associatedToolResultIds = projectAssociatedToolResultIds(messages, outcomes);
+  const sentCallIds = new Set<string>();
+  for (const message of messages) {
+    if (sentUserMessage(message)) sentCallIds.add(message.toolCallId);
+  }
   let open:
     | {
         display: DisplayMessage;
@@ -286,7 +280,8 @@ function projectMixedOperationGroups(
     ) {
       open = undefined;
     }
-    const ownItems = projectToolItems(message.toolCalls, {
+    const visibleCalls = message.toolCalls.filter((call) => !sentCallIds.has(call.toolCallId));
+    const ownItems = projectToolItems(visibleCalls, {
       contentBlocks: message.contentBlocks,
       messageId: message.messageId,
       streaming: display.streaming,
@@ -308,11 +303,19 @@ function projectMixedOperationGroups(
         : message.content.trim().length > 0;
     const first = ownItems[0];
     if (
+      ownItems.length === 0 &&
+      message.toolCalls.length > 0 &&
+      !hasText &&
+      message.attachments.length === 0
+    ) {
+      continue;
+    }
+    if (
       open &&
       !hasText &&
       message.attachments.length === 0 &&
       first?.kind === 'ordinary' &&
-      (first.calls.length > 0 || message.toolCalls.length === 0)
+      (first.calls.length > 0 || visibleCalls.length === 0)
     ) {
       open.group = {
         ...open.group,

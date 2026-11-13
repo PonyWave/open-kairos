@@ -746,7 +746,7 @@ export function AccountWorkbench({
         sidebarRef.current?.querySelectorAll<HTMLElement>(
           'button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled)',
         ) ?? [],
-      ).filter((e) => e.getClientRects().length > 0);
+      ).filter((e) => e.getClientRects().length > 0 && !e.closest('[inert]'));
       const first = elements[0],
         last = elements.at(-1);
       if (event.shiftKey && document.activeElement === first) {
@@ -1321,7 +1321,6 @@ export function AccountWorkbench({
             clients={clients}
             workspace={workspaceEditor.workspace}
             onClose={() => setWorkspaceEditor(null)}
-            onVisibilityChanged={() => workspaceDirectory.refresh()}
             onSaved={() => {
               setWorkspaceEditor(null);
               workspaceDirectory.refresh();

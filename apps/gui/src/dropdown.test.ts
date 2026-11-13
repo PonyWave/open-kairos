@@ -149,7 +149,7 @@ describe('Dropdown controls', () => {
     expect(captured.setOpen).toHaveBeenCalledWith(false);
   });
 
-  it('restores trigger focus on Escape and preserves native Tab navigation', () => {
+  it('dismisses Escape without refocusing and restores the trigger for native Tab navigation', () => {
     captured.open = true;
     renderSelect();
     const focus = vi.fn();
@@ -161,11 +161,12 @@ describe('Dropdown controls', () => {
       if (key === 'Escape') {
         expect(event.preventDefault).toHaveBeenCalledOnce();
         expect(event.stopPropagation).toHaveBeenCalledOnce();
+        expect(focus).not.toHaveBeenCalled();
       } else {
         expect(event.preventDefault).not.toHaveBeenCalled();
       }
     }
-    expect(focus).toHaveBeenCalledTimes(2);
+    expect(focus).toHaveBeenCalledOnce();
   });
 
   it('dismisses on outside pointer or focus and removes listeners on cleanup', () => {

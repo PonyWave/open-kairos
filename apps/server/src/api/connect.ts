@@ -335,6 +335,14 @@ export function registerGuiRoutes(router: ConnectRouter, options: GuiApiOptions)
         const ownerId = owner(context);
         const limit = requirePositiveInteger(request.limit, 'limit', 100);
         const sort = readThreadCardSort(request.sort);
+        if (request.threadIds.length > 200) {
+          throw new ConnectError('thread_ids 单次最多 200 项。', Code.InvalidArgument);
+        }
+        for (const threadId of request.threadIds) {
+          if (!threadId) {
+            throw new ConnectError('thread_ids 不能包含空值。', Code.InvalidArgument);
+          }
+        }
         const result = listThreadCards(options.store, ownerId, {
           sort,
           limit,
@@ -347,6 +355,7 @@ export function registerGuiRoutes(router: ConnectRouter, options: GuiApiOptions)
                   threadSeq: request.cursor.threadSeq,
                 },
               }),
+          ...(request.threadIds.length > 0 ? { threadIds: request.threadIds } : {}),
         });
         return {
           cards: result.cards.map(toThreadCard),

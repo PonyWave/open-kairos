@@ -45,10 +45,20 @@ message ChannelState {
   optional string pairing_code = 7;
 }
 
+message ChannelLoginSession {
+  string login_session_id = 1;
+  string qr_content = 2;
+  ChannelLoginState login_state = 3;
+  string status_reason = 4;
+  bool awaiting_pin = 5;
+  bool polling_failed = 6;
+}
+
 message GetChannelStatesRequest {}
 
 message GetChannelStatesResponse {
   repeated ChannelState states = 1;
+  optional ChannelLoginSession wechat_login = 2;
 }
 
 message StartChannelLoginRequest {
@@ -71,6 +81,8 @@ message PollChannelLoginResponse {
   ChannelLoginState login_state = 1;
   string status_reason = 2;
   bool awaiting_pin = 3;
+  string qr_content = 4;
+  bool polling_failed = 5;
 }
 
 message SubmitChannelLoginPinRequest {
@@ -82,12 +94,15 @@ message SubmitChannelLoginPinResponse {
   ChannelLoginState login_state = 1;
   string status_reason = 2;
   bool awaiting_pin = 3;
+  string qr_content = 4;
+  bool polling_failed = 5;
 }
 
 message SaveFeishuCredentialsRequest {
   string client_action_id = 1;
   string app_id = 2;
   string app_secret = 3;
+  bool preserve_secret = 4;
 }
 
 message SaveFeishuCredentialsResponse {
@@ -105,7 +120,20 @@ message UnbindChannelResponse {
   ChannelState state = 2;
 }
 
+message CancelChannelLoginRequest {
+  string login_session_id = 1;
+}
+message CancelChannelLoginResponse {}
+message ReconnectChannelRequest {
+  string client_action_id = 1;
+  ChannelId channel = 2;
+}
+message ReconnectChannelResponse {
+  ChannelState state = 1;
+}
 service ChannelService {
+  rpc CancelChannelLogin(CancelChannelLoginRequest) returns (CancelChannelLoginResponse);
+  rpc ReconnectChannel(ReconnectChannelRequest) returns (ReconnectChannelResponse);
   rpc GetChannelStates(GetChannelStatesRequest) returns (GetChannelStatesResponse);
   rpc StartChannelLogin(StartChannelLoginRequest) returns (StartChannelLoginResponse);
   rpc PollChannelLogin(PollChannelLoginRequest) returns (PollChannelLoginResponse);

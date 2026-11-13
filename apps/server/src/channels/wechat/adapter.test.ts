@@ -184,3 +184,78 @@ it('shows typing on inbound wechat messages and cancels it after the first deliv
     database.close();
   }
 });
+
+it('publishes the latest QR content after expiry and restores that pending session', async () => {
+  const { database, channel, client } = fixture();
+  try {
+    client.script = [{ status: 'expired' }];
+    const { sessionId } = await channel.startLogin('same-action');
+    await vi.waitFor(() => expect(client.qrCount).toBe(2));
+    expect(channel.currentLogin()).toMatchObject({
+      id: sessionId,
+      qrContent: 'content-2',
+      status: 'pending',
+    });
+    const retried = await channel.startLogin('same-action');
+    expect(retried).toEqual({ sessionId, qrContent: 'content-2' });
+    expect(client.qrCount).toBe(2);
+    expect(channel.currentLogin('other-user')).toBeUndefined();
+  } finally {
+    channel.stop();
+    database.close();
+  }
+});
+
+it('ignores a delayed success from a replaced or cancelled login', async () => {
+  const { database, channel, client, store } = fixture();
+  const pending = new Map<string, (status: QrStatus) => void>();
+  client.pollQrcodeStatus = (code) => new Promise((resolve) => pending.set(code, resolve));
+  try {
+    const first = await channel.startLogin();
+    const second = await channel.startLogin();
+    pending.get('qr-1')?.(confirmedStatus);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(store.getState(ownerId, 'wechat').status).toBe('pending_login');
+    expect(channel.pollLogin(first.sessionId).status).toBe('failed');
+    channel.cancelLogin(second.sessionId);
+    pending.get('qr-2')?.(confirmedStatus);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(store.getState(ownerId, 'wechat').status).toBe('unconfigured');
+    expect(store.getCredentials(ownerId, 'wechat')).toBeNull();
+  } finally {
+    channel.stop();
+    database.close();
+  }
+});
+
+it('keeps a visible retryable error when the login status query fails', async () => {
+  const { database, channel, client } = fixture();
+  client.pollQrcodeStatus = async () => {
+    throw new Error('offline');
+  };
+  try {
+    await channel.startLogin();
+    await vi.waitFor(() => expect(channel.currentLogin()?.pollingFailed).toBe(true));
+    expect(channel.currentLogin()?.reason).toContain('连接中断');
+    expect(channel.currentLogin()?.qrContent).toBe('content-1');
+  } finally {
+    channel.stop();
+    database.close();
+  }
+});
+
+it('does not restart a completed login when its original request is retried', async () => {
+  const { database, channel, client, store } = fixture();
+  try {
+    client.script = [confirmedStatus];
+    const first = await channel.startLogin('login-once');
+    await vi.waitFor(() => expect(channel.pollLogin(first.sessionId).status).toBe('confirmed'));
+    const retried = await channel.startLogin('login-once');
+    expect(retried.sessionId).toBe(first.sessionId);
+    expect(client.qrCount).toBe(1);
+    expect(store.getState(ownerId, 'wechat').status).toBe('active');
+  } finally {
+    channel.stop();
+    database.close();
+  }
+});

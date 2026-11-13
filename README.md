@@ -88,8 +88,8 @@ open-kairos 已启动：http://127.0.0.1:<端口>/#token=<本地会话令牌>
 
 未配置模型时不能执行 Agent 任务。两种方式任选：
 
-- **界面配置（推荐）**：打开网页的「设置 → 模型」，添加模型连接（接口地址、模型 ID、API key）。个人模型凭据加密保存在 Server。
-- **环境变量**：启动前导出平台默认模型，支持 OpenAI Chat Completions、OpenAI Responses 与 Anthropic Messages 三种协议格式：
+- **界面配置（推荐）**：打开网页的「设置 → 模型」，添加模型连接（接口地址、模型 ID、API key）。个人模型凭据加密保存在 Server。填写基础 URL 后可点「获取模型列表」从服务发现可用模型，模型 ID 改为下拉选择，也可以在列表底部手动输入。
+- **环境变量**：启动前导出平台默认模型，支持 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 与 Google Gemini 四种协议格式：
 
 ```bash
 export KAIROS_MODEL_BASE_URL=https://model-provider.example.com/v1

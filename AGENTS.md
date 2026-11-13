@@ -62,3 +62,11 @@
 
 - 简单 Git 操作直接执行。提交只包含本次任务的相关修改，保留用户已有工作和暂存状态。
 - 不提交 `.env`、密钥、设备身份、运行数据库、日志、依赖目录和 `dist` 等构建产物。由 `.proto` 生成的 TypeScript 源文件按协议规范提交。
+
+## 部署
+
+- 每次代码修改完成并通过验证后，部署到 k1 开发机（`~/.ssh/config` Host `k1`），无需再次确认。
+- k1 部署目录为 `~/personal/open-kairos`，不是 git 仓库，使用 rsync 同步源码，排除 `.git`、`node_modules`、`dist`、`.pnpm-store`、`reference`、`.env`、`start-k1.sh`、`.DS_Store`、`.tower`、`.kairos` 和 `*.log`。
+- 同步后在 k1 执行 `pnpm install --frozen-lockfile` 和 `pnpm build`，Node 26 与 pnpm 位于 `~/opt/node-v26.4.0-linux-x64/bin`。
+- 构建完成后重启 tmux 会话 `kairos`（先 `tmux kill-session -t kairos`，再 `tmux new-session -d -s kairos ~/personal/open-kairos/start-k1.sh`）。`start-k1.sh` 加载 `.env` 后执行 `pnpm start`，日志写入 `/tmp/kairos.log`。
+- 服务监听 4317 端口，经 mgc reverse-proxy 暴露为 `https://kairos-whl.app.msh.work`。部署后确认 4317 端口恢复监听且日志无启动错误。

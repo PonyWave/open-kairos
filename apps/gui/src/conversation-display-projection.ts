@@ -16,11 +16,20 @@ export function projectConversationDisplay(
   mode: ConversationDisplayMode,
 ): ConversationItem[] {
   if (mode === 'full') {
-    return items.map((item) => {
-      if (item.kind !== 'message' || !item.value.sentMessage) return item;
-      const { sentCall: _sentCall, ...display } = item.value;
-      return { ...item, value: { ...display, sentMessage: null } };
-    });
+    const displayed: ConversationItem[] = [];
+    const sentCalls = new Set<string>();
+    for (const item of items) {
+      if (item.kind !== 'message' || !item.value.sentMessage) {
+        displayed.push(item);
+        continue;
+      }
+      const message = item.value.message;
+      const key = `${message.threadId}:${message.agentId}:${message.toolCallId}`;
+      if (sentCalls.has(key)) continue;
+      sentCalls.add(key);
+      displayed.push(item);
+    }
+    return displayed;
   }
   const runsById = new Map(runs.map((run) => [run.runId, run]));
   const displayed: ConversationItem[] = [];

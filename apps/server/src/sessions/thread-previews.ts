@@ -77,7 +77,7 @@ const threadRowSchema = z.object({
   thread_id: z.string(),
   owner_id: z.string(),
   title: z.string(),
-  thread_type: z.enum(['main', 'task']),
+  thread_type: z.enum(['main', 'workspace_main', 'task']),
   workspace_id: z.string().nullable(),
   automation_only: z.number().int().min(0).max(1),
   created_at: z.string(),
@@ -185,12 +185,36 @@ function currentText(alias: string): string {
   ), ${alias}.content)`;
 }
 
-function previewColumns(alias: string): string {
+function previewDisplayText(alias: string): string {
   const text = currentText(alias);
+  const sentText = `(
+    SELECT json_extract(sent.content, '$.content') FROM context_messages AS sent
+    WHERE sent.thread_id = ${alias}.thread_id AND sent.agent_id = ${alias}.agent_id
+      AND sent.role = 'tool' AND sent.tool_name = 'send_to_user'
+      AND sent.superseded_by_run_id IS NULL
+      AND json_extract(sent.content, '$.status') = 'sent'
+      AND sent.tool_call_id IN (
+        SELECT json_extract(call.value, '$.id')
+        FROM json_each(COALESCE(${alias}.tool_calls_json, '[]')) AS call
+        WHERE json_extract(call.value, '$.name') = 'send_to_user'
+      )
+    ORDER BY sent.seq DESC LIMIT 1
+  )`;
+  return `CASE WHEN ${alias}.role = 'assistant' AND trim(${text}) = ''
+    THEN COALESCE(${sentText}, ${text})
+    ELSE ${text} END`;
+}
+
+function hiddenPreviewRowWhere(alias: string): string {
+  return `(${alias}.role <> 'assistant' OR trim(${previewDisplayText(alias)}) <> '')`;
+}
+
+function previewColumns(alias: string): string {
+  const displayText = previewDisplayText(alias);
   return `${alias}.thread_id, ${alias}.agent_id, ${alias}.message_id, ${alias}.seq,
     ${alias}.role, ${alias}.source, ${alias}.source_thread_id, ${alias}.channel_json, ${alias}.created_at,
-    substr(${text}, 1, ${threadPreviewTextLimit}) AS text,
-    (length(${text}) > ${threadPreviewTextLimit}) AS text_truncated`;
+    substr(${displayText}, 1, ${threadPreviewTextLimit}) AS text,
+    (length(${displayText}) > ${threadPreviewTextLimit}) AS text_truncated`;
 }
 
 function attachmentColumns(): string {
@@ -296,7 +320,12 @@ function placeholders(length: number): string {
 export function listThreadCards(
   store: SessionStore,
   ownerId: string,
-  input: { sort: ThreadCardSort; limit: number; cursor?: ThreadCardCursor },
+  input: {
+    sort: ThreadCardSort;
+    limit: number;
+    cursor?: ThreadCardCursor;
+    threadIds?: readonly string[];
+  },
 ): { cards: ThreadCardProjection[]; nextCursor: ThreadCardCursor | null; hasMore: boolean } {
   if (input.cursor && input.cursor.sort !== input.sort) {
     throw new SessionError('invalid_argument', 'The Thread card cursor sort does not match.');
@@ -313,6 +342,31 @@ export function listThreadCards(
       AND ${currentMessageWhere('latest')} AND ${displayMessageWhere('latest')}
     ORDER BY latest.seq DESC LIMIT 1
   )`;
+  if (input.threadIds && input.threadIds.length > 0) {
+    const rows = z.array(cardRowSchema).parse(
+      store.database
+        .prepare(
+          `SELECT threads.*, ${lastMessageAt} AS last_message_at, threads.created_at AS sort_at
+          FROM threads WHERE threads.owner_id = ? AND threads.automation_only = 0
+            AND threads.thread_type IN ('task', 'workspace_main')
+            AND threads.thread_id IN (${placeholders(input.threadIds.length)})
+          ORDER BY threads.seq ASC`,
+        )
+        .all(ownerId, ...input.threadIds),
+    );
+    const messages = listCardMessages(store, input.threadIds);
+    const sources = listCardSources(store, input.threadIds);
+    return {
+      cards: rows.map((row) => ({
+        thread: toThread(row),
+        lastMessageAt: row.last_message_at,
+        messages: messages.get(row.thread_id) ?? [],
+        sourceCall: sources.get(row.thread_id) ?? null,
+      })),
+      nextCursor: null,
+      hasMore: false,
+    };
+  }
   const sortAt =
     input.sort === 'created_at'
       ? 'threads.created_at'
@@ -372,6 +426,7 @@ function listCardMessages(
           FROM context_messages AS cm
           WHERE cm.thread_id IN (${placeholders(threadIds.length)}) AND cm.agent_id = 'thread'
             AND ${currentMessageWhere('cm')} AND ${displayMessageWhere('cm')}
+            AND ${hiddenPreviewRowWhere('cm')}
         )
         SELECT ranked.*, ${attachmentColumns()} FROM ranked
         ${attachmentJoins('ranked')}
@@ -584,6 +639,7 @@ function listCallMessages(
           ${attachmentJoins('cm')}
           WHERE (${ranges.join(' OR ')})
             AND ${currentMessageWhere('cm')} AND ${displayMessageWhere('cm')}
+            AND ${hiddenPreviewRowWhere('cm')}
           ORDER BY cm.seq, message_attachment.position`,
         )
         .all(...parameters),

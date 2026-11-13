@@ -186,11 +186,14 @@ describe('Automation management components', () => {
     expect(html).not.toContain('<select');
     expect(html).not.toContain('cron');
     expect(html).toContain('aria-label="重复"');
-    expect(html).toContain('type="time"');
-    expect(html).toContain('value="09:00"');
+    expect(html).not.toContain('type="time"');
+    expect(html).not.toContain('type="datetime-local"');
+    expect(html).toContain('aria-label="时间小时"');
+    expect(html).toContain('aria-label="时间分钟"');
     expect(html).toContain('aria-label="时区"');
     expect(html).toContain('中国标准时间');
-    expect(html).toContain('aria-label="执行目标"');
+    expect(html).toContain('aria-label="触发话题"');
+    expect(html).not.toContain('执行目标');
   });
 
   it('uses full-width read-only history with authorized sync and no ordinary controls', () => {
@@ -265,9 +268,12 @@ describe('Automation management components', () => {
     );
     expect(useThreadSync).toHaveBeenCalledWith(threadSyncManager, 'hidden-1', 'schedule-1');
     expect(html).toContain('conversation-automation');
+    expect(html).toContain('返回定时任务详情');
+    expect(html).not.toContain('aria-label="关闭话题"');
     expect(html).not.toContain('conversation-topic');
     expect(html).toContain('真实定时 prompt');
     expect(html).not.toContain('session-compose');
+    expect(html).not.toContain('条消息');
     expect(html).not.toContain('编辑话题名称');
     expect(html).not.toContain('message-actions');
   });
