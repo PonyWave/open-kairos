@@ -227,7 +227,8 @@ async function runReloadCheck(config: RealModelConfig): Promise<void> {
   realState.workspace = workspace;
   process.env.KAIROS_SLASH_TEST_DIRECTORY = directory;
   await mkdir(join(workspace, '.agents', 'skills', 'acceptance'), { recursive: true });
-  await writeFile(join(workspace, 'AGENTS.md'), 'Version 1 acceptance resource.');
+  await mkdir(join(workspace, '.kairos'), { recursive: true });
+  await writeFile(join(workspace, '.kairos', 'AGENTS.md'), 'Version 1 acceptance resource.');
   await writeFile(
     join(workspace, '.agents', 'skills', 'acceptance', 'SKILL.md'),
     'Version 1 acceptance Skill.',
@@ -242,7 +243,7 @@ async function runReloadCheck(config: RealModelConfig): Promise<void> {
   });
   realState.v1SnapshotId = initial.snapshotId;
   await writeFile(
-    join(workspace, 'AGENTS.md'),
+    join(workspace, '.kairos', 'AGENTS.md'),
     'When the user requests the workspace acceptance response, reply exactly RELOAD-V2-AGENTS-OK and include the Skill marker.',
   );
   await writeFile(

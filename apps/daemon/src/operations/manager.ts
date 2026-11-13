@@ -73,6 +73,7 @@ export interface EnvironmentOperationManagerOptions {
   maxPendingBytes?: number;
   maxChunkBytes?: number;
   killGraceMilliseconds?: number;
+  resourceHomeDirectory?: string;
 }
 
 function canonicalJson(value: unknown): string {
@@ -639,6 +640,7 @@ export class EnvironmentOperationManager {
             action.value.path,
             action.value.loadWorkspace,
             this.options.capabilities(),
+            this.options.resourceHomeDirectory,
           );
           if (operation.abortController.signal.aborted) throw new FileOperationCancelled();
           status = report.ready ? OperationStatus.COMPLETED : OperationStatus.FAILED;

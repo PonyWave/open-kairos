@@ -10,23 +10,25 @@ import {
 } from '../workspace/index.js';
 
 export class WorkspaceResourceLoader {
-  readonly workspaceDirectory: string;
+  readonly resourceHomeDirectory: string;
 
-  constructor(workspaceDirectory: string) {
-    if (!isAbsolute(workspaceDirectory) || workspaceDirectory.includes('\0')) {
-      throw new Error('The workspace directory must be an absolute path without NUL characters.');
+  constructor(resourceHomeDirectory: string) {
+    if (!isAbsolute(resourceHomeDirectory) || resourceHomeDirectory.includes('\0')) {
+      throw new Error(
+        'The resource home directory must be an absolute path without NUL characters.',
+      );
     }
-    this.workspaceDirectory = resolve(workspaceDirectory);
+    this.resourceHomeDirectory = resolve(resourceHomeDirectory);
   }
 
   async load(): Promise<WorkspaceResourceSnapshot> {
-    await requireDirectory(this.workspaceDirectory, 'workspace root', false);
-    const workspaceDirectory = await realpath(this.workspaceDirectory);
+    await requireDirectory(this.resourceHomeDirectory, 'resource home', false);
+    const resourceHome = await realpath(this.resourceHomeDirectory);
     const resources: WorkspaceResource[] = [];
-    const agents = await readResource(workspaceDirectory, 'AGENTS.md');
+    const agents = await readResource(resourceHome, '.kairos/AGENTS.md', 'AGENTS.md');
     if (agents) resources.push(agents);
 
-    const skillsDirectory = await findSkillsDirectory(workspaceDirectory);
+    const skillsDirectory = await findSkillsDirectory(resourceHome);
     if (skillsDirectory) {
       const entries = await readdir(skillsDirectory, { withFileTypes: true });
       const skillEntries = entries.filter((entry) => !entry.isFile());
@@ -41,11 +43,11 @@ export class WorkspaceResourceLoader {
           throw new Error(`Invalid Skill directory name: ${entry.name}.`);
         }
         const skillRelativePath = `.agents/skills/${entry.name}`;
-        const skillDirectory = workspacePath(workspaceDirectory, skillRelativePath);
+        const skillDirectory = workspacePath(resourceHome, skillRelativePath);
         await requireDirectory(skillDirectory, `Skill directory ${skillRelativePath}`, false);
-        await requireRealPathWithin(workspaceDirectory, skillDirectory, skillRelativePath);
+        await requireRealPathWithin(resourceHome, skillDirectory, skillRelativePath);
         const resourcePath = `${skillRelativePath}/SKILL.md`;
-        const resource = await readResource(workspaceDirectory, resourcePath);
+        const resource = await readResource(resourceHome, resourcePath, resourcePath);
         if (!resource) throw new Error(`Missing workspace resource: ${resourcePath}.`);
         resources.push(resource);
       }
@@ -65,13 +67,13 @@ export class WorkspaceResourceLoader {
   }
 }
 
-async function findSkillsDirectory(workspaceDirectory: string): Promise<string | undefined> {
-  const agentsDirectory = workspacePath(workspaceDirectory, '.agents');
+async function findSkillsDirectory(resourceHome: string): Promise<string | undefined> {
+  const agentsDirectory = workspacePath(resourceHome, '.agents');
   if (!(await requireDirectory(agentsDirectory, '.agents', true))) return undefined;
-  await requireRealPathWithin(workspaceDirectory, agentsDirectory, '.agents');
-  const skillsDirectory = workspacePath(workspaceDirectory, '.agents/skills');
+  await requireRealPathWithin(resourceHome, agentsDirectory, '.agents');
+  const skillsDirectory = workspacePath(resourceHome, '.agents/skills');
   if (!(await requireDirectory(skillsDirectory, '.agents/skills', true))) return undefined;
-  await requireRealPathWithin(workspaceDirectory, skillsDirectory, '.agents/skills');
+  await requireRealPathWithin(resourceHome, skillsDirectory, '.agents/skills');
   return skillsDirectory;
 }
 
@@ -94,82 +96,83 @@ async function requireDirectory(
 }
 
 async function requireRealPathWithin(
-  workspaceDirectory: string,
+  resourceHome: string,
   path: string,
   label: string,
 ): Promise<void> {
   const canonicalPath = await realpath(path);
-  const relativePath = relative(workspaceDirectory, canonicalPath);
+  const relativePath = relative(resourceHome, canonicalPath);
   if (
     relativePath.length === 0 ||
     relativePath === '..' ||
     relativePath.startsWith(`..${sep}`) ||
     isAbsolute(relativePath)
   ) {
-    throw new Error(`Workspace path escapes the workspace: ${label}.`);
+    throw new Error(`Workspace path escapes the resource home: ${label}.`);
   }
 }
 
 async function readResource(
-  workspaceDirectory: string,
-  resourcePath: string,
+  resourceHome: string,
+  relativePath: string,
+  logicalPath: string,
 ): Promise<WorkspaceResource | undefined> {
-  const absolutePath = workspacePath(workspaceDirectory, resourcePath);
+  const absolutePath = workspacePath(resourceHome, relativePath);
   let handle: Awaited<ReturnType<typeof open>>;
   try {
     handle = await open(absolutePath, constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch (error) {
     if (hasErrorCode(error, 'ENOENT')) return undefined;
-    throw new Error(`Unable to open workspace resource: ${resourcePath}.`, { cause: error });
+    throw new Error(`Unable to open workspace resource: ${logicalPath}.`, { cause: error });
   }
 
   try {
     const metadata = await handle.stat();
     if (!metadata.isFile()) {
-      throw new Error(`Workspace resource must be a regular file: ${resourcePath}.`);
+      throw new Error(`Workspace resource must be a regular file: ${logicalPath}.`);
     }
-    await requireRealPathWithin(workspaceDirectory, absolutePath, resourcePath);
+    await requireRealPathWithin(resourceHome, absolutePath, logicalPath);
     if (metadata.size > WORKSPACE_RESOURCE_LIMITS.maxFileBytes) {
       throw new Error(
-        `Workspace resource ${resourcePath} exceeds the ${WORKSPACE_RESOURCE_LIMITS.maxFileBytes}-byte file limit.`,
+        `Workspace resource ${logicalPath} exceeds the ${WORKSPACE_RESOURCE_LIMITS.maxFileBytes}-byte file limit.`,
       );
     }
     const bytes = await handle.readFile();
     if (bytes.byteLength > WORKSPACE_RESOURCE_LIMITS.maxFileBytes) {
       throw new Error(
-        `Workspace resource ${resourcePath} exceeds the ${WORKSPACE_RESOURCE_LIMITS.maxFileBytes}-byte file limit.`,
+        `Workspace resource ${logicalPath} exceeds the ${WORKSPACE_RESOURCE_LIMITS.maxFileBytes}-byte file limit.`,
       );
     }
     let content: string;
     try {
       content = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
     } catch (error) {
-      throw new Error(`Workspace resource is not valid UTF-8: ${resourcePath}.`, {
+      throw new Error(`Workspace resource is not valid UTF-8: ${logicalPath}.`, {
         cause: error,
       });
     }
     if (content.includes('\0')) {
-      throw new Error(`Workspace resource contains a NUL character: ${resourcePath}.`);
+      throw new Error(`Workspace resource contains a NUL character: ${logicalPath}.`);
     }
     if (content.trim().length === 0) {
-      throw new Error(`Workspace resource is blank: ${resourcePath}.`);
+      throw new Error(`Workspace resource is blank: ${logicalPath}.`);
     }
-    return Object.freeze({ path: resourcePath, content });
+    return Object.freeze({ path: logicalPath, content });
   } finally {
     await handle.close();
   }
 }
 
-function workspacePath(workspaceDirectory: string, resourcePath: string): string {
-  const absolutePath = resolve(workspaceDirectory, resourcePath);
-  const relativePath = relative(workspaceDirectory, absolutePath);
+function workspacePath(resourceHome: string, resourcePath: string): string {
+  const absolutePath = resolve(resourceHome, resourcePath);
+  const relativePath = relative(resourceHome, absolutePath);
   if (
     relativePath.length === 0 ||
     relativePath === '..' ||
     relativePath.startsWith(`..${sep}`) ||
     isAbsolute(relativePath)
   ) {
-    throw new Error(`Workspace resource path escapes the workspace: ${resourcePath}.`);
+    throw new Error(`Workspace resource path escapes the resource home: ${resourcePath}.`);
   }
   return absolutePath;
 }

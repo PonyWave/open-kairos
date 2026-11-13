@@ -105,6 +105,7 @@ export interface DaemonClientOptions {
   maxQueueBytes?: number;
   maxPendingOutputBytes?: number;
   maxOutputChunkBytes?: number;
+  resourceHomeDirectory?: string;
   status?: Pick<DaemonStatus, 'connection' | 'operation'>;
   onError?: (error: unknown) => void;
   onFatalError?: (error: Error) => void;
@@ -219,6 +220,9 @@ export class DaemonClient {
       ...(options.maxOutputChunkBytes === undefined
         ? {}
         : { maxChunkBytes: options.maxOutputChunkBytes }),
+      ...(options.resourceHomeDirectory === undefined
+        ? {}
+        : { resourceHomeDirectory: options.resourceHomeDirectory }),
     });
   }
 

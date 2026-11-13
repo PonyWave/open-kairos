@@ -23,11 +23,17 @@ afterEach(async () => {
 describe('directory check', () => {
   it('checks real permissions and loads bounded workspace resources', async () => {
     const directory = await temporaryDirectory();
-    await writeFile(join(directory, 'AGENTS.md'), '# Project instructions\n');
+    await mkdir(join(directory, '.kairos'), { recursive: true });
+    await writeFile(join(directory, '.kairos', 'AGENTS.md'), '# Project instructions\n');
     await mkdir(join(directory, '.agents', 'skills', 'review'), { recursive: true });
     await writeFile(join(directory, '.agents', 'skills', 'review', 'SKILL.md'), '# Review\n');
 
-    const report = await checkDirectory(directory, true, [DeviceCapability.DIRECTORY_CHECK]);
+    const report = await checkDirectory(
+      directory,
+      true,
+      [DeviceCapability.DIRECTORY_CHECK],
+      directory,
+    );
     expect(report).toMatchObject({
       exists: true,
       directory: true,
@@ -70,9 +76,15 @@ describe('directory check', () => {
     const directory = await temporaryDirectory();
     const outside = await temporaryDirectory();
     await writeFile(join(outside, 'AGENTS.md'), '# Outside\n');
-    await symlink(join(outside, 'AGENTS.md'), join(directory, 'AGENTS.md'));
+    await mkdir(join(directory, '.kairos'), { recursive: true });
+    await symlink(join(outside, 'AGENTS.md'), join(directory, '.kairos', 'AGENTS.md'));
 
-    const report = await checkDirectory(directory, true, [DeviceCapability.DIRECTORY_CHECK]);
+    const report = await checkDirectory(
+      directory,
+      true,
+      [DeviceCapability.DIRECTORY_CHECK],
+      directory,
+    );
     expect(report.ready).toBe(false);
     expect(report.resources).toEqual([]);
     expect(report.reason).toContain('workspace resource');

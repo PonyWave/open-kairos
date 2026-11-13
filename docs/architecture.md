@@ -33,7 +33,7 @@ Server 首次启动时自动注册主环境：写入环境记录、完成设备�
 
 ### 3.1 资源快照
 
-全部 Agent 的 `AGENTS.md` 与 `.agents/skills/<name>/SKILL.md` 资源快照固定从主环境根目录读取，保存在绑定历史快照中，不随工作空间设备变化。
+全部 Agent 的 `AGENTS.md` 与 `.agents/skills/<name>/SKILL.md` 资源快照固定从主环境 Daemon 用户的主目录读取（`~/.kairos/AGENTS.md` 与 `~/.agents/skills/<name>/SKILL.md`，主目录可用 Daemon 环境变量 `KAIROS_DEVICE_RESOURCES_HOME` 覆盖），保存在绑定历史快照中，与主环境工作目录无关，不随工作空间设备变化。
 
 系统提示词按两级注入资源：`AGENTS.md` 注入全文；skills 注入目录（`<workspace-skills>`，每个 skill 一行名称与描述）。`SKILL.md` 支持 YAML frontmatter，`description` 字段作为目录描述；无 frontmatter 时描述回退为正文首个非空行，`name` 字段如存在必须与目录名一致。Agent 用 `skill` 工具按名称加载某个 skill 的完整正文，正文取自该执行固定的绑定快照，不经设备往返；读取 skill 引用的附属文件时用文件工具显式传 `env_id=main`。
 

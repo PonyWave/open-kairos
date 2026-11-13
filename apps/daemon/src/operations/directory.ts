@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { access, lstat, open, readdir, realpath, stat } from 'node:fs/promises';
-import { arch, platform } from 'node:os';
+import { arch, homedir, platform } from 'node:os';
 import { isAbsolute, normalize, relative, resolve, sep } from 'node:path';
 import type { DeviceCapability } from '@kairos/contracts/device';
 
@@ -35,6 +35,7 @@ export async function checkDirectory(
   path: string,
   loadWorkspace: boolean,
   capabilities: DeviceCapability[],
+  resourceHome: string = homedir(),
 ): Promise<DirectoryCheckReport> {
   if (!isAbsolute(path) || path.includes('\0')) {
     throw new Error('Directory check requires an absolute path without NUL characters.');
@@ -67,7 +68,7 @@ export async function checkDirectory(
       report.reason = 'The working directory lacks read, write, or traverse permission.';
       return report;
     }
-    if (loadWorkspace) report.resources = await readWorkspaceResources(report.normalizedPath);
+    if (loadWorkspace) report.resources = await readUserResources(resourceHome);
     report.ready = true;
     return report;
   } catch (error) {
@@ -95,11 +96,22 @@ function architectureName(): string {
   return value;
 }
 
-async function readWorkspaceResources(workspace: string): Promise<DirectoryResource[]> {
+// Resource snapshot sources are fixed user-level locations: AGENTS.md comes from
+// <home>/.kairos/AGENTS.md and Skills from <home>/.agents/skills, independent of
+// the directory being checked. Reported resource paths stay workspace-relative
+// logical identifiers.
+async function readUserResources(resourceHome: string): Promise<DirectoryResource[]> {
+  let home: string;
+  try {
+    home = await realpath(resourceHome);
+  } catch (error) {
+    if (hasErrorCode(error, 'ENOENT')) return [];
+    throw error;
+  }
   const resources: DirectoryResource[] = [];
-  const agents = await readResource(workspace, 'AGENTS.md');
+  const agents = await readResource(home, '.kairos/AGENTS.md', 'AGENTS.md');
   if (agents !== undefined) resources.push(agents);
-  const skills = await skillsDirectory(workspace);
+  const skills = await skillsDirectory(home);
   if (skills !== undefined) {
     const entries = (await readdir(skills, { withFileTypes: true })).filter(
       (entry) => !entry.isFile(),
@@ -110,10 +122,15 @@ async function readWorkspaceResources(workspace: string): Promise<DirectoryResou
     for (const entry of entries) {
       if (!skillName.test(entry.name))
         throw new Error('Workspace Skill directory name is invalid.');
-      const directory = containedPath(workspace, `.agents/skills/${entry.name}`);
+      const relativePath = `.agents/skills/${entry.name}`;
+      const directory = containedPath(home, relativePath);
       await requireRealDirectory(directory, 'Workspace Skill directory');
-      await requireContained(workspace, directory);
-      const resource = await readResource(workspace, `.agents/skills/${entry.name}/SKILL.md`);
+      await requireContained(home, directory);
+      const resource = await readResource(
+        home,
+        `${relativePath}/SKILL.md`,
+        `${relativePath}/SKILL.md`,
+      );
       if (resource === undefined) throw new Error('Workspace Skill is missing SKILL.md.');
       resources.push(resource);
     }
@@ -129,13 +146,13 @@ async function readWorkspaceResources(workspace: string): Promise<DirectoryResou
   return resources;
 }
 
-async function skillsDirectory(workspace: string): Promise<string | undefined> {
-  const agents = containedPath(workspace, '.agents');
+async function skillsDirectory(home: string): Promise<string | undefined> {
+  const agents = containedPath(home, '.agents');
   if (!(await realDirectoryIfPresent(agents))) return undefined;
-  await requireContained(workspace, agents);
-  const skills = containedPath(workspace, '.agents/skills');
+  await requireContained(home, agents);
+  const skills = containedPath(home, '.agents/skills');
   if (!(await realDirectoryIfPresent(skills))) return undefined;
-  await requireContained(workspace, skills);
+  await requireContained(home, skills);
   return skills;
 }
 
@@ -157,62 +174,64 @@ async function requireRealDirectory(path: string, label: string): Promise<void> 
 }
 
 async function readResource(
-  workspace: string,
-  path: string,
+  home: string,
+  relativePath: string,
+  logicalPath: string,
 ): Promise<DirectoryResource | undefined> {
-  const absolute = containedPath(workspace, path);
+  const absolute = containedPath(home, relativePath);
   let handle: Awaited<ReturnType<typeof open>>;
   try {
     handle = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch (error) {
     if (hasErrorCode(error, 'ENOENT')) return undefined;
-    throw new Error(`Unable to open workspace resource: ${path}.`, { cause: error });
+    throw new Error(`Unable to open workspace resource: ${logicalPath}.`, { cause: error });
   }
   try {
     const metadata = await handle.stat();
-    if (!metadata.isFile()) throw new Error(`Workspace resource is not a regular file: ${path}.`);
-    await requireContained(workspace, absolute);
+    if (!metadata.isFile())
+      throw new Error(`Workspace resource is not a regular file: ${logicalPath}.`);
+    await requireContained(home, absolute);
     if (metadata.size > maximumResourceBytes) {
-      throw new Error(`Workspace resource exceeds the byte limit: ${path}.`);
+      throw new Error(`Workspace resource exceeds the byte limit: ${logicalPath}.`);
     }
     const bytes = await handle.readFile();
     if (bytes.byteLength > maximumResourceBytes) {
-      throw new Error(`Workspace resource exceeds the byte limit: ${path}.`);
+      throw new Error(`Workspace resource exceeds the byte limit: ${logicalPath}.`);
     }
     const content = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
     if (content.includes('\0') || content.trim().length === 0) {
-      throw new Error(`Workspace resource is blank or contains NUL: ${path}.`);
+      throw new Error(`Workspace resource is blank or contains NUL: ${logicalPath}.`);
     }
-    return { path, content, sha256: createHash('sha256').update(bytes).digest('hex') };
+    return { path: logicalPath, content, sha256: createHash('sha256').update(bytes).digest('hex') };
   } finally {
     await handle.close();
   }
 }
 
-function containedPath(workspace: string, path: string): string {
-  const absolute = resolve(workspace, path);
-  const relation = relative(workspace, absolute);
+function containedPath(home: string, path: string): string {
+  const absolute = resolve(home, path);
+  const relation = relative(home, absolute);
   if (
     relation.length === 0 ||
     relation === '..' ||
     relation.startsWith(`..${sep}`) ||
     isAbsolute(relation)
   ) {
-    throw new Error('Workspace resource path escapes the working directory.');
+    throw new Error('Workspace resource path escapes the resource home.');
   }
   return absolute;
 }
 
-async function requireContained(workspace: string, path: string): Promise<void> {
+async function requireContained(home: string, path: string): Promise<void> {
   const canonical = await realpath(path);
-  const relation = relative(workspace, canonical);
+  const relation = relative(home, canonical);
   if (
     relation.length === 0 ||
     relation === '..' ||
     relation.startsWith(`..${sep}`) ||
     isAbsolute(relation)
   ) {
-    throw new Error('Workspace resource resolves outside the working directory.');
+    throw new Error('Workspace resource resolves outside the resource home.');
   }
 }
 

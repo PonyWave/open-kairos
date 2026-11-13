@@ -37,7 +37,8 @@ describe('WorkspaceResourceLoader', () => {
   it('loads complete resources and renders a Skill catalog with the full AGENTS.md', async () => {
     const root = await createWorkspace();
     await writeResource(root, '.agents/skills/zeta/SKILL.md', 'zeta instructions');
-    await writeResource(root, 'AGENTS.md', 'root instructions\n');
+    await writeResource(root, '.kairos/AGENTS.md', 'root instructions\n');
+    await writeResource(root, 'AGENTS.md', 'workspace root AGENTS.md must not be read');
     await writeResource(
       root,
       '.agents/skills/alpha/SKILL.md',
@@ -96,7 +97,7 @@ describe('WorkspaceResourceLoader', () => {
 
   it('hashes paths and content and compares added, updated and removed resources', async () => {
     const root = await createWorkspace();
-    await writeResource(root, 'AGENTS.md', 'unchanged');
+    await writeResource(root, '.kairos/AGENTS.md', 'unchanged');
     await writeResource(root, '.agents/skills/alpha/SKILL.md', 'old alpha');
     await writeResource(root, '.agents/skills/remove_me/SKILL.md', 'removed');
     const loader = new WorkspaceResourceLoader(root);
@@ -128,12 +129,12 @@ describe('WorkspaceResourceLoader', () => {
 
   it('rejects a failed candidate without modifying an accepted snapshot', async () => {
     const root = await createWorkspace();
-    await writeResource(root, 'AGENTS.md', 'accepted root');
+    await writeResource(root, '.kairos/AGENTS.md', 'accepted root');
     await writeResource(root, '.agents/skills/alpha/SKILL.md', 'accepted Skill');
     const loader = new WorkspaceResourceLoader(root);
     const accepted = await loader.load();
 
-    await writeResource(root, 'AGENTS.md', 'candidate root');
+    await writeResource(root, '.kairos/AGENTS.md', 'candidate root');
     await writeResource(root, '.agents/skills/alpha/SKILL.md', '   \n');
     await expect(loader.load()).rejects.toThrow(/blank/);
 
@@ -147,13 +148,17 @@ describe('WorkspaceResourceLoader', () => {
 
   it('accepts the exact per-file and total byte limits', async () => {
     const fileRoot = await createWorkspace();
-    await writeResource(fileRoot, 'AGENTS.md', 'a'.repeat(WORKSPACE_RESOURCE_LIMITS.maxFileBytes));
+    await writeResource(
+      fileRoot,
+      '.kairos/AGENTS.md',
+      'a'.repeat(WORKSPACE_RESOURCE_LIMITS.maxFileBytes),
+    );
     await expect(new WorkspaceResourceLoader(fileRoot).load()).resolves.toMatchObject({
       resources: [{ path: 'AGENTS.md' }],
     });
 
     const totalRoot = await createWorkspace();
-    await writeResource(totalRoot, 'AGENTS.md', 'a'.repeat(64 * 1024));
+    await writeResource(totalRoot, '.kairos/AGENTS.md', 'a'.repeat(64 * 1024));
     for (const name of ['one', 'two', 'three']) {
       await writeResource(totalRoot, `.agents/skills/${name}/SKILL.md`, 'a'.repeat(64 * 1024));
     }
@@ -170,7 +175,7 @@ describe('WorkspaceResourceLoader', () => {
     const fileRoot = await createWorkspace();
     await writeResource(
       fileRoot,
-      'AGENTS.md',
+      '.kairos/AGENTS.md',
       'a'.repeat(WORKSPACE_RESOURCE_LIMITS.maxFileBytes + 1),
     );
     await expect(new WorkspaceResourceLoader(fileRoot).load()).rejects.toThrow(/file limit/);
@@ -200,19 +205,20 @@ describe('WorkspaceResourceLoader', () => {
     { label: 'whitespace only', content: ' \t\r\n', error: /blank/ },
   ])('rejects AGENTS.md containing $label', async ({ content, error }) => {
     const root = await createWorkspace();
-    await writeResource(root, 'AGENTS.md', content);
+    await writeResource(root, '.kairos/AGENTS.md', content);
     await expect(new WorkspaceResourceLoader(root).load()).rejects.toThrow(error);
   });
 
   it('rejects a non-file AGENTS.md and symbolic links to external resources', async () => {
     const directoryRoot = await createWorkspace();
-    await mkdir(join(directoryRoot, 'AGENTS.md'));
+    await mkdir(join(directoryRoot, '.kairos', 'AGENTS.md'), { recursive: true });
     await expect(new WorkspaceResourceLoader(directoryRoot).load()).rejects.toThrow(/regular file/);
 
     const externalRoot = await createWorkspace();
     await writeResource(externalRoot, 'outside.md', 'external secret');
     const linkRoot = await createWorkspace();
-    await symlink(join(externalRoot, 'outside.md'), join(linkRoot, 'AGENTS.md'));
+    await mkdir(join(linkRoot, '.kairos'), { recursive: true });
+    await symlink(join(externalRoot, 'outside.md'), join(linkRoot, '.kairos', 'AGENTS.md'));
     await expect(new WorkspaceResourceLoader(linkRoot).load()).rejects.toThrow(/Unable to open/);
   });
 

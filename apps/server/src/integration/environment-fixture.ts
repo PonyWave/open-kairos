@@ -678,10 +678,13 @@ export async function startRealEnvironmentServer(
       throw new Error('The real environment Server has no TCP address.');
     }
     const url = `ws://127.0.0.1:${address.port}/devices/wss`;
+    const resourcesHome = join(directory, 'daemon-resources-home');
+    mkdirSync(resourcesHome, { recursive: true });
     const environment: NodeJS.ProcessEnv = {
       ...process.env,
       KAIROS_DEVICE_IDENTITY_PATH: identityPath,
       KAIROS_DAEMON_VERSION: 'agent-integration-test',
+      KAIROS_DEVICE_RESOURCES_HOME: resourcesHome,
     };
     if (issued) {
       const pairing = spawn(

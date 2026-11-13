@@ -3,7 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, readdir, readFile, realpath, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { createConnection } from 'node:net';
 import { homedir, hostname } from 'node:os';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { DaemonClient, DaemonReadinessError } from './connection/client.js';
 import { DaemonIdentityStore } from './identity.js';
@@ -72,9 +72,14 @@ function environmentClient(
     onFatalError?: (error: Error) => void;
   },
 ): DaemonClient {
+  const resourcesHome = process.env.KAIROS_DEVICE_RESOURCES_HOME;
+  if (resourcesHome !== undefined && !isAbsolute(resourcesHome)) {
+    throw new Error('KAIROS_DEVICE_RESOURCES_HOME must be an absolute path.');
+  }
   return new DaemonClient({
     identityStore,
     daemonVersion,
+    ...(resourcesHome === undefined ? {} : { resourceHomeDirectory: resourcesHome }),
     ...(options.controlOnly === undefined ? {} : { controlOnly: options.controlOnly }),
     ...(options.bashEnabled === undefined ? {} : { bashEnabled: options.bashEnabled }),
     ...(options.pairingCredential === undefined

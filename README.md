@@ -117,7 +117,7 @@ pnpm start
 
 ### 技能与 AGENTS.md
 
-全部 Agent 的 `AGENTS.md` 与 `.agents/skills/<name>/SKILL.md` 资源快照固定从主环境根目录读取，与工作空间位于哪台设备无关。工作空间在其他设备上时，Agent 用文件工具读取主环境的 skill 内容需显式传 `env_id=main`。
+全部 Agent 的 `AGENTS.md` 与 `.agents/skills/<name>/SKILL.md` 资源快照固定从主环境 Daemon 用户的主目录读取：`AGENTS.md` 取自 `~/.kairos/AGENTS.md`，skills 取自 `~/.agents/skills/<name>/SKILL.md`，与主环境工作目录无关，也不随工作空间设备变化。主环境工作目录只决定全局 main 与临时对话的默认执行位置。Agent 用文件工具读取主环境的 skill 附属文件时需显式传 `env_id=main`。
 
 ### 连接其他设备
 

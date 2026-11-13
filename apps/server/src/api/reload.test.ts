@@ -89,7 +89,8 @@ async function cleanup(current: Awaited<ReturnType<typeof fixture>>, directory: 
 it('returns only workspace-relative resource paths and validates ReloadResources requests', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'kairos-reload-connect-'));
   await mkdir(join(directory, '.agents', 'skills', 'alpha'), { recursive: true });
-  await writeFile(join(directory, 'AGENTS.md'), 'old instructions');
+  await mkdir(join(directory, '.kairos'), { recursive: true });
+  await writeFile(join(directory, '.kairos', 'AGENTS.md'), 'old instructions');
   await writeFile(join(directory, '.agents', 'skills', 'alpha', 'SKILL.md'), 'old skill');
   const current = await fixture(new WorkspaceResourceLoader(directory));
   try {
@@ -100,7 +101,7 @@ it('returns only workspace-relative resource paths and validates ReloadResources
     });
     const threadId = created.threadId;
     const otherThreadId = other.thread?.threadId ?? '';
-    await writeFile(join(directory, 'AGENTS.md'), 'new instructions');
+    await writeFile(join(directory, '.kairos', 'AGENTS.md'), 'new instructions');
     await rm(join(directory, '.agents', 'skills', 'alpha'), { recursive: true });
     await mkdir(join(directory, '.agents', 'skills', 'beta'), { recursive: true });
     await writeFile(join(directory, '.agents', 'skills', 'beta', 'SKILL.md'), 'new skill');

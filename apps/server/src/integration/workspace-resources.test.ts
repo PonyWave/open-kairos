@@ -39,7 +39,8 @@ async function makeWorkspace(
   const directory = await mkdtemp(join(tmpdir(), prefix));
   const workspace = join(directory, 'workspace');
   await mkdir(join(workspace, '.agents', 'skills', 'alpha'), { recursive: true });
-  await writeFile(join(workspace, 'AGENTS.md'), `AGENTS ${version} marker`);
+  await mkdir(join(workspace, '.kairos'), { recursive: true });
+  await writeFile(join(workspace, '.kairos', 'AGENTS.md'), `AGENTS ${version} marker`);
   await writeFile(
     join(workspace, '.agents', 'skills', 'alpha', 'SKILL.md'),
     `Skill alpha ${version} marker`,
@@ -166,7 +167,7 @@ function modelInputAudit(fixture: SlashFixture, threadId: string) {
 }
 
 async function writeV2Workspace(workspace: string): Promise<void> {
-  await writeFile(join(workspace, 'AGENTS.md'), 'AGENTS v2 marker');
+  await writeFile(join(workspace, '.kairos', 'AGENTS.md'), 'AGENTS v2 marker');
   await rm(join(workspace, '.agents', 'skills', 'alpha'), { recursive: true });
   await mkdir(join(workspace, '.agents', 'skills', 'beta'), { recursive: true });
   await writeFile(join(workspace, '.agents', 'skills', 'beta', 'SKILL.md'), 'Skill beta v2 marker');
@@ -370,7 +371,7 @@ it('keeps the last valid v2 snapshot after a failed reload and stores a replayab
       clientActionId: 'network-reload-failure-initial',
     });
     expect(initial.changed).toBe(false);
-    await writeFile(join(workspace, 'AGENTS.md'), 'AGENTS v3 must not activate');
+    await writeFile(join(workspace, '.kairos', 'AGENTS.md'), 'AGENTS v3 must not activate');
     await writeFile(join(workspace, '.agents', 'skills', 'alpha', 'SKILL.md'), '   \n');
     const countsBeforeFailure = tableCounts(fixture, threadId);
     const providerRequestsBeforeFailure = provider.requests.length;
@@ -415,7 +416,7 @@ it('keeps the last valid v2 snapshot after a failed reload and stores a replayab
     expect(instructions).toContain('AGENTS v2 marker');
     expect(instructions).toContain('Skill alpha v2 marker');
     expect(instructions).not.toContain('AGENTS v3 must not activate');
-    await writeFile(join(workspace, 'AGENTS.md'), 'AGENTS v2 marker');
+    await writeFile(join(workspace, '.kairos', 'AGENTS.md'), 'AGENTS v2 marker');
     await writeFile(
       join(workspace, '.agents', 'skills', 'alpha', 'SKILL.md'),
       'Skill alpha v2 marker',
@@ -466,7 +467,7 @@ it('finishes a disconnected network reload and replays the persisted v2 result',
       'network-reload-disconnect-first-input',
     );
     await waitSlashRun(fixture, threadId, first.runId, RunStatus.COMPLETED);
-    await writeFile(join(workspace, 'AGENTS.md'), 'AGENTS disconnected v2 marker');
+    await writeFile(join(workspace, '.kairos', 'AGENTS.md'), 'AGENTS disconnected v2 marker');
     const countsBefore = tableCounts(fixture, threadId);
     const request = { threadId, clientActionId: 'network-reload-disconnect' };
     const controller = new AbortController();
@@ -542,7 +543,7 @@ it('recovers an accepted reload as terminal interrupted after an abnormal Server
     );
     await waitSlashRun(fixture, threadId, first.runId, RunStatus.COMPLETED);
     const countsBeforeReload = tableCounts(fixture, threadId);
-    await writeFile(join(workspace, 'AGENTS.md'), 'AGENTS restarted v2 marker');
+    await writeFile(join(workspace, '.kairos', 'AGENTS.md'), 'AGENTS restarted v2 marker');
     const request = { threadId, clientActionId: 'network-reload-restart-interrupted' };
     const running = fixture.clients.workspace.reloadResources(request);
     await vi.waitFor(
