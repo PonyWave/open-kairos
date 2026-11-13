@@ -966,6 +966,101 @@ describe('queued direct user input projection', () => {
   });
 });
 
+describe('reminder-prefixed assistant messages', () => {
+  const reminder =
+    '<system-reminder>\n<msg seq="9" time="2026-11-14T01:35:00+08:00"/>\n</system-reminder>\n\n';
+
+  function reminderAssistant(messageId: string, seq: bigint, callId: string): Message {
+    return create(MessageSchema, {
+      messageId,
+      threadId,
+      agentId: 'thread',
+      seq,
+      role: MessageRole.ASSISTANT,
+      content: reminder,
+      contentBlocks: [
+        create(ContentBlockSchema, { type: ContentBlockType.TEXT, blockIndex: 0, text: reminder }),
+      ],
+      toolCalls: [
+        create(ToolCallSchema, { toolCallId: callId, toolName: 'bash', argumentsJson: '{}' }),
+      ],
+    });
+  }
+
+  it('merges tool groups across reminder-only messages and hides the empty text', () => {
+    const items = projectConversation({
+      threadId,
+      messages: [
+        message('开始', 1n),
+        reminderAssistant('r1', 2n, 'c1'),
+        reminderAssistant('r2', 4n, 'c2'),
+        reminderAssistant('r3', 6n, 'c3'),
+      ],
+      transientResponses: [],
+      runs: [run('run-1', RunStatus.COMPLETED)],
+    });
+    const assistants = items.filter(
+      (item) => item.kind === 'message' && item.value.message.role === MessageRole.ASSISTANT,
+    );
+    const first = assistants[0];
+    if (first?.kind !== 'message') throw new Error('missing first assistant');
+    expect(first.value.toolItems?.map((group) => group.kind)).toEqual(['ordinary']);
+    const merged = first.value.toolItems?.[0];
+    expect(merged?.kind === 'ordinary' && merged.calls.map((call) => call.toolCallId)).toEqual([
+      'c1',
+      'c2',
+      'c3',
+    ]);
+    expect(first.value.message.content.trim()).toBe('');
+    for (const follower of assistants.slice(1)) {
+      if (follower.kind !== 'message') continue;
+      expect(follower.value.toolItems).toEqual([]);
+      expect(follower.value.message.content.trim()).toBe('');
+    }
+  });
+
+  it('strips the reminder but keeps the visible text and its group open for merging', () => {
+    const withText = create(MessageSchema, {
+      messageId: 'r-text',
+      threadId,
+      agentId: 'thread',
+      seq: 2n,
+      role: MessageRole.ASSISTANT,
+      content: `${reminder}实际分析`,
+      contentBlocks: [
+        create(ContentBlockSchema, {
+          type: ContentBlockType.TEXT,
+          blockIndex: 0,
+          text: `${reminder}实际分析`,
+        }),
+      ],
+      toolCalls: [
+        create(ToolCallSchema, { toolCallId: 'c1', toolName: 'bash', argumentsJson: '{}' }),
+      ],
+    });
+    const items = projectConversation({
+      threadId,
+      messages: [message('开始', 1n), withText, reminderAssistant('r2', 4n, 'c2')],
+      transientResponses: [],
+      runs: [run('run-1', RunStatus.COMPLETED)],
+    });
+    const assistants = items.filter(
+      (item) => item.kind === 'message' && item.value.message.role === MessageRole.ASSISTANT,
+    );
+    const first = assistants[0];
+    if (first?.kind !== 'message') throw new Error('missing first assistant');
+    expect(first.value.message.content).toBe('实际分析');
+    const merged = first.value.toolItems?.[0];
+    expect(merged?.kind === 'ordinary' && merged.calls.map((call) => call.toolCallId)).toEqual([
+      'c1',
+      'c2',
+    ]);
+    const second = assistants[1];
+    if (second?.kind !== 'message') throw new Error('missing second assistant');
+    expect(second.value.toolItems).toEqual([]);
+  });
+});
+
 describe('active run pending indicator', () => {
   function sentToUser(runId: string, seq: bigint): Message {
     return create(MessageSchema, {
@@ -1013,5 +1108,47 @@ describe('active run pending indicator', () => {
       runs: [run('run-1', RunStatus.COMPLETED)],
     });
     expect(finished.map((item) => item.kind)).toEqual(['message']);
+  });
+});
+
+describe('streaming reminder suppression', () => {
+  const threadId = 'thread-stream';
+  function streamingTransient(text: string) {
+    return {
+      messageId: 'stream-1',
+      runId: 'run-1',
+      agentId: 'thread',
+      deltaSeq: 3n,
+      contentBlocks: [
+        create(ContentBlockSchema, { type: ContentBlockType.TEXT, blockIndex: 0, text }),
+      ],
+    };
+  }
+  function streamItems(text: string) {
+    return projectConversation({
+      threadId,
+      messages: [],
+      transientResponses: [streamingTransient(text)],
+      runs: [run('run-1', RunStatus.RUNNING)],
+    });
+  }
+
+  it('hides an unclosed leading reminder while streaming', () => {
+    const items = streamItems('<system-reminder>\n<msg seq="9"');
+    expect(items.filter((item) => item.kind === 'message')).toEqual([]);
+  });
+
+  it('shows only the answer once the leading reminder closes', () => {
+    const items = streamItems(
+      '<system-reminder>\n<msg seq="9"/>\n</system-reminder>\n\n正式回复内容',
+    );
+    const assistants = items.filter(
+      (item) => item.kind === 'message' && item.value.message.role === MessageRole.ASSISTANT,
+    );
+    expect(assistants).toHaveLength(1);
+    const first = assistants[0];
+    if (first?.kind !== 'message') throw new Error('missing streamed assistant');
+    expect(first.value.message.content).toBe('正式回复内容');
+    expect(first.value.streaming).toBe(true);
   });
 });

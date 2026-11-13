@@ -14,6 +14,7 @@ import {
 } from '@kairos/contracts';
 import { delegationForToolCall, delegationKey } from './delegation.js';
 import { isRootAgent } from './labels.js';
+import { stripLeadingReminders, stripStreamingReminders } from './reminder-text.js';
 import { type SentUserMessage, sentUserMessage } from './sent-user-message.js';
 import type { TransientResponse } from './thread-projection.js';
 import { timestampDate } from './time-format.js';
@@ -93,7 +94,8 @@ export function projectConversation({
     messages.filter((message) => message.threadId === threadId && !message.supersededByRunId),
   );
   const persistedIds = new Set(currentMessages.map((message) => message.messageId));
-  const displayMessages: DisplayMessage[] = currentMessages.map((message) => {
+  const displayMessages: DisplayMessage[] = currentMessages.map((current) => {
+    const message = visibleAssistantMessage(current);
     const matches = message.delegation
       ? sourceCalls.get(delegationKey(message.delegation))
       : undefined;
@@ -110,11 +112,23 @@ export function projectConversation({
     if (
       owner !== agentId ||
       persistedIds.has(response.messageId) ||
-      (response.runId !== undefined && terminalRunIds.has(response.runId)) ||
-      !response.contentBlocks.some((block) => block.text.trim())
+      (response.runId !== undefined && terminalRunIds.has(response.runId))
     ) {
       continue;
     }
+    const visibleBlocks = response.contentBlocks.map((block) =>
+      block.type === ContentBlockType.TEXT
+        ? { ...block, text: stripStreamingReminders(block.text) }
+        : block,
+    );
+    const visibleText = visibleBlocks
+      .filter((block) => block.type === ContentBlockType.TEXT)
+      .map((block) => block.text)
+      .join('');
+    const hasVisibleContent =
+      visibleText.trim().length > 0 ||
+      visibleBlocks.some((block) => block.type !== ContentBlockType.TEXT && block.text.trim());
+    if (!hasVisibleContent) continue;
     const responseRun = response.runId === undefined ? undefined : runsById.get(response.runId);
     const createdAt = responseRun?.startedAt ?? responseRun?.createdAt;
     displayMessages.push({
@@ -123,11 +137,8 @@ export function projectConversation({
         threadId,
         agentId,
         role: MessageRole.ASSISTANT,
-        content: response.contentBlocks
-          .filter((block) => block.type === ContentBlockType.TEXT)
-          .map((block) => block.text)
-          .join(''),
-        contentBlocks: [...response.contentBlocks],
+        content: visibleText,
+        contentBlocks: visibleBlocks,
         ...(response.runId === undefined ? {} : { runId: response.runId }),
         ...(responseRun?.sendToUserEnabled === undefined
           ? {}
@@ -366,6 +377,26 @@ function projectMixedOperationGroups(
         : undefined;
   }
   return items;
+}
+
+function visibleAssistantMessage(message: Message): Message {
+  if (message.role !== MessageRole.ASSISTANT) return message;
+  const hasReminderText =
+    message.content.startsWith('<system-reminder>\n') ||
+    message.contentBlocks.some(
+      (block) =>
+        block.type === ContentBlockType.TEXT && block.text.startsWith('<system-reminder>\n'),
+    );
+  if (!hasReminderText) return message;
+  return create(MessageSchema, {
+    ...message,
+    content: stripLeadingReminders(message.content),
+    contentBlocks: message.contentBlocks.map((block) =>
+      block.type === ContentBlockType.TEXT && block.text.startsWith('<system-reminder>\n')
+        ? { ...block, text: stripLeadingReminders(block.text) }
+        : block,
+    ),
+  });
 }
 
 function projectSourceCalls(
