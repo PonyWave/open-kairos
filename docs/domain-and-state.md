@@ -72,7 +72,7 @@
 
 ## 7. 设备与 Operation
 
-主环境在首次启动写入环境记录并完成设备绑定，不可删除、不可撤销。远程设备配对、`environment_operations` 意图与恢复规则沿用现有设计。bash 输出分块只保留 16 KiB 头部（与模型可见预览一致），完整输出由执行端 Daemon 写入本机日志文件（默认 `~/.kairos/daemon/logs/`，保留 7 天，单文件上限 64 MiB），路径经操作结果上报；`environment_operations` 增加 `search_action`、`pattern`、`include_glob`、`grep_mode`、`case_insensitive`、`line_numbers`、`search_offset`、`search_limit` 列承载 glob/grep 意图。
+主环境在首次启动写入环境记录并完成设备绑定，不可删除、不可撤销。远程设备配对、`environment_operations` 意图与恢复规则沿用现有设计。bash 输出分块只保留 16 KiB 头部（与模型可见预览一致）；完整输出由 Server 流式写入主机主环境工作目录的 `.kairos/logs/`（保留 7 天，单文件上限 64 MiB），与执行环境无关；`environment_operations` 增加 `search_action`、`pattern`、`include_glob`、`grep_mode`、`case_insensitive`、`line_numbers`、`search_offset`、`search_limit` 列承载 glob/grep 意图。
 
 `background_tasks` 表登记后台任务（bash 与 Subagent 两类）：来源 Thread、Run 与工具调用、终态结果、投递内容与投递状态（`pending`/`queued`/`consumed`）。终态结果与待交付记录先持久化，再绑定回复 Thread 的持久根 Run 直接注入模型输入；注入消息的 Context 来源为 `background_task`。
 

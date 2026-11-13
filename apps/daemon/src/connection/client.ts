@@ -107,7 +107,6 @@ export interface DaemonClientOptions {
   maxPendingOutputBytes?: number;
   maxOutputChunkBytes?: number;
   resourceHomeDirectory?: string;
-  bashLogDirectory?: string;
   status?: Pick<DaemonStatus, 'connection' | 'operation'>;
   onError?: (error: unknown) => void;
   onFatalError?: (error: Error) => void;
@@ -230,9 +229,6 @@ export class DaemonClient {
       ...(options.resourceHomeDirectory === undefined
         ? {}
         : { resourceHomeDirectory: options.resourceHomeDirectory }),
-      ...(options.bashLogDirectory === undefined
-        ? {}
-        : { bashLogDirectory: options.bashLogDirectory }),
     });
   }
 

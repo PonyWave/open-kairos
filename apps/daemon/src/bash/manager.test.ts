@@ -1,12 +1,4 @@
-import {
-  existsSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  utimesSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BashStatus, DeviceErrorCode, OutputStream } from '@kairos/contracts/device';
@@ -21,9 +13,6 @@ function fixture(options?: {
   maxChunkBytes?: number;
   maxOperations?: number;
   killGraceMilliseconds?: number;
-  logDirectory?: string;
-  logHeadBytes?: number;
-  logMaxBytes?: number;
   onEvent?: (event: BashEvent) => void;
 }) {
   const directory = mkdtempSync(join(tmpdir(), 'kairos-daemon-bash-'));
@@ -37,9 +26,6 @@ function fixture(options?: {
     ...(options?.killGraceMilliseconds === undefined
       ? {}
       : { killGraceMilliseconds: options.killGraceMilliseconds }),
-    ...(options?.logDirectory === undefined ? {} : { logDirectory: options.logDirectory }),
-    ...(options?.logHeadBytes === undefined ? {} : { logHeadBytes: options.logHeadBytes }),
-    ...(options?.logMaxBytes === undefined ? {} : { logMaxBytes: options.logMaxBytes }),
     send: async (event) => {
       events.push(event);
       options?.onEvent?.(event);
@@ -545,80 +531,5 @@ describe('BashManager real process execution', () => {
       expect.objectContaining({ code: DeviceErrorCode.OPERATION_UNKNOWN }),
     );
     expect(manager.pendingOperationCount).toBe(0);
-  });
-});
-
-describe('BashManager local output log', () => {
-  it('keeps output without a log file while it fits the head budget', async () => {
-    const logDirectory = join(mkdtempSync(join(tmpdir(), 'kairos-daemon-bash-log-')), 'logs');
-    cleanup.push(() => rmSync(logDirectory, { recursive: true, force: true }));
-    const { events, manager, command } = fixture({ logDirectory, logHeadBytes: 64 });
-    manager.start(command({ command: 'printf ok' }));
-    const final = await waitFor(() => result(events));
-    expect(final.status).toBe(BashStatus.COMPLETED);
-    expect(final.logFile).toBeUndefined();
-    expect(final.logTruncated).toBeUndefined();
-    expect(existsSync(logDirectory)).toBe(false);
-  });
-
-  it('spills the full output to a local log file beyond the head budget', async () => {
-    const logDirectory = join(mkdtempSync(join(tmpdir(), 'kairos-daemon-bash-log-')), 'logs');
-    cleanup.push(() => rmSync(logDirectory, { recursive: true, force: true }));
-    const { events, manager, command } = fixture({ logDirectory, logHeadBytes: 16 });
-    manager.start(command({ command: 'printf 0123456789abcdef; printf 0123456789abcdef' }));
-    const final = await waitFor(() => result(events));
-    expect(final.status).toBe(BashStatus.COMPLETED);
-    expect(final.logFile).toBe(join(logDirectory, 'operation-1.log'));
-    expect(final.logSizeBytes).toBe(32n);
-    expect(final.logTruncated).toBeUndefined();
-    await waitFor(() => {
-      try {
-        return readFileSync(final.logFile ?? '', 'utf8') === '0123456789abcdef0123456789abcdef'
-          ? true
-          : undefined;
-      } catch {
-        return undefined;
-      }
-    });
-  });
-
-  it('truncates the log file at the configured cap', async () => {
-    const logDirectory = join(mkdtempSync(join(tmpdir(), 'kairos-daemon-bash-log-')), 'logs');
-    cleanup.push(() => rmSync(logDirectory, { recursive: true, force: true }));
-    const { events, manager, command } = fixture({
-      logDirectory,
-      logHeadBytes: 8,
-      logMaxBytes: 24,
-    });
-    manager.start(command({ command: 'printf 0123456789abcdef0123456789abcdef0123456789abcdef' }));
-    const final = await waitFor(() => result(events));
-    expect(final.status).toBe(BashStatus.COMPLETED);
-    expect(final.logFile).toBe(join(logDirectory, 'operation-1.log'));
-    expect(final.logSizeBytes).toBe(24n);
-    expect(final.logTruncated).toBe(true);
-    await waitFor(() => {
-      try {
-        return readFileSync(final.logFile ?? '', 'utf8') === '0123456789abcdef01234567'
-          ? true
-          : undefined;
-      } catch {
-        return undefined;
-      }
-    });
-  });
-
-  it('sweeps log files older than the retention window on startup', () => {
-    const logDirectory = mkdtempSync(join(tmpdir(), 'kairos-daemon-bash-log-'));
-    cleanup.push(() => rmSync(logDirectory, { recursive: true, force: true }));
-    const stale = join(logDirectory, 'stale.log');
-    const fresh = join(logDirectory, 'fresh.log');
-    writeFileSync(stale, 'old');
-    writeFileSync(fresh, 'new');
-    const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
-    utimesSync(stale, old, old);
-    const { manager } = fixture({ logDirectory });
-    manager.close();
-    expect(existsSync(stale)).toBe(false);
-    expect(existsSync(fresh)).toBe(true);
   });
 });

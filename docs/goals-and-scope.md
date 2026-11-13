@@ -30,7 +30,7 @@
 - 对话层级与委派：`thread_call` 委派与结果交付、`thread_notify` 通知、Subagent、`workspace_list` 工作空间查询。
 - Automation：cron 定时与手动触发，目标可指定工作空间。
 - Memory Wiki 与 dream：主环境上的用户级长期记忆（`MEMORY.md` 索引 + 主题页），根 Agent 注入索引，全局 main 主动更新；内置每日 dream Automation 在一次性 automation_only Thread 中增量整理，可禁用、可删除。
-- 多设备执行：Daemon 配对、远程 Operation、bash 后台任务与大输出落盘（执行端日志文件）、`env_sync` 环境间文件同步。
+- 多设备执行：Daemon 配对、远程 Operation、bash 后台任务与大输出落盘（主机日志文件）、`env_sync` 环境间文件同步。
 - 文件工具：`read`、`write`、`edit`、`read_image`、`glob`、`grep`（Daemon 内置 ripgrep）；附件上传与投递。
 - 网页访问：`web_fetch` 抓取网页，`web_search` 搜索（需配置外部索引）。
 - MCP 工具桥接：配置经设备通道注入指定环境，命名 `mcp__<server>__<tool>`，远程 server 支持 OAuth 授权。

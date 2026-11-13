@@ -740,7 +740,8 @@ it('AT-04/AT-13/AT-14/AT-16 runs a real Daemon, cancels Bash and pages stored lo
     if (typeof logPath !== 'string' || !logPath.endsWith('.log')) {
       throw new Error('The device output log path is invalid.');
     }
-    expect(logPath).toContain(join(identityDirectory, 'logs'));
+    expect(logPath).toContain(join('.kairos', 'logs'));
+    expect(logPath).not.toContain(identityDirectory);
     const fullLog = await readFile(logPath, 'utf8');
     expect(fullLog.length).toBeGreaterThan(64 * 1024);
     expect(fullLog).toContain('HIDDEN_MARKER');
@@ -814,11 +815,7 @@ it('AT-04/AT-13/AT-14/AT-16 runs a real Daemon, cancels Bash and pages stored lo
     expect(operations.some((operation) => operation.status === OperationStatus.CANCELLED)).toBe(
       true,
     );
-    const persistedFiles = await filesUnder(identityDirectory);
-    expect(persistedFiles).toContain('identity.json');
-    expect(
-      persistedFiles.every((file) => file === 'identity.json' || /^logs\/[^/]+\.log$/.test(file)),
-    ).toBe(true);
+    expect(await filesUnder(identityDirectory)).toEqual(['identity.json']);
   } finally {
     await daemon.stop();
     await closeFixture(fixture);
@@ -906,11 +903,7 @@ it('AT-15 does not repeat device side effects after a Daemon instance restart', 
         .prepare("SELECT COUNT(*) AS count FROM environment_operations WHERE action = 'bash'")
         .get(),
     ).toEqual({ count: 1 });
-    const persistedFiles = await filesUnder(identityDirectory);
-    expect(persistedFiles).toContain('identity.json');
-    expect(
-      persistedFiles.every((file) => file === 'identity.json' || /^logs\/[^/]+\.log$/.test(file)),
-    ).toBe(true);
+    expect(await filesUnder(identityDirectory)).toEqual(['identity.json']);
   } finally {
     await daemon.stop();
     await closeFixture(fixture);
@@ -988,11 +981,7 @@ it.skipIf(process.platform !== 'darwin')(
       });
       const identity: unknown = JSON.parse(await readFile(identityPath, 'utf8'));
       expect(Reflect.get(identity as object, 'serverUrl')).toBe(serverUrl);
-      const persistedFiles = await filesUnder(identityDirectory);
-      expect(persistedFiles).toContain('identity.json');
-      expect(
-        persistedFiles.every((file) => file === 'identity.json' || /^logs\/[^/]+\.log$/.test(file)),
-      ).toBe(true);
+      expect(await filesUnder(identityDirectory)).toEqual(['identity.json']);
       expect(new EnvironmentStore(fixture.database).get(ownerId, envId)).toMatchObject({
         bindingStatus: 'active',
         connectionStatus: 'online',

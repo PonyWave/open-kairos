@@ -22,7 +22,7 @@ Server 首次启动时自动注册主环境：写入环境记录、完成设备�
 
 环境之间的文件与目录复制由 `env_sync` 工具执行：在两个已授权环境之间复制普通文件或目录，冲突策略为 `fail`（默认值）、`skip` 或 `overwrite`，内容相同的文件始终跳过。同步意图、进度与结果保存在 `environment_operations` 命名空间。
 
-`glob` 与 `grep` 工具经设备通道的 `FILE_SEARCH` 能力下发，Daemon spawn 内置的 ripgrep 15.0.0 子进程执行（随 Daemon 发布物打包并校验哈希与平台），输出行数与字节数有上限，超时中止。bash 工具的结果携带字节数有限的输出预览；完整输出超过预览时，执行端 Daemon 把完整输出写入本机 `<身份目录>/logs/<operation_id>.log`（默认 `~/.kairos/daemon/logs/`，保留 7 天，单文件上限 64 MiB），结果 JSON 的 `output_file` 给出路径并附 `hint`，Agent 用 `read` 或 `grep` 以同一 `env_id` 继续读取。Server 的 SQLite 输出分块只保留与预览一致的 16 KiB 头部，完整日志不进入 Server 数据库。
+`glob` 与 `grep` 工具经设备通道的 `FILE_SEARCH` 能力下发，Daemon spawn 内置的 ripgrep 15.0.0 子进程执行（随 Daemon 发布物打包并校验哈希与平台），输出行数与字节数有上限，超时中止。bash 工具的结果携带字节数有限的输出预览；完整输出超过预览时，Server 把流经自己的输出分块流式写入主机主环境工作目录的 `.kairos/logs/<operation_id>.log`（保留 7 天，单文件上限 64 MiB），结果 JSON 的 `output_file` 给出路径（`env_id` 固定 `main`）并附 `hint`，Agent 用 `read` 或 `grep` 以 `env_id=main` 继续读取。任何环境执行的 bash 日志都落在主机；Server 的 SQLite 输出分块只保留与预览一致的 16 KiB 头部，完整日志不进入 Server 数据库。
 
 bash 工具的 `run_in_background` 参数把命令作为后台任务执行：Server 在 `background_tasks` 表登记后立即返回 `task_id`，操作经设备通道异步执行；终态结果先持久化，再绑定回复 Thread 的持久根 Run 直接注入模型输入，不创建普通 `follow_up`。`task_list`、`task_output`、`task_stop`、`task_wait` 管理后台任务（含 Subagent 任务），取代已移除的 `subagent_status` 与 `subagent_cancel`。
 

@@ -311,19 +311,15 @@ class FakeOperations implements EnvironmentOperationGateway {
     }
     return {
       case: 'bash',
-      value: {
-        exitCode: 0,
-        outputComplete: true,
-        endOffset: 14n,
-        ...(this.truncateBashOutput
-          ? {
-              logFile: '/home/device/.kairos/daemon/logs/mock.log',
-              logSizeBytes: 14n,
-              logTruncated: false,
-            }
-          : {}),
-      },
+      value: { exitCode: 0, outputComplete: true, endOffset: 14n },
     };
+  }
+
+  bashOutputLog(
+    operationId: string,
+  ): { path: string; sizeBytes: bigint; truncated: boolean } | undefined {
+    if (!this.truncateBashOutput || !this.#operations.has(operationId)) return undefined;
+    return { path: '/main-workspace/.kairos/logs/mock.log', sizeBytes: 14n, truncated: false };
   }
 }
 
@@ -858,8 +854,9 @@ it('points to the device log file when the bash output preview is truncated', as
     .find((message) => message.message.role === 'tool' && message.message.tool_name === 'bash');
   expect(bashResult?.message.content).toContain('"output_truncated":true');
   expect(bashResult?.message.content).toContain('"output_file"');
-  expect(bashResult?.message.content).toContain('/home/device/.kairos/daemon/logs/mock.log');
-  expect(bashResult?.message.content).toContain('read or grep');
+  expect(bashResult?.message.content).toContain('"env_id":"main"');
+  expect(bashResult?.message.content).toContain('/main-workspace/.kairos/logs/mock.log');
+  expect(bashResult?.message.content).toContain('env_id main');
   expect(bashResult?.message.content).not.toContain('read_output');
 });
 

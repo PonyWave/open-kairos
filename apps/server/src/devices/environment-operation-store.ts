@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto';
+import type { WriteStream } from 'node:fs';
+import { createWriteStream, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type {
   OutputStream,
@@ -27,6 +30,8 @@ export { environmentOperationMigrations } from '../storage/device-migrations.js'
 
 const UINT64_KEY_LENGTH = 20;
 export const ENVIRONMENT_OPERATION_OUTPUT_RETAINED_BYTES = 16 * 1024;
+export const BASH_OUTPUT_LOG_MAX_BYTES = 64 * 1024 * 1024;
+const BASH_OUTPUT_LOG_RETENTION_MILLISECONDS = 7 * 24 * 60 * 60 * 1000;
 const ZERO_OFFSET = '0'.repeat(UINT64_KEY_LENGTH);
 const MAX_UINT64 = 1n << 64n;
 
@@ -784,7 +789,7 @@ export function emptyEnvironmentOutcome(
         value: { path: action.value.path, replacements: 0, bytesWritten: 0n, fileVersion: '' },
       };
     case 'bash':
-      return { case: 'bash', value: { outputComplete: false, logTruncated: false } };
+      return { case: 'bash', value: { outputComplete: false } };
   }
 }
 
@@ -1069,13 +1074,115 @@ function validateResult(
   }
 }
 
+interface BashOutputLogState {
+  head: Buffer[];
+  headBytes: number;
+  path?: string | undefined;
+  stream?: WriteStream | undefined;
+  bytes: number;
+  truncated: boolean;
+  failed: boolean;
+}
+
 export class EnvironmentOperationStore {
+  private readonly bashLogs = new Map<string, BashOutputLogState>();
+
   constructor(
     readonly database: DatabaseSync,
     private readonly now: () => Date = () => new Date(),
+    private readonly options: { bashLogDirectory?: string; bashLogMaxBytes?: number } = {},
   ) {
     assertServerDatabaseCompatible(database);
     migrateDatabase(database, environmentOperationMigrations, 'environment_operations');
+    this.sweepBashLogDirectory();
+  }
+
+  private sweepBashLogDirectory(): void {
+    const directory = this.options.bashLogDirectory;
+    if (directory === undefined) return;
+    try {
+      const cutoff = this.now().getTime() - BASH_OUTPUT_LOG_RETENTION_MILLISECONDS;
+      for (const entry of readdirSync(directory)) {
+        if (!entry.endsWith('.log')) continue;
+        const path = join(directory, entry);
+        try {
+          if (statSync(path).mtimeMs < cutoff) rmSync(path, { force: true });
+        } catch {}
+      }
+    } catch {}
+  }
+
+  // Bash 完整输出流式写入主机主环境工作目录的日志文件;SQLite 只保留头部,
+  // 完整日志不进入 Server 数据库。超过 BASH_OUTPUT_LOG_MAX_BYTES 后截断。
+  private appendBashLog(operationId: string, data: Buffer): void {
+    const directory = this.options.bashLogDirectory;
+    if (directory === undefined) return;
+    let state = this.bashLogs.get(operationId);
+    if (state === undefined) {
+      state = { head: [], headBytes: 0, bytes: 0, truncated: false, failed: false };
+      this.bashLogs.set(operationId, state);
+      if (this.bashLogs.size > 256) {
+        const oldest = this.bashLogs.keys().next().value;
+        if (oldest !== undefined && oldest !== operationId) this.bashLogs.delete(oldest);
+      }
+    }
+    if (state.failed || (state.truncated && state.stream === undefined)) return;
+    try {
+      if (state.path === undefined) {
+        if (state.headBytes + data.length <= ENVIRONMENT_OPERATION_OUTPUT_RETAINED_BYTES) {
+          state.head.push(data);
+          state.headBytes += data.length;
+          return;
+        }
+        const safeId = operationId.replace(/[^A-Za-z0-9_-]/g, '_');
+        state.path = join(directory, `${safeId}.log`);
+        mkdirSync(directory, { recursive: true });
+        const stream = createWriteStream(state.path, { flags: 'w' });
+        stream.on('error', () => {
+          state.failed = true;
+          state.truncated = true;
+          state.stream = undefined;
+        });
+        state.stream = stream;
+        for (const chunk of state.head) stream.write(chunk);
+        state.bytes = state.headBytes;
+        state.head = [];
+        state.headBytes = 0;
+      }
+      const stream = state.stream;
+      if (stream === undefined) return;
+      const remaining = (this.options.bashLogMaxBytes ?? BASH_OUTPUT_LOG_MAX_BYTES) - state.bytes;
+      if (remaining <= 0 || data.length > remaining) {
+        if (remaining > 0) stream.write(data.subarray(0, remaining));
+        state.bytes += Math.max(remaining, 0);
+        state.truncated = true;
+        stream.end();
+        state.stream = undefined;
+        return;
+      }
+      stream.write(data);
+      state.bytes += data.length;
+    } catch {
+      state.failed = true;
+      state.truncated = true;
+      state.stream = undefined;
+    }
+  }
+
+  private finalizeBashLog(operationId: string): void {
+    const state = this.bashLogs.get(operationId);
+    if (state?.stream !== undefined) {
+      state.stream.end();
+      state.stream = undefined;
+    }
+  }
+
+  bashOutputLog(
+    operationId: string,
+  ): { path: string; sizeBytes: bigint; truncated: boolean } | undefined {
+    const state = this.bashLogs.get(operationId);
+    if (state === undefined || state.path === undefined || state.failed) return undefined;
+    return { path: state.path, sizeBytes: BigInt(state.bytes), truncated: state.truncated };
   }
 
   createIntent(input: CreateEnvironmentOperationInput): {
@@ -1402,6 +1509,7 @@ export class EnvironmentOperationStore {
         );
       }
       const data = Buffer.from(input.data);
+      this.appendBashLog(input.operationId, data);
       const retainedEnd = BigInt(ENVIRONMENT_OPERATION_OUTPUT_RETAINED_BYTES);
       const persistStart = start < retainedEnd ? start : retainedEnd;
       const persistEnd = end < retainedEnd ? end : retainedEnd;
@@ -1679,6 +1787,8 @@ export class EnvironmentOperationStore {
          updated_at = ? WHERE operation_id = ?`,
       )
       .run(this.now().toISOString(), this.now().toISOString(), operationId);
+    this.finalizeBashLog(operationId);
+    this.bashLogs.delete(operationId);
     if (updated.changes !== 1) {
       throw new DeviceFailure(
         DeviceErrorCode.INTERNAL,

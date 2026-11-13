@@ -1,9 +1,6 @@
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import type { WriteStream } from 'node:fs';
-import { createWriteStream, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
-import { join } from 'node:path';
 import {
   BASH_MAX_TIMEOUT_SECONDS,
   BashStatus,
@@ -11,10 +8,6 @@ import {
   DeviceErrorCode,
   OutputStream,
 } from '@kairos/contracts/device';
-
-export const BASH_LOG_HEAD_BYTES = 16 * 1024;
-export const BASH_LOG_MAX_BYTES = 64 * 1024 * 1024;
-const BASH_LOG_RETENTION_MILLISECONDS = 7 * 24 * 60 * 60 * 1000;
 
 export interface BashStartCommand {
   operationId: string;
@@ -63,9 +56,6 @@ export interface BashResultEvent {
   exitCode?: number;
   outputComplete: boolean;
   endOffset?: bigint;
-  logFile?: string;
-  logSizeBytes?: bigint;
-  logTruncated?: boolean;
   requestId?: string;
 }
 
@@ -111,13 +101,6 @@ interface Operation {
   stdioDiscarded: boolean;
   cancelRequested: boolean;
   timedOut: boolean;
-  logHead: Buffer[];
-  logHeadBytes: number;
-  logFile?: string | undefined;
-  logStream?: WriteStream | undefined;
-  logBytes: number;
-  logTruncated: boolean;
-  logFailed: boolean;
   timeout?: NodeJS.Timeout;
   killEscalation?: NodeJS.Timeout;
 }
@@ -153,9 +136,6 @@ export interface BashManagerOptions {
   maxChunkBytes?: number;
   maxOperations?: number;
   killGraceMilliseconds?: number;
-  logDirectory?: string;
-  logHeadBytes?: number;
-  logMaxBytes?: number;
   onRetired?: (operationId: string) => void;
 }
 
@@ -187,8 +167,6 @@ export class BashManager {
   private readonly maxChunkBytes: number;
   private readonly maxOperations: number;
   private readonly killGraceMilliseconds: number;
-  private readonly logHeadBytes: number;
-  private readonly logMaxBytes: number;
 
   constructor(private readonly options: BashManagerOptions) {
     this.now = options.now ?? (() => new Date());
@@ -196,97 +174,15 @@ export class BashManager {
     this.maxChunkBytes = options.maxChunkBytes ?? 64 * 1024;
     this.maxOperations = options.maxOperations ?? 256;
     this.killGraceMilliseconds = options.killGraceMilliseconds ?? 5000;
-    this.logHeadBytes = options.logHeadBytes ?? BASH_LOG_HEAD_BYTES;
-    this.logMaxBytes = options.logMaxBytes ?? BASH_LOG_MAX_BYTES;
     for (const [name, value] of [
       ['maxPendingBytes', this.maxPendingBytes],
       ['maxChunkBytes', this.maxChunkBytes],
       ['maxOperations', this.maxOperations],
       ['killGraceMilliseconds', this.killGraceMilliseconds],
-      ['logHeadBytes', this.logHeadBytes],
-      ['logMaxBytes', this.logMaxBytes],
     ] as const) {
       if (!Number.isSafeInteger(value) || value <= 0) {
         throw new Error(`${name} must be a positive safe integer.`);
       }
-    }
-    this.sweepLogDirectory();
-  }
-
-  private sweepLogDirectory(): void {
-    const directory = this.options.logDirectory;
-    if (directory === undefined) return;
-    try {
-      const cutoff = this.now().getTime() - BASH_LOG_RETENTION_MILLISECONDS;
-      for (const entry of readdirSync(directory)) {
-        if (!entry.endsWith('.log')) continue;
-        const path = join(directory, entry);
-        try {
-          if (statSync(path).mtimeMs < cutoff) rmSync(path, { force: true });
-        } catch {}
-      }
-    } catch {}
-  }
-
-  private appendLog(operation: Operation, data: Buffer): void {
-    const directory = this.options.logDirectory;
-    if (directory === undefined || operation.logFailed) return;
-    if (operation.logTruncated && operation.logStream === undefined) return;
-    try {
-      if (operation.logFile === undefined) {
-        if (operation.logHeadBytes + data.length <= this.logHeadBytes) {
-          operation.logHead.push(data);
-          operation.logHeadBytes += data.length;
-          return;
-        }
-        const safeId = operation.command.operationId.replace(/[^A-Za-z0-9_-]/g, '_');
-        operation.logFile = join(directory, `${safeId}.log`);
-        mkdirSync(directory, { recursive: true });
-        const stream = createWriteStream(operation.logFile, { flags: 'w' });
-        stream.on('error', () => {
-          operation.logFailed = true;
-          operation.logTruncated = true;
-          operation.logStream = undefined;
-        });
-        operation.logStream = stream;
-        for (const head of operation.logHead) stream.write(head);
-        operation.logBytes = operation.logHeadBytes;
-        operation.logHead = [];
-        operation.logHeadBytes = 0;
-      }
-      const stream = operation.logStream;
-      if (stream === undefined) return;
-      const remaining = this.logMaxBytes - operation.logBytes;
-      if (remaining <= 0) {
-        operation.logTruncated = true;
-        stream.end();
-        operation.logStream = undefined;
-        return;
-      }
-      if (data.length > remaining) {
-        stream.write(data.subarray(0, remaining));
-        operation.logBytes += remaining;
-        operation.logTruncated = true;
-        stream.end();
-        operation.logStream = undefined;
-        return;
-      }
-      stream.write(data);
-      operation.logBytes += data.length;
-    } catch {
-      operation.logFailed = true;
-      operation.logTruncated = true;
-      operation.logStream = undefined;
-    }
-  }
-
-  private finalizeLog(operation: Operation): void {
-    if (operation.logStream !== undefined) {
-      operation.logStream.end();
-      operation.logStream = undefined;
-    }
-    if (operation.stdioDiscarded && operation.logFile !== undefined) {
-      operation.logTruncated = true;
     }
   }
 
@@ -389,11 +285,6 @@ export class BashManager {
       stdioDiscarded: false,
       cancelRequested: false,
       timedOut: false,
-      logHead: [],
-      logHeadBytes: 0,
-      logBytes: 0,
-      logTruncated: false,
-      logFailed: false,
     };
     this.operations.set(command.operationId, operation);
     this.emit({
@@ -731,7 +622,6 @@ export class BashManager {
       operation.pending.push({ offset: operation.observedBytes, stream, data });
       operation.observedBytes += BigInt(data.length);
       operation.bufferedBytes += data.length;
-      this.appendLog(operation, data);
     }
     if (operation.bufferedBytes >= this.maxPendingBytes && !operation.paused) {
       operation.paused = true;
@@ -745,7 +635,6 @@ export class BashManager {
     if (operation.timeout !== undefined) clearTimeout(operation.timeout);
     if (operation.killEscalation !== undefined) clearTimeout(operation.killEscalation);
     operation.paused = false;
-    this.finalizeLog(operation);
     const status = operation.timedOut
       ? BashStatus.EXPIRED
       : operation.cancelRequested
@@ -767,13 +656,6 @@ export class BashManager {
         : {}),
       outputComplete: !operation.collectionFailed && !operation.stdioDiscarded,
       endOffset: operation.observedBytes,
-      ...(operation.logFile === undefined
-        ? {}
-        : {
-            logFile: operation.logFile,
-            logSizeBytes: BigInt(operation.logBytes),
-            ...(operation.logTruncated ? { logTruncated: true } : {}),
-          }),
     };
     this.resumeOperation(operation);
   }

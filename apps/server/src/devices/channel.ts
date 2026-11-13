@@ -727,6 +727,13 @@ export class DeviceChannel {
     );
   }
 
+  bashOutputLog(
+    operationId: string,
+  ): { path: string; sizeBytes: bigint; truncated: boolean } | undefined {
+    const { operations } = this.environmentStores();
+    return operations.bashOutputLog(operationId);
+  }
+
   readEnvironmentOperationOutput(input: {
     tenantId: string;
     operationId: string;

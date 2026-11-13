@@ -27,7 +27,7 @@
 - 全部 Agent 的 `AGENTS.md` 与 `.agents/skills/<name>/SKILL.md` 资源快照固定从主环境 Daemon 用户主目录读取（`~/.kairos/AGENTS.md` 与 `~/.agents/skills/`，主环境工作目录只决定默认执行位置）；系统提示词注入 `AGENTS.md` 全文与 skill 目录（名称与描述），skill 正文由 `skill` 工具从绑定快照按需加载；用文件工具读取其他环境的资源时显式传 `env_id=main`。
 - 工作空间只提供默认 `env_id` 与路径，不限制工具访问其他已授权设备和任意路径。
 - `thread_notify` 的目标参数为 `workspace`（默认）或 `global`；临时对话只能使用 `global`，工作空间 main 的目标固定 `global`。
-- bash 大输出由执行端 Daemon 写入本机 `<身份目录>/logs/`（保留 7 天，单文件 64 MiB 上限），结果经 `output_file` 指向该文件；Server 输出分块只保留与预览一致的 16 KiB 头部。后台任务（bash 与 Subagent）登记在 `background_tasks` 表，终态结果先持久化再绑定回复 Thread 的持久根 Run 直接注入，来源为 `background_task`；`task_list`/`task_output`/`task_stop`/`task_wait` 统一管理，不提供 `subagent_status`/`subagent_cancel`。
+- bash 大输出由 Server 流式写入主机主环境工作目录的 `.kairos/logs/`（保留 7 天，单文件 64 MiB 上限），与执行环境无关，结果经 `output_file`（`env_id` 固定 `main`）指向该文件；Server 输出分块只保留与预览一致的 16 KiB 头部。后台任务（bash 与 Subagent）登记在 `background_tasks` 表，终态结果先持久化再绑定回复 Thread 的持久根 Run 直接注入，来源为 `background_task`；`task_list`/`task_output`/`task_stop`/`task_wait` 统一管理，不提供 `subagent_status`/`subagent_cancel`。
 - MCP server 配置（`KAIROS_MCP_CONFIG`）绑定单一环境：`env_id` 缺省 `main`。只在一个环境注入的 server 在工具描述中说明注册环境、不提供 `env_id` 参数；两个及以上环境同时注入的 server 列出全部环境，`env_id` 必填。工具命名 `mcp__<server>__<tool>`；OAuth 令牌保存于 `mcp_oauth_credentials`，授权 URL 经工具进度事件推送，回调为 `/mcp/oauth/callback`。
 - Automation 存储触发时间带确定性 jitter（周期 × 10% 上限 15 分钟；整点/半点的 once 提前至多 90 秒）；停机错过的触发恢复后合并为一次立即触发，投递输入注明原定时间与合并次数。
 

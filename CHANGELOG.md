@@ -8,7 +8,7 @@
 
 - `glob`/`grep` 文件搜索工具：经设备通道 `FILE_SEARCH` 能力下发，Daemon spawn 内置 ripgrep 15.0.0 子进程执行（随发布物打包并校验哈希与平台），行数与字节数有上限。
 - bash `run_in_background` 后台执行：`background_tasks` 表登记，终态结果持久化后绑定回复 Thread 的持久根 Run 直接注入；`task_list`/`task_output`/`task_stop`/`task_wait` 管理后台任务（含 Subagent 任务）。
-- bash 大输出落盘：完整输出由执行端 Daemon 写入本机 `<身份目录>/logs/<operation_id>.log`（保留 7 天，单文件 64 MiB 上限），结果经 `output_file` 指向该文件，用 `read`/`grep` 以同一 `env_id` 继续读取；Server 输出分块只保留 16 KiB 头部。
+- bash 大输出落盘：完整输出由 Server 流式写入主机主环境工作目录的 `.kairos/logs/<operation_id>.log`（保留 7 天，单文件 64 MiB 上限），与执行环境无关；结果经 `output_file`（`env_id` 固定 `main`）指向该文件，用 `read`/`grep` 以 `env_id=main` 继续读取；Server 输出分块只保留 16 KiB 头部。
 - MCP 工具桥接：`KAIROS_MCP_CONFIG` 配置 server 并绑定环境（`env_id` 缺省 `main`），工具命名 `mcp__<server>__<tool>`；单环境注册不提供 `env_id` 参数，多环境注册必须提供。远程 server 支持 OAuth：`mcp__<server>__authenticate` 工具、授权 URL 经工具进度事件推送（GUI 授权卡片带复制按钮）、`/mcp/oauth/callback` 回调、`mcp_oauth_credentials` 表存储与到期刷新。
 - GUI 工具卡片进度槽：WatchThread 新增 `tool_progress` 瞬态事件。
 

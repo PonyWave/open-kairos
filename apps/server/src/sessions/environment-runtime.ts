@@ -55,6 +55,9 @@ export interface EnvironmentOperationGateway {
     reason: string;
   }): Promise<EnvironmentOperationRecord>;
   getEnvironmentOperation(tenantId: string, operationId: string): EnvironmentOperationRecord;
+  bashOutputLog(
+    operationId: string,
+  ): { path: string; sizeBytes: bigint; truncated: boolean } | undefined;
   readEnvironmentOperationOutput(input: {
     tenantId: string;
     operationId: string;
@@ -117,9 +120,6 @@ const bashOutcomeSchema = z.object({
   exitCode: z.number().int().optional(),
   outputComplete: z.boolean(),
   endOffset: z.bigint().nonnegative().optional(),
-  logFile: z.string().optional(),
-  logSizeBytes: z.bigint().nonnegative().optional(),
-  logTruncated: z.boolean().optional(),
 });
 const globOutcomeSchema = z.object({
   path: z.string(),
@@ -1842,18 +1842,17 @@ export class AgentEnvironmentRuntime {
       output,
       output_truncated: truncated,
     };
-    if (!truncated || outcome.logFile === undefined) return jsonStringify(result);
+    const log = truncated ? this.operations.bashOutputLog(operation.operationId) : undefined;
+    if (log === undefined) return jsonStringify(result);
     return jsonStringify({
       ...result,
       output_file: {
-        env_id: base.env_id,
-        path: outcome.logFile,
-        ...(outcome.logSizeBytes === undefined
-          ? {}
-          : { size_bytes: outcome.logSizeBytes.toString() }),
-        ...(outcome.logTruncated === true ? { truncated: true } : {}),
+        env_id: 'main',
+        path: log.path,
+        size_bytes: log.sizeBytes.toString(),
+        ...(log.truncated ? { truncated: true } : {}),
       },
-      hint: 'The output preview is truncated; the full output is in output_file on the same environment. Continue reading it with read or grep using the same env_id.',
+      hint: 'The output preview is truncated; the full output is in output_file on the main environment (env_id main). Continue reading it with read or grep using env_id main.',
     });
   }
 }

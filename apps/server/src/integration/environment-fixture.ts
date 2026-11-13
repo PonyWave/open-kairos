@@ -256,6 +256,12 @@ export class ControlledEnvironmentOperations implements EnvironmentOperationGate
     return { data: new TextEncoder().encode(this.bashOutput), truncated: false };
   }
 
+  bashOutputLog(
+    _operationId: string,
+  ): { path: string; sizeBytes: bigint; truncated: boolean } | undefined {
+    return undefined;
+  }
+
   readEnvironmentOperationOutput(input: {
     tenantId: string;
     operationId: string;
@@ -633,7 +639,9 @@ export async function startRealEnvironmentServer(
     );
   new SessionStore(database, { mainEnvironment });
   const environments = new EnvironmentStore(database, { mainEnvironment });
-  const operations = new EnvironmentOperationStore(database);
+  const operations = new EnvironmentOperationStore(database, undefined, {
+    bashLogDirectory: join(mainEnvironment.workspace, '.kairos', 'logs'),
+  });
   const channel = new DeviceChannel({
     environments,
     environmentOperations: operations,
@@ -661,6 +669,10 @@ export async function startRealEnvironmentServer(
       mainEnvironmentOperationIds.has(input.operationId)
         ? mainEnvironmentOperations.readEnvironmentOperationOutput(input)
         : channel.readEnvironmentOperationOutput(input),
+    bashOutputLog: (operationId) =>
+      mainEnvironmentOperationIds.has(operationId)
+        ? mainEnvironmentOperations.bashOutputLog(operationId)
+        : channel.bashOutputLog(operationId),
   };
   const server = createServer(database, false, {
     ...options,

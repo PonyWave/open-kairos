@@ -326,9 +326,6 @@ message BashOutcome {
   optional int32 exit_code = 1;
   bool output_complete = 2;
   optional uint64 end_offset = 3;
-  optional string log_file = 4;
-  optional uint64 log_size_bytes = 5;
-  bool log_truncated = 6;
 }
 
 message GlobOutcome {

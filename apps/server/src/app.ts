@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { fastifyConnectPlugin } from '@connectrpc/connect-fastify';
@@ -118,7 +119,9 @@ export function createServer(
     ...(options.now ? { now: options.now } : {}),
     mainEnvironment,
   });
-  const environmentOperations = new EnvironmentOperationStore(database, options.now);
+  const environmentOperations = new EnvironmentOperationStore(database, options.now, {
+    bashLogDirectory: join(mainEnvironment.workspace, '.kairos', 'logs'),
+  });
   const deviceChannel =
     options.deviceChannel ??
     new DeviceChannel({
