@@ -1,8 +1,8 @@
 # CHANGELOG
 
-## 2f7c001 - 2026-11-13
+## bf5702c - 2026-11-13
 
-来源分支：feat/agent-tooling-mcp，合并提交待补。
+来源分支：feat/agent-tooling-mcp，合并提交 bf5702c。
 
 ### 新增
 
