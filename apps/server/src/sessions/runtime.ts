@@ -51,9 +51,11 @@ import {
   createSkillTool,
   createSubagentTaskOps,
   createTaskTools,
+  createThreadArchiveTool,
   createThreadDelegationTools,
   createThreadNotificationTool,
   createWorkspaceCreateTool,
+  createWorkspaceDeleteTool,
   createWorkspaceListTool,
   threadNotificationAcceptance,
 } from '../tools/index.js';
@@ -2032,8 +2034,10 @@ export class RunCoordinator {
           }),
         );
         tools.push(...createThreadDelegationTools(delegation));
+        tools.push(createThreadArchiveTool(delegation));
         tools.push(createWorkspaceListTool(delegation));
         tools.push(createWorkspaceCreateTool(delegation));
+        tools.push(createWorkspaceDeleteTool(delegation));
         if (this.#options.automations) {
           tools.push(
             ...createAutomationTools({
@@ -2047,6 +2051,7 @@ export class RunCoordinator {
       } else if (threadType === 'workspace_main') {
         tools.push(createSendToUserTool({ store: this.store, source: run }));
         tools.push(...createThreadDelegationTools(delegation));
+        tools.push(createThreadArchiveTool(delegation));
         tools.push(createWorkspaceListTool(delegation));
         tools.push(
           createThreadNotificationTool({

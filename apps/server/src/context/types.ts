@@ -168,6 +168,8 @@ export interface ChannelReference {
   kind: ChannelReferenceKind;
   externalMessageId?: string | null | undefined;
   deliveryId?: string | null | undefined;
+  quoteSeq?: number | null | undefined;
+  quoteExcerpt?: string | null | undefined;
 }
 
 export interface AutomationReference {

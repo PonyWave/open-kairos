@@ -188,3 +188,40 @@ it('fails deliveries for channels without an adapter as non-retryable', async ()
     value.database.close();
   }
 });
+
+it('records outbound message map entries when the channel returns a message id', async () => {
+  const database = openDatabase(':memory:');
+  const sessionStore = new SessionStore(database);
+  seedTestTenant(database, ownerId);
+  const channelStore = new ChannelStore(database, secret);
+  const adapter = {
+    send: async () => ({ externalMessageId: 'om_out_1' }),
+  };
+  const worker = new ChannelDeliveryWorker({
+    channelStore,
+    sessionStore,
+    ownerId: () => ownerId,
+    channels: { feishu: adapter },
+  });
+  try {
+    channelStore.saveFeishuCredentials(
+      ownerId,
+      { kind: 'feishu', appId: 'cli_1', appSecret: 's' },
+      '123456',
+    );
+    channelStore.bindExternalUser(ownerId, 'feishu', 'ou_1');
+    const delivery = channelStore.createDelivery({
+      ownerId,
+      channel: 'feishu',
+      content: '出站内容',
+    });
+    await worker.processNow();
+    expect(channelStore.getDelivery(ownerId, delivery.deliveryId).status).toBe('succeeded');
+    const mapped = channelStore.findMessageMap(ownerId, 'feishu', 'om_out_1');
+    expect(mapped?.direction).toBe('outbound');
+    expect(mapped?.excerpt).toBe('出站内容');
+    expect(channelStore.latestInboundMessageId(ownerId, 'feishu')).toBeUndefined();
+  } finally {
+    database.close();
+  }
+});

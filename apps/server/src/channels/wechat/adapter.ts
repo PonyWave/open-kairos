@@ -11,12 +11,18 @@ export interface InboundChannelMedia {
   bytes: Uint8Array;
 }
 
+export interface InboundChannelQuote {
+  quoteSeq?: number | null;
+  quoteExcerpt?: string | null;
+}
+
 export interface InboundChannelMessage {
   channel: 'wechat' | 'feishu';
   externalMessageId: string;
   externalUserId: string;
   text: string;
   media?: InboundChannelMedia[];
+  quote?: InboundChannelQuote;
 }
 
 export type InboundHandler = (message: InboundChannelMessage) => void;
@@ -440,14 +446,44 @@ export class WechatChannel implements OutboundChannel {
     const text = inboundMessageText(message);
     const media = await this.#downloadMessageMedia(externalMessageId, message);
     if (text.trim().length === 0 && media.length === 0) return;
+    const quote = this.#resolveQuote(ownerId, message);
     this.#onInbound({
       channel: 'wechat',
       externalMessageId,
       externalUserId: boundUserId,
       text,
       ...(media.length === 0 ? {} : { media }),
+      ...(quote === undefined ? {} : { quote }),
     });
     void this.#startTyping(boundUserId, message.context_token);
+  }
+
+  #resolveQuote(
+    ownerId: string,
+    message: Parameters<typeof inboundMessageText>[0],
+  ): InboundChannelQuote | undefined {
+    for (const item of message.item_list ?? []) {
+      const ref = item?.ref_msg;
+      if (ref === undefined) continue;
+      const excerpt = ['text', 'title', 'content', 'description']
+        .map((key) => ref[key])
+        .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+      const refId = ['msg_id', 'message_id', 'id']
+        .map((key) => ref[key])
+        .find((value): value is number | string =>
+          typeof value === 'number' ? Number.isSafeInteger(value) : typeof value === 'string',
+        );
+      const mapped =
+        refId === undefined
+          ? undefined
+          : this.#store.findMessageMap(ownerId, 'wechat', String(refId));
+      if (mapped === undefined && excerpt === undefined) continue;
+      return {
+        ...(mapped?.messageSeq == null ? {} : { quoteSeq: mapped.messageSeq }),
+        quoteExcerpt: (mapped?.excerpt ?? excerpt ?? '').slice(0, 500),
+      };
+    }
+    return undefined;
   }
 
   async #downloadMessageMedia(
@@ -470,7 +506,11 @@ export class WechatChannel implements OutboundChannel {
                 : undefined;
       const mediaRef = ref?.media;
       if (ref === undefined || mediaRef === undefined) continue;
-      if (item.type === 3 && item.voice_item?.text !== undefined && item.voice_item.text.length > 0) {
+      if (
+        item.type === 3 &&
+        item.voice_item?.text !== undefined &&
+        item.voice_item.text.length > 0
+      ) {
         continue;
       }
       const aesKey =

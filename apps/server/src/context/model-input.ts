@@ -32,9 +32,27 @@ export function currentModelMessageWithMeta(record: ContextMessage): ModelMessag
   };
 }
 
+function xmlEscape(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+export function messageQuoteTag(record: ContextMessage): string | undefined {
+  const channel = record.channel;
+  if (channel === null || channel === undefined) return undefined;
+  if (channel.quoteExcerpt === null || channel.quoteExcerpt === undefined) return undefined;
+  const seq =
+    channel.quoteSeq === null || channel.quoteSeq === undefined ? '' : ` seq="${channel.quoteSeq}"`;
+  return `<ref${seq}>${xmlEscape(channel.quoteExcerpt)}</ref>`;
+}
+
 export function messageMetaTag(record: ContextMessage): string {
   const from = messageOrigin(record);
-  return `<msg seq="${record.seq}" time="${localTimeWithOffset(record.createdAt)}"${from === undefined ? '' : ` from="${from}"`}/>`;
+  const quote = messageQuoteTag(record);
+  return `<msg seq="${record.seq}" time="${localTimeWithOffset(record.createdAt)}"${from === undefined ? '' : ` from="${from}"`}/>${quote === undefined ? '' : `\n${quote}`}`;
 }
 
 export function messageMetaReminder(input: {

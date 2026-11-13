@@ -82,6 +82,7 @@ export const weixinMessageSchema = z.object({
               media: cdnMediaSchema,
             })
             .optional(),
+          ref_msg: z.record(z.string(), z.unknown()).optional(),
         })
         .optional(),
     )

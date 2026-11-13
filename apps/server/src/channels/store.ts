@@ -290,6 +290,104 @@ export class ChannelStore {
     return result.changes > 0;
   }
 
+  recordMessageMap(input: {
+    ownerId: string;
+    channel: ChannelIdValue;
+    externalMessageId: string;
+    direction: 'inbound' | 'outbound';
+    inputId?: string | null;
+    messageSeq?: number | null;
+    excerpt?: string;
+  }): void {
+    this.database
+      .prepare(
+        `INSERT OR IGNORE INTO channel_message_map(
+          tenant_id, channel, external_message_id, direction, input_id, message_seq, excerpt, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.ownerId,
+        input.channel,
+        input.externalMessageId,
+        input.direction,
+        input.inputId ?? null,
+        input.messageSeq ?? null,
+        (input.excerpt ?? '').slice(0, 500),
+        isoTime(undefined, this.#clock),
+      );
+  }
+
+  findMessageMap(
+    ownerId: string,
+    channel: ChannelIdValue,
+    externalMessageId: string,
+  ):
+    | {
+        direction: 'inbound' | 'outbound';
+        inputId: string | null;
+        messageSeq: number | null;
+        excerpt: string;
+      }
+    | undefined {
+    const row = this.database
+      .prepare(
+        `SELECT direction, input_id, message_seq, excerpt FROM channel_message_map
+         WHERE tenant_id = ? AND channel = ? AND external_message_id = ?`,
+      )
+      .get(ownerId, channel, externalMessageId);
+    if (row === undefined) return undefined;
+    const parsed = z
+      .object({
+        direction: z.enum(['inbound', 'outbound']),
+        input_id: z.string().nullable(),
+        message_seq: z.number().int().positive().nullable(),
+        excerpt: z.string(),
+      })
+      .parse(row);
+    return {
+      direction: parsed.direction,
+      inputId: parsed.input_id,
+      messageSeq: parsed.message_seq,
+      excerpt: parsed.excerpt,
+    };
+  }
+
+  messageSeqForInput(ownerId: string, inputId: string): number | undefined {
+    const row = this.database
+      .prepare(
+        `SELECT seq FROM context_messages
+         WHERE source_input_id = ? AND superseded_by_run_id IS NULL
+         ORDER BY seq DESC LIMIT 1`,
+      )
+      .get(inputId);
+    void ownerId;
+    return row === undefined
+      ? undefined
+      : z.object({ seq: z.number().int().positive() }).parse(row).seq;
+  }
+
+  messageSeqForMessageId(messageId: string): number | undefined {
+    const row = this.database
+      .prepare('SELECT seq FROM context_messages WHERE message_id = ?')
+      .get(messageId);
+    return row === undefined
+      ? undefined
+      : z.object({ seq: z.number().int().positive() }).parse(row).seq;
+  }
+
+  latestInboundMessageId(ownerId: string, channel: ChannelIdValue): string | undefined {
+    const row = this.database
+      .prepare(
+        `SELECT external_message_id FROM channel_message_map
+         WHERE tenant_id = ? AND channel = ? AND direction = 'inbound'
+         ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      )
+      .get(ownerId, channel);
+    return row === undefined
+      ? undefined
+      : z.object({ external_message_id: z.string() }).parse(row).external_message_id;
+  }
+
   createDelivery(input: {
     ownerId: string;
     channel: ChannelIdValue;

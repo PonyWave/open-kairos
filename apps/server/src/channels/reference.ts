@@ -7,6 +7,8 @@ export const channelReferenceSchema = z
     kind: z.enum(['inbound', 'delivery_failure']),
     externalMessageId: z.string().min(1).nullish(),
     deliveryId: z.string().min(1).nullish(),
+    quoteSeq: z.number().int().positive().nullish(),
+    quoteExcerpt: z.string().min(1).max(500).nullish(),
   })
   .strict();
 

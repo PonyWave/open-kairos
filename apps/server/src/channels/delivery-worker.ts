@@ -10,7 +10,7 @@ export interface OutboundChannel {
   send(
     input: { externalUserId: string; contextToken: string | null; markdown: string },
     signal: AbortSignal,
-  ): Promise<void>;
+  ): Promise<{ externalMessageId?: string } | void>;
 }
 
 export interface DeliveryWorkerOptions {
@@ -100,7 +100,7 @@ export class ChannelDeliveryWorker {
         );
       }
       const timeout = AbortSignal.timeout(this.#options.sendTimeoutMs ?? 60_000);
-      await adapter.send(
+      const sent = await adapter.send(
         {
           externalUserId: state.externalUserId,
           contextToken: state.contextToken,
@@ -109,6 +109,19 @@ export class ChannelDeliveryWorker {
         timeout,
       );
       store.markSucceeded(ownerId, delivery.deliveryId);
+      if (sent !== undefined && sent.externalMessageId !== undefined) {
+        store.recordMessageMap({
+          ownerId,
+          channel: delivery.channel,
+          externalMessageId: sent.externalMessageId,
+          direction: 'outbound',
+          messageSeq:
+            claimed.messageId === null
+              ? null
+              : (store.messageSeqForMessageId(claimed.messageId) ?? null),
+          excerpt: claimed.content.slice(0, 500),
+        });
+      }
     } catch (error) {
       const classified =
         error instanceof ChannelDeliveryError

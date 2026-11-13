@@ -520,4 +520,23 @@ CREATE INDEX input_attachments_attachment
         ON input_attachments(attachment_id, input_id);
     `,
   },
+  {
+    version: 6,
+    name: 'channel_message_map',
+    sql: `
+CREATE TABLE channel_message_map (
+        tenant_id TEXT NOT NULL,
+        channel TEXT NOT NULL CHECK(channel IN ('wechat', 'feishu')),
+        external_message_id TEXT NOT NULL,
+        direction TEXT NOT NULL CHECK(direction IN ('inbound', 'outbound')),
+        input_id TEXT,
+        message_seq INTEGER,
+        excerpt TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(tenant_id, channel, external_message_id)
+      );
+CREATE INDEX channel_message_map_inbound
+        ON channel_message_map(tenant_id, channel, direction, created_at);
+    `,
+  },
 ];

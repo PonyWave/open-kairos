@@ -211,3 +211,51 @@ it('enqueues plain text immediately and marks it steer', async () => {
     database.close();
   }
 });
+
+it('records inbound message map entries and resolves quotes into the channel reference', async () => {
+  const database = openDatabase(':memory:');
+  const sessionStore = new SessionStore(database);
+  seedTestTenant(database, ownerId);
+  const manager = new ChannelManager({
+    database,
+    secret,
+    sessionStore,
+    ownerId: () => ownerId,
+    deliver: () => Promise.resolve('run'),
+    wechatClient: new StubWechatClient(),
+  });
+  try {
+    manager.store.completeWechatLogin(ownerId, {
+      kind: 'wechat',
+      botToken: 'token-1',
+      baseUrl: 'https://ilinkai.weixin.qq.com',
+      botId: 'bot-1',
+      ilinkUserId: 'user-1',
+    });
+    await manager.wechat.handleInboundMessage(ownerId, 'user-1', {
+      message_type: 1,
+      from_user_id: 'user-1',
+      message_id: 400,
+      item_list: [{ type: 1, text_item: { text: '原始问题' } }],
+    });
+    await manager.wechat.handleInboundMessage(ownerId, 'user-1', {
+      message_type: 1,
+      from_user_id: 'user-1',
+      message_id: 401,
+      item_list: [
+        { type: 1, text_item: { text: '引用一下' } },
+        { ref_msg: { msg_id: 400, text: '原始问题' } },
+      ],
+    });
+    const mapped = manager.store.findMessageMap(ownerId, 'wechat', '400');
+    expect(mapped?.direction).toBe('inbound');
+    expect(mapped?.excerpt).toBe('原始问题');
+    const thread = sessionStore.getOrCreateMainThread(ownerId);
+    const inputs = sessionStore.listInputs(ownerId, thread.threadId);
+    expect(inputs).toHaveLength(2);
+    expect(inputs[1]?.channel?.quoteExcerpt).toBe('原始问题');
+  } finally {
+    manager.stop();
+    database.close();
+  }
+});

@@ -5,7 +5,11 @@ import type { OutboundChannel } from '../delivery-worker.js';
 import { renderFeishuCards, renderFeishuTextFallback } from '../render-feishu.js';
 import type { ChannelStore } from '../store.js';
 import { ChannelDeliveryError } from '../store.js';
-import type { InboundChannelMedia, InboundHandler } from '../wechat/adapter.js';
+import type {
+  InboundChannelMedia,
+  InboundChannelQuote,
+  InboundHandler,
+} from '../wechat/adapter.js';
 
 const textContentSchema = z.object({ text: z.string() });
 const postContentSchema = z.object({
@@ -151,7 +155,7 @@ export class FeishuChannel implements OutboundChannel {
   async send(
     input: { externalUserId: string; contextToken: string | null; markdown: string },
     _signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<{ externalMessageId?: string } | void> {
     const ownerId = this.#ownerId();
     const credentials = this.#store.getCredentials(ownerId, 'feishu');
     if (credentials === null || credentials.kind !== 'feishu') {
@@ -162,20 +166,35 @@ export class FeishuChannel implements OutboundChannel {
     if (payloads.length === 0) {
       throw new ChannelDeliveryError(false, 'empty_message', '没有可发送的文本内容。');
     }
+    const replyTo = this.#store.latestInboundMessageId(this.#ownerId(), 'feishu');
+    let lastMessageId: string | undefined;
     try {
       for (const payload of payloads) {
-        await this.#sendPayload(client, input.externalUserId, payload.msgType, payload.content);
+        lastMessageId = await this.#sendPayload(
+          client,
+          input.externalUserId,
+          payload.msgType,
+          payload.content,
+          replyTo,
+        );
       }
     } catch (error) {
       if (error instanceof ChannelDeliveryError && !error.retryable) {
         const fallback = renderFeishuTextFallback(input.markdown);
         for (const payload of fallback) {
-          await this.#sendPayload(client, input.externalUserId, payload.msgType, payload.content);
+          lastMessageId = await this.#sendPayload(
+            client,
+            input.externalUserId,
+            payload.msgType,
+            payload.content,
+            replyTo,
+          );
         }
-        return;
+        return { ...(lastMessageId === undefined ? {} : { externalMessageId: lastMessageId }) };
       }
       throw error;
     }
+    return { ...(lastMessageId === undefined ? {} : { externalMessageId: lastMessageId }) };
   }
 
   async #sendPayload(
@@ -183,13 +202,24 @@ export class FeishuChannel implements OutboundChannel {
     openId: string,
     msgType: 'interactive' | 'text',
     content: string,
-  ): Promise<void> {
-    let response: { code?: number | undefined; msg?: string | undefined };
+    replyTo?: string | undefined,
+  ): Promise<string | undefined> {
+    let response: {
+      code?: number | undefined;
+      msg?: string | undefined;
+      data?: { message_id?: string | undefined } | undefined;
+    };
     try {
-      response = await client.im.message.create({
-        params: { receive_id_type: 'open_id' },
-        data: { receive_id: openId, msg_type: msgType, content, uuid: randomUUID() },
-      });
+      response =
+        replyTo === undefined
+          ? await client.im.message.create({
+              params: { receive_id_type: 'open_id' },
+              data: { receive_id: openId, msg_type: msgType, content, uuid: randomUUID() },
+            })
+          : await client.im.message.reply({
+              path: { message_id: replyTo },
+              data: { msg_type: msgType, content, uuid: randomUUID() },
+            });
     } catch (error) {
       throw new ChannelDeliveryError(
         true,
@@ -200,6 +230,7 @@ export class FeishuChannel implements OutboundChannel {
     if (response.code !== 0) {
       throw classifyFeishuError(response.code ?? -1, response.msg ?? '未知错误');
     }
+    return response.data?.message_id;
   }
 
   #apiClient(appId: string, appSecret: string): lark.Client {
@@ -293,6 +324,7 @@ export class FeishuChannel implements OutboundChannel {
         }),
         message: z.object({
           message_id: z.string(),
+          parent_id: z.string().optional(),
           chat_type: z.string(),
           message_type: z.string(),
           content: z.string(),
@@ -339,13 +371,49 @@ export class FeishuChannel implements OutboundChannel {
     if (!this.#store.recordInboundEvent(ownerId, 'feishu', message.message_id)) return;
     const media = await this.#downloadMessageMedia(message);
     if (text.trim().length === 0 && media.length === 0) return;
+    const quote = await this.#resolveQuote(ownerId, message);
     this.#onInbound({
       channel: 'feishu',
       externalMessageId: message.message_id,
       externalUserId: openId,
       text,
       ...(media.length === 0 ? {} : { media }),
+      ...(quote === undefined ? {} : { quote }),
     });
+  }
+
+  async #resolveQuote(
+    ownerId: string,
+    message: { message_id: string; parent_id?: string | undefined },
+  ): Promise<InboundChannelQuote | undefined> {
+    if (message.parent_id === undefined || message.parent_id.length === 0) return undefined;
+    const mapped = this.#store.findMessageMap(ownerId, 'feishu', message.parent_id);
+    if (mapped !== undefined) {
+      const seq =
+        mapped.messageSeq ??
+        (mapped.inputId === null
+          ? undefined
+          : this.#store.messageSeqForInput(ownerId, mapped.inputId));
+      return {
+        ...(seq === undefined ? {} : { quoteSeq: seq }),
+        quoteExcerpt: mapped.excerpt.slice(0, 500),
+      };
+    }
+    const credentials = this.#store.getCredentials(ownerId, 'feishu');
+    if (credentials === null || credentials.kind !== 'feishu') return undefined;
+    try {
+      const response = await this.#apiClient(
+        credentials.appId,
+        credentials.appSecret,
+      ).im.message.get({ path: { message_id: message.parent_id } });
+      const quoted = response.data?.items?.[0];
+      if (quoted === undefined) return undefined;
+      const excerpt = feishuMessageText(quoted.msg_type ?? 'text', quoted.body?.content ?? '');
+      return excerpt.trim().length === 0 ? undefined : { quoteExcerpt: excerpt.slice(0, 500) };
+    } catch (error) {
+      console.error('feishu quote fetch failed', error);
+      return undefined;
+    }
   }
 
   async #downloadMessageMedia(message: {

@@ -114,3 +114,33 @@ describe('message meta in model input', () => {
     }
   });
 });
+
+it('renders quoted channel messages as a ref tag inside the meta block', () => {
+  const { database, context } = seed();
+  try {
+    context.append({
+      threadId: 'thread',
+      agentId: 'thread',
+      message: { role: 'user', content: '针对上面那条回复' },
+      createdAt: '2026-11-14T02:00:00.000Z',
+      source: 'channel',
+      channel: {
+        channel: 'feishu',
+        kind: 'inbound',
+        externalMessageId: 'om_1',
+        quoteSeq: 42,
+        quoteExcerpt: '上一条回复 <内容>',
+      },
+    });
+    const messages = buildModelMessages({
+      systemInstructions: [],
+      recaps: [],
+      contextMessages: context.query({ threadId: 'thread', agentId: 'thread' }),
+      pendingMessages: [],
+    });
+    expect(messages[0]?.content).toContain('<ref seq="42">上一条回复 &lt;内容&gt;</ref>');
+    expect(messages[0]?.content).toContain('from="feishu"');
+  } finally {
+    database.close();
+  }
+});

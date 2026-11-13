@@ -12,7 +12,7 @@ import type { WechatClientApi } from './wechat/client.js';
 interface PendingMediaBatch {
   texts: string[];
   attachmentIds: string[];
-  firstExternalMessageId: string;
+  externalMessageIds: string[];
   timer: ReturnType<typeof setTimeout>;
 }
 
@@ -106,6 +106,7 @@ export class ChannelManager {
       if (attachmentIds.length > 0 && !hasUserText(message.text)) {
         if (batch !== undefined) {
           batch.attachmentIds.push(...attachmentIds);
+          batch.externalMessageIds.push(message.externalMessageId);
           if (message.text.trim().length > 0) batch.texts.push(message.text);
           clearTimeout(batch.timer);
           batch.timer = this.#batchTimer(key);
@@ -113,7 +114,7 @@ export class ChannelManager {
           this.#mediaBatches.set(key, {
             texts: message.text.trim().length > 0 ? [message.text] : [],
             attachmentIds: [...attachmentIds],
-            firstExternalMessageId: message.externalMessageId,
+            externalMessageIds: [message.externalMessageId],
             timer: this.#batchTimer(key),
           });
         }
@@ -124,23 +125,26 @@ export class ChannelManager {
         this.#mediaBatches.delete(key);
         if (message.text.trim().length > 0) batch.texts.push(message.text);
         batch.attachmentIds.push(...attachmentIds);
+        batch.externalMessageIds.push(message.externalMessageId);
         this.#enqueue({
           channel: message.channel,
           externalUserId: message.externalUserId,
-          externalMessageId: batch.firstExternalMessageId,
-          batchKey: `channel-inbound-batch:${message.channel}:${batch.firstExternalMessageId}`,
+          externalMessageIds: batch.externalMessageIds,
+          batchKey: `channel-inbound-batch:${message.channel}:${batch.externalMessageIds[0] ?? message.externalMessageId}`,
           text: batch.texts.join('\n'),
           attachmentIds: batch.attachmentIds,
+          ...(message.quote === undefined ? {} : { quote: message.quote }),
         });
         return;
       }
       this.#enqueue({
         channel: message.channel,
         externalUserId: message.externalUserId,
-        externalMessageId: message.externalMessageId,
+        externalMessageIds: [message.externalMessageId],
         batchKey: `channel-inbound:${message.channel}:${message.externalMessageId}`,
         text: message.text,
         attachmentIds,
+        ...(message.quote === undefined ? {} : { quote: message.quote }),
       });
     } catch (error) {
       // 入站入队失败（如取消中的 Run）不阻断渠道监听，消息由用户重发。
@@ -163,8 +167,8 @@ export class ChannelManager {
     this.#enqueue({
       channel,
       externalUserId: key.slice(channel.length + 1),
-      externalMessageId: batch.firstExternalMessageId,
-      batchKey: `channel-inbound-batch:${channel}:${batch.firstExternalMessageId}`,
+      externalMessageIds: batch.externalMessageIds,
+      batchKey: `channel-inbound-batch:${channel}:${batch.externalMessageIds[0] ?? key}`,
       text: batch.texts.join('\n'),
       attachmentIds: batch.attachmentIds,
     });
@@ -173,10 +177,11 @@ export class ChannelManager {
   #enqueue(input: {
     channel: 'wechat' | 'feishu';
     externalUserId: string;
-    externalMessageId: string;
+    externalMessageIds: string[];
     batchKey: string;
     text: string;
     attachmentIds: string[];
+    quote?: { quoteSeq?: number | null; quoteExcerpt?: string | null };
   }): void {
     const accepted = this.#sessionStore.acceptChannelInput({
       ownerId: this.#ownerId(),
@@ -187,10 +192,21 @@ export class ChannelManager {
       channel: {
         channel: input.channel,
         kind: 'inbound',
-        externalMessageId: input.externalMessageId,
+        externalMessageId: input.externalMessageIds[0] ?? input.batchKey,
+        ...(input.quote === undefined ? {} : input.quote),
       },
       ...(input.attachmentIds.length === 0 ? {} : { attachmentIds: input.attachmentIds }),
     });
+    for (const externalMessageId of input.externalMessageIds) {
+      this.store.recordMessageMap({
+        ownerId: this.#ownerId(),
+        channel: input.channel,
+        externalMessageId,
+        direction: 'inbound',
+        inputId: accepted.input.inputId,
+        excerpt: input.text.slice(0, 500),
+      });
+    }
     void this.#deliver(accepted.input, accepted.runId).catch((error: unknown) => {
       // 输入已持久化，调度失败时由后续重试或重启恢复。
       console.error('channel inbound deliver failed', error);

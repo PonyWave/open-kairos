@@ -47,6 +47,8 @@ message ChannelReference {
   ChannelReferenceKind kind = 2;
   optional string external_message_id = 3;
   optional string delivery_id = 4;
+  optional uint64 quote_seq = 5;
+  optional string quote_excerpt = 6;
 }
 
 enum RunExecutionMode {

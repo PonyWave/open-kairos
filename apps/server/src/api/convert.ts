@@ -117,6 +117,8 @@ function toChannelReference(record: NonNullable<InputRecord['channel']>) {
         : ChannelReferenceKind.DELIVERY_FAILURE,
     ...(record.externalMessageId == null ? {} : { externalMessageId: record.externalMessageId }),
     ...(record.deliveryId == null ? {} : { deliveryId: record.deliveryId }),
+    ...(record.quoteSeq == null ? {} : { quoteSeq: BigInt(record.quoteSeq) }),
+    ...(record.quoteExcerpt == null ? {} : { quoteExcerpt: record.quoteExcerpt }),
   };
 }
 

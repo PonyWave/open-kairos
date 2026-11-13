@@ -868,7 +868,7 @@ it('rejects a legacy Session schema before adding types or default Threads', () 
       .prepare(
         'INSERT INTO schema_migrations(namespace, version, name, applied_at) VALUES (?, ?, ?, ?)',
       )
-      .run('server_runtime', 6, 'device_log_sync_offset', '2026-11-02T00:00:00.000Z');
+      .run('server_runtime', 99, 'device_log_sync_offset', '2026-11-02T00:00:00.000Z');
     expect(() => new SessionStore(database)).toThrow(/newer than this Server/);
     expect(database.prepare('PRAGMA table_info(threads)').all()).toHaveLength(6);
     expect(database.prepare('SELECT thread_id, title FROM threads').all()).toEqual([
