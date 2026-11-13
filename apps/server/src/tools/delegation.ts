@@ -489,3 +489,98 @@ export function createWorkspaceListTool(
     },
   };
 }
+
+const threadArchiveInputSchema = z.object({ thread_id: z.string().min(1).max(200) }).strict();
+
+export function createThreadArchiveTool(
+  options: DelegationToolOptions,
+): AgentTool<z.infer<typeof threadArchiveInputSchema>> {
+  return {
+    name: 'thread_archive',
+    description:
+      'Archive a finished or unused task Thread, removing it from the active task list; the archive stays readable and can be restored in the GUI. When thread_id is a workspace main conversation, the workspace cannot lose its main, so the call instead clears its context: the current workspace main is archived and a fresh empty main takes over, returned as main_thread_id. The global main conversation cannot be archived. The target must have no active Run, queued inputs or running Context maintenance; finish or stop its work first.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['thread_id'],
+      properties: {
+        thread_id: { type: 'string', minLength: 1, maxLength: 200 },
+      },
+    },
+    concurrent: false,
+    validate: (value) => threadArchiveInputSchema.parse(value),
+    execute: async (input, { call }) => {
+      const source = assertThreadToolSource(options);
+      const target = options.store.getThread(options.source.ownerId, input.thread_id);
+      if (source.workspaceId !== null && target.workspaceId !== source.workspaceId) {
+        throw new SessionError(
+          'permission_denied',
+          'A workspace main can only archive Threads of its own workspace.',
+        );
+      }
+      if (target.threadType === 'main') {
+        throw new SessionError(
+          'failed_precondition',
+          'The global main conversation cannot be archived.',
+        );
+      }
+      const action = {
+        ownerId: options.source.ownerId,
+        method: 'ThreadArchive',
+        clientActionId: `thread-archive:${call.id}`,
+        parameters: { threadId: target.threadId },
+        threadId: target.threadId,
+      };
+      if (target.threadType === 'workspace_main') {
+        const next = options.store.startNewMain(action);
+        return jsonResult({
+          thread_id: target.threadId,
+          status: 'context_cleared',
+          main_thread_id: next.threadId,
+          note: 'The workspace keeps its main conversation; the previous context was archived and a fresh empty main took over.',
+        });
+      }
+      const archived = options.store.archiveThread(action);
+      return jsonResult({ thread_id: archived.threadId, status: 'archived' });
+    },
+  };
+}
+
+const workspaceDeleteInputSchema = z.object({ workspace_id: z.string().min(1).max(200) }).strict();
+
+export function createWorkspaceDeleteTool(
+  options: DelegationToolOptions,
+): AgentTool<z.infer<typeof workspaceDeleteInputSchema>> {
+  return {
+    name: 'workspace_delete',
+    description:
+      'Delete a workspace together with its workspace main and task Threads. This is destructive: confirm with the user before calling it. Deletion fails while any of the workspace Threads has running work or an enabled Automation targets one of them; resolve those first. Only the global main Agent can delete workspaces.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['workspace_id'],
+      properties: {
+        workspace_id: { type: 'string', minLength: 1, maxLength: 200 },
+      },
+    },
+    concurrent: false,
+    validate: (value) => workspaceDeleteInputSchema.parse(value),
+    execute: async (input, { call }) => {
+      const source = assertThreadToolSource(options);
+      if (source.workspaceId !== null) {
+        throw new SessionError(
+          'permission_denied',
+          'Only the global main Agent can delete workspaces.',
+        );
+      }
+      const deleted = options.store.deleteWorkspace({
+        ownerId: options.source.ownerId,
+        method: 'WorkspaceDelete',
+        clientActionId: `workspace-delete:${call.id}`,
+        parameters: { workspaceId: input.workspace_id },
+        workspaceId: input.workspace_id,
+      });
+      return jsonResult({ workspace_id: deleted.workspaceId, status: 'deleted' });
+    },
+  };
+}

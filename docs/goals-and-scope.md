@@ -27,7 +27,7 @@
 - Agent Loop 与 Provider 适配：模型请求与工具执行组成的迭代过程，适配多种模型接口协议。
 - Context 与 Recap：模型实际接收和产生的完整逐条原始消息，以及关联原始消息的逐条区间概述；当前视图与 SQL 召回共用同一套有效性规则。
 - SQL 召回：`recall({ sql })` 工具开放 `thread`、`context`、`recap` 三张只读查询表，可见范围按调用方 Thread 类型分级，全局 main 可查全部对话。
-- 对话层级与委派：`thread_call` 委派与结果交付、`thread_notify` 通知、Subagent、`workspace_list` 工作空间查询、`workspace_create` 工作空间创建（仅全局 main）。
+- 对话层级与委派：`thread_call` 委派与结果交付、`thread_notify` 通知、Subagent、`workspace_list` 工作空间查询、`workspace_create` 工作空间创建（仅全局 main）、`thread_archive` 话题归档（工作空间 main 目标改为清空其上下文并换新 main）、`workspace_delete` 工作空间删除（仅全局 main）。
 - Automation：cron 定时与手动触发，目标可指定工作空间。
 - Memory Wiki 与 dream：主环境上的用户级长期记忆（`MEMORY.md` 索引 + 主题页），根 Agent 注入索引，全局 main 主动更新；内置每日 dream Automation 在一次性 automation_only Thread 中增量整理，可禁用、可删除。
 - 多设备执行：Daemon 配对、远程 Operation、bash 后台任务与大输出落盘（主机日志文件）、`env_sync` 环境间文件同步。

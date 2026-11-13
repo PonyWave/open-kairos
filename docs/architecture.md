@@ -61,7 +61,7 @@ bash 工具的 `run_in_background` 参数把命令作为后台任务执行：Ser
 | 临时对话      | 任意           | 全局 main 通过 `thread_call` 创建                   |
 
 - 全局 main 可调用任何 Thread，包括各工作空间 main。
-- 工作空间 main 注册 `thread_call`、`thread_list`、`thread_read`、`thread_cancel`，范围限定本工作空间内的 Thread。
+- 工作空间 main 注册 `thread_call`、`thread_list`、`thread_read`、`thread_cancel`、`thread_archive`，范围限定本工作空间内的 Thread；全局 main 额外注册 `workspace_create` 与 `workspace_delete`。`thread_archive` 归档任务 Thread；目标是工作空间 main 时语义为清空其上下文（归档当前 main 并换新 main），全局 main 不可归档。
 - 任务 Thread 与临时对话不注册 Thread 工具。
 
 ### 4.1 通知
