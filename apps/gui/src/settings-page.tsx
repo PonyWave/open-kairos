@@ -63,67 +63,71 @@ export function SettingsPage({
   return (
     <section className="settings-page" aria-labelledby="settings-heading">
       <h1 id="settings-heading">设置</h1>
-      <nav className="settings-tabs" aria-label="设置栏目">
-        <button
-          type="button"
-          aria-current={section === 'account' ? 'page' : undefined}
-          onClick={() => onSectionChange('account')}
-        >
-          账户
-        </button>
-        <button
-          type="button"
-          aria-current={section === 'models' ? 'page' : undefined}
-          onClick={() => onSectionChange('models')}
-        >
-          模型
-        </button>
-        <button
-          type="button"
-          aria-current={section === 'channels' ? 'page' : undefined}
-          onClick={() => onSectionChange('channels')}
-        >
-          渠道
-        </button>
-        <button
-          type="button"
-          aria-current={section === 'archived' ? 'page' : undefined}
-          onClick={() => onSectionChange('archived')}
-        >
-          已归档
-        </button>
-        <button
-          type="button"
-          aria-current={section === 'display' ? 'page' : undefined}
-          onClick={() => onSectionChange('display')}
-        >
-          显示
-        </button>
-      </nav>
-      {section === 'account' ? (
-        <AccountSettings
-          key={identity.userId}
-          clients={clients}
-          identity={identity}
-          onIdentityChange={onIdentityChange}
-          onDirtyChange={onDirtyChange}
-        />
-      ) : section === 'models' ? (
-        <ModelSettingsPanel clients={clients} onDirtyChange={onDirtyChange} />
-      ) : section === 'channels' ? (
-        <ChannelSettings clients={clients} onDirtyChange={onDirtyChange} />
-      ) : section === 'archived' ? (
-        <ArchivedSettingsPanel clients={clients} onChanged={onArchivedChanged} />
-      ) : (
-        <>
-          <AppearanceSettings theme={theme} onChange={onThemeChange} />
-          <ConversationDisplaySettings
-            mode={conversationDisplayMode}
-            error={conversationDisplayError}
-            onChange={onConversationDisplayChange}
-          />
-        </>
-      )}
+      <div className="settings-layout">
+        <nav className="settings-tabs" aria-label="设置栏目">
+          <button
+            type="button"
+            aria-current={section === 'account' ? 'page' : undefined}
+            onClick={() => onSectionChange('account')}
+          >
+            账户
+          </button>
+          <button
+            type="button"
+            aria-current={section === 'models' ? 'page' : undefined}
+            onClick={() => onSectionChange('models')}
+          >
+            模型
+          </button>
+          <button
+            type="button"
+            aria-current={section === 'channels' ? 'page' : undefined}
+            onClick={() => onSectionChange('channels')}
+          >
+            渠道
+          </button>
+          <button
+            type="button"
+            aria-current={section === 'archived' ? 'page' : undefined}
+            onClick={() => onSectionChange('archived')}
+          >
+            已归档
+          </button>
+          <button
+            type="button"
+            aria-current={section === 'display' ? 'page' : undefined}
+            onClick={() => onSectionChange('display')}
+          >
+            显示
+          </button>
+        </nav>
+        <div className="settings-content">
+          {section === 'account' ? (
+            <AccountSettings
+              key={identity.userId}
+              clients={clients}
+              identity={identity}
+              onIdentityChange={onIdentityChange}
+              onDirtyChange={onDirtyChange}
+            />
+          ) : section === 'models' ? (
+            <ModelSettingsPanel clients={clients} onDirtyChange={onDirtyChange} />
+          ) : section === 'channels' ? (
+            <ChannelSettings clients={clients} onDirtyChange={onDirtyChange} />
+          ) : section === 'archived' ? (
+            <ArchivedSettingsPanel clients={clients} onChanged={onArchivedChanged} />
+          ) : (
+            <>
+              <AppearanceSettings theme={theme} onChange={onThemeChange} />
+              <ConversationDisplaySettings
+                mode={conversationDisplayMode}
+                error={conversationDisplayError}
+                onChange={onConversationDisplayChange}
+              />
+            </>
+          )}
+        </div>
+      </div>
     </section>
   );
 }

@@ -539,4 +539,11 @@ CREATE INDEX channel_message_map_inbound
         ON channel_message_map(tenant_id, channel, direction, created_at);
     `,
   },
+  {
+    version: 7,
+    name: 'channel_delivery_attachments',
+    sql: `
+ALTER TABLE channel_deliveries ADD COLUMN attachment_ids_json TEXT NOT NULL DEFAULT '[]';
+    `,
+  },
 ];

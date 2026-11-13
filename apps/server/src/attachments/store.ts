@@ -145,6 +145,7 @@ export class AttachmentStore {
     ownerId: string;
     fileName: string;
     bytes: Uint8Array;
+    source?: 'channel' | 'file';
   }): AttachmentMetadata {
     const fileName = validateFileName(input.fileName);
     const validated = validateChannelAttachmentBytes(input.bytes);
@@ -154,7 +155,7 @@ export class AttachmentStore {
       if (!equalBytes(existing.bytes, input.bytes)) {
         throw new SessionError('internal', 'Attachment SHA-256 collision detected.');
       }
-      return { ...metadata(existing), source: 'channel' };
+      return { ...metadata(existing), source: input.source ?? 'channel' };
     }
     const createdAt = isoTime(undefined, this.#clock);
     const attachmentId = this.#createId();
@@ -177,13 +178,10 @@ export class AttachmentStore {
         validated.height ?? null,
         createdAt,
       );
-    return { ...metadata(this.#readById(attachmentId, true)), source: 'channel' };
+    return { ...metadata(this.#readById(attachmentId, true)), source: input.source ?? 'channel' };
   }
 
-  selectForChannelInput(
-    ownerId: string,
-    attachmentIds: readonly string[],
-  ): AttachmentMetadata[] {
+  selectForChannelInput(ownerId: string, attachmentIds: readonly string[]): AttachmentMetadata[] {
     if (attachmentIds.length > MAX_ATTACHMENTS_PER_INPUT) {
       throw new SessionError('input_too_large', 'An input can contain at most four attachments.');
     }

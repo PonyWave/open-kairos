@@ -100,6 +100,7 @@ Server 内置渠道适配层，把微信与飞书接入全局 main。渠道凭�
 - `send_to_user` 始终投递 GUI；全局 main 可额外传 `channels`（`wechat`/`feishu`）。工具执行时为每个渠道创建 `channel_deliveries` 记录，投递 worker 在事务外渲染并调用平台接口：微信渲染为纯文本分段（约 1500 字节），飞书渲染为卡片 JSON 2.0（`markdown` 组件，表格转原生 `table` 组件，单卡不超过 5 个表格、约 24 KB，超出拆卡，失败时降级纯文本）。
 - 投递失败先按 2s/10s/30s 退避重试（最多 4 次尝试）；可重试错误耗尽或非可重试错误（未登录、登录态失效、权限不足）置为 `failed`，并向全局 main 注入一条 `channel` 来源、以 `<system-reminder>` 包裹的投递失败通知，内容包含失败原因、尝试次数、原内容与引导：可重试错误引导模型用 `send_to_user` 的 `redeliver_of` 重投（不产生新气泡），非可重试错误引导模型提示用户在设置页处理。
 - 微信发送依赖入站消息携带的 `context_token`，长时间无入站时主动推送可能失败，按投递失败流程处理。
+- 出站文件：`send_to_user` 的 `files` 参数接收主环境绝对路径（单文件 20MB 上限），Server 读取后经 `uploadChannel` 入库并作为附件关联到工具结果消息（GUI 气泡展示、点击下载）；携带 `channels` 时投递记录带附件引用，飞书按图片（10MB）/文件（30MB）两步上传发送，微信走 CDN 加密上传（AES-128-ECB + getUploadUrl）后发送媒体消息。
 
 ### 6.3 GUI
 

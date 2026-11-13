@@ -1,4 +1,4 @@
-import { createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { ChannelDeliveryError } from '../store.js';
 
@@ -104,6 +104,20 @@ const sendMessageResponseSchema = z.object({
   errmsg: z.string().optional(),
 });
 
+export interface WechatUploadedMedia {
+  encryptQueryParam: string;
+  aesKeyBase64: string;
+  cipherSize: number;
+  rawSize: number;
+}
+
+const getUploadUrlResponseSchema = z.object({
+  ret: z.number().optional(),
+  errmsg: z.string().optional(),
+  upload_param: z.string().optional(),
+  upload_full_url: z.string().optional(),
+});
+
 const getConfigResponseSchema = z.object({
   ret: z.number().optional(),
   typing_ticket: z.string().optional(),
@@ -135,6 +149,20 @@ export interface WechatClientApi {
     aesKey: string | undefined,
     signal: AbortSignal,
   ): Promise<Uint8Array>;
+  uploadMedia(
+    botToken: string,
+    toUserId: string,
+    mediaType: 1 | 3,
+    bytes: Uint8Array,
+    signal: AbortSignal,
+  ): Promise<WechatUploadedMedia>;
+  sendMediaMessage(
+    botToken: string,
+    toUserId: string,
+    contextToken: string | null,
+    media: WechatUploadedMedia & { kind: 'image' | 'file'; fileName?: string },
+    signal: AbortSignal,
+  ): Promise<void>;
   sendTyping(
     botToken: string,
     ilinkUserId: string,
@@ -368,6 +396,132 @@ export class WechatClient implements WechatClientApi {
     const bytes = new Uint8Array(await response.arrayBuffer());
     if (aesKey === undefined || aesKey.length === 0) return bytes;
     return decryptWechatMedia(bytes, aesKey);
+  }
+
+  async uploadMedia(
+    botToken: string,
+    toUserId: string,
+    mediaType: 1 | 3,
+    bytes: Uint8Array,
+    signal: AbortSignal,
+  ): Promise<WechatUploadedMedia> {
+    const aesKey = randomBytes(16);
+    const aesKeyHex = aesKey.toString('hex');
+    const filekey = randomUUID();
+    const cipher = createCipheriv('aes-128-ecb', aesKey, null);
+    const ciphertext = Buffer.concat([cipher.update(bytes), cipher.final()]);
+    const upload = await this.#post(
+      '/ilink/bot/getuploadurl',
+      {
+        filekey,
+        media_type: mediaType,
+        to_user_id: toUserId,
+        rawsize: bytes.length,
+        rawfilemd5: createHash('md5').update(bytes).digest('hex'),
+        filesize: ciphertext.length,
+        no_need_thumb: true,
+        aeskey: aesKeyHex,
+        base_info: this.#baseInfo(),
+      },
+      getUploadUrlResponseSchema,
+      { botToken, signal },
+    );
+    const uploadUrl =
+      upload.upload_full_url ??
+      (upload.upload_param === undefined
+        ? undefined
+        : `${defaultCdnBaseUrl}/upload?encrypted_query_param=${encodeURIComponent(upload.upload_param)}&filekey=${encodeURIComponent(filekey)}`);
+    if (uploadUrl === undefined) {
+      throw new ChannelDeliveryError(false, 'upload_failed', '微信上传接口未返回上传地址。');
+    }
+    let response: Response;
+    try {
+      response = await this.#fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: new Uint8Array(ciphertext),
+        signal,
+      });
+    } catch (error) {
+      throw new ChannelDeliveryError(
+        true,
+        'network_error',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    const encryptedParam = response.headers.get('x-encrypted-param');
+    if (!response.ok || encryptedParam === null || encryptedParam.length === 0) {
+      throw new ChannelDeliveryError(
+        response.status >= 500 || response.status === 429,
+        `upload_http_${response.status}`,
+        `微信媒体上传失败（HTTP ${response.status}）。`,
+      );
+    }
+    return {
+      encryptQueryParam: encryptedParam,
+      aesKeyBase64: Buffer.from(aesKeyHex, 'utf8').toString('base64'),
+      cipherSize: ciphertext.length,
+      rawSize: bytes.length,
+    };
+  }
+
+  async sendMediaMessage(
+    botToken: string,
+    toUserId: string,
+    contextToken: string | null,
+    media: WechatUploadedMedia & { kind: 'image' | 'file'; fileName?: string },
+    signal: AbortSignal,
+  ): Promise<void> {
+    const item =
+      media.kind === 'image'
+        ? {
+            type: 2,
+            image_item: {
+              media: {
+                encrypt_query_param: media.encryptQueryParam,
+                aes_key: media.aesKeyBase64,
+              },
+              mid_size: media.cipherSize,
+            },
+          }
+        : {
+            type: 4,
+            file_item: {
+              media: {
+                encrypt_query_param: media.encryptQueryParam,
+                aes_key: media.aesKeyBase64,
+              },
+              file_name: media.fileName ?? 'file',
+              len: String(media.rawSize),
+            },
+          };
+    const response = await this.#post(
+      '/ilink/bot/sendmessage',
+      {
+        msg: {
+          from_user_id: '',
+          to_user_id: toUserId,
+          client_id: randomUUID(),
+          message_type: 2,
+          message_state: 2,
+          ...(contextToken === null ? {} : { context_token: contextToken }),
+          item_list: [item],
+        },
+        base_info: this.#baseInfo(),
+      },
+      sendMessageResponseSchema,
+      { botToken, signal },
+    );
+    if (response.ret !== undefined && response.ret !== 0) {
+      const code = response.ret;
+      throw new ChannelDeliveryError(
+        code !== -14,
+        code === -14 ? 'session_expired' : `wechat_ret_${code}`,
+        response.errmsg && response.errmsg.length > 0
+          ? response.errmsg
+          : `微信发送失败（${code}）。`,
+      );
+    }
   }
 
   async notifyLifecycle(botToken: string, action: 'start' | 'stop'): Promise<void> {

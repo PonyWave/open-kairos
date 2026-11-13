@@ -1,6 +1,6 @@
 .settings-page {
   width: 100%;
-  max-width: 900px;
+  max-width: 940px;
   margin: 0 auto;
   padding: 28px 32px 40px;
   overflow-y: auto;
@@ -21,17 +21,24 @@
   font-weight: 550;
   margin: 0;
 }
+.settings-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+}
 .settings-tabs {
   display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 12px;
-  margin-bottom: 28px;
+  flex-direction: column;
+  flex: 0 0 148px;
+  gap: 2px;
+  position: sticky;
+  top: 0;
 }
 .settings-tabs button {
-  padding: 8px 16px;
+  padding: 8px 12px;
   border-radius: 8px;
   color: var(--muted);
+  text-align: left;
 }
 .settings-tabs button:hover {
   background: var(--hover);
@@ -39,6 +46,28 @@
 .settings-tabs button[aria-current="page"] {
   color: var(--ink);
   background: var(--selected);
+}
+.settings-content {
+  flex: 1;
+  min-width: 0;
+}
+@media (max-width: 720px) {
+  .settings-layout {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .settings-tabs {
+    flex-direction: row;
+    flex: none;
+    width: 100%;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 10px;
+    position: static;
+  }
+  .settings-tabs button {
+    white-space: nowrap;
+  }
 }
 .settings-section-heading {
   display: flex;

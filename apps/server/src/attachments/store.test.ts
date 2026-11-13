@@ -410,7 +410,9 @@ describe('channel attachments', () => {
       const selected = store.attachments.selectForChannelInput('owner', [uploaded.attachmentId]);
       expect(selected).toHaveLength(1);
       expect(selected[0]?.source).toBe('channel');
-      expect(() => store.attachments.selectForChannelInput('other', [uploaded.attachmentId])).toThrow();
+      expect(() =>
+        store.attachments.selectForChannelInput('other', [uploaded.attachmentId]),
+      ).toThrow();
     } finally {
       database.close();
     }

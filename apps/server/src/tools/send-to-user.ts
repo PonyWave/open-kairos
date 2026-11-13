@@ -20,16 +20,21 @@ const sendToUserInputSchema = z
     end_turn: z.boolean().optional(),
     channels: z.array(channelIdSchema).min(1).max(2).optional(),
     redeliver_of: z.string().min(1).max(200).optional(),
+    files: z.array(z.string().min(1).max(4096)).min(1).max(4).optional(),
   })
   .strict()
   .refine((value) => value.redeliver_of !== undefined || value.content !== undefined, {
     message: 'content is required unless redeliver_of is set.',
+  })
+  .refine((value) => value.redeliver_of === undefined || value.files === undefined, {
+    message: 'files cannot be combined with redeliver_of.',
   });
 
 export function createSendToUserTool(options: {
   store: SessionStore;
   source: RunRecord;
   channels?: { store: ChannelStore };
+  readFile?: (path: string) => Promise<Uint8Array>;
 }): AgentTool<z.infer<typeof sendToUserInputSchema>> {
   return {
     name: 'send_to_user',
@@ -66,6 +71,14 @@ export function createSendToUserTool(options: {
           maxLength: 200,
           description:
             'Retry a failed channel delivery by its delivery id from a delivery failure notice. The original stored content is resent to the same channel; no new message bubble is created. Set only when the failure notice says the error is retryable.',
+        },
+        files: {
+          type: 'array',
+          items: { type: 'string', minLength: 1, maxLength: 4096 },
+          minItems: 1,
+          maxItems: 4,
+          description:
+            'Absolute paths of files on the main environment to attach to this message. The files appear as downloadable attachments in the GUI bubble and are uploaded to the IM channels selected in channels. Use real paths from actual tool results; mention each file in content.',
         },
       },
     },
@@ -131,6 +144,7 @@ export function createSendToUserTool(options: {
         intendedInput.content !== input.content ||
         (intendedInput.end_turn ?? false) !== (input.end_turn ?? false) ||
         JSON.stringify(intendedInput.channels ?? null) !== JSON.stringify(input.channels ?? null) ||
+        JSON.stringify(intendedInput.files ?? null) !== JSON.stringify(input.files ?? null) ||
         (intendedInput.redeliver_of ?? null) !== (input.redeliver_of ?? null)
       ) {
         throw new SessionError('action_conflict', 'The send_to_user parameters changed.');
@@ -188,6 +202,25 @@ export function createSendToUserTool(options: {
         };
       }
 
+      const attachmentIds: string[] = [];
+      const contentParts: { type: 'attachment'; attachment_id: string }[] = [];
+      if (input.files !== undefined) {
+        if (options.readFile === undefined) {
+          throw new SessionError('failed_precondition', 'File attachments are not configured.');
+        }
+        for (const path of input.files) {
+          const bytes = await options.readFile(path);
+          signal.throwIfAborted();
+          const uploaded = store.attachments.uploadChannel({
+            ownerId: source.ownerId,
+            fileName: path.split('/').at(-1) ?? 'file',
+            bytes,
+            source: 'file',
+          });
+          attachmentIds.push(uploaded.attachmentId);
+          contentParts.push({ type: 'attachment', attachment_id: uploaded.attachmentId });
+        }
+      }
       const deliveries: {
         channel: 'wechat' | 'feishu';
         delivery_id: string;
@@ -207,6 +240,7 @@ export function createSendToUserTool(options: {
             messageId: assistant.messageId,
             toolCallId: call.id,
             content: input.content ?? '',
+            attachmentIds,
           });
           if (state.status !== 'active' || state.externalUserId === null) {
             const failed = channels.store.markAttemptFailed(
@@ -238,6 +272,7 @@ export function createSendToUserTool(options: {
           end_turn: input.end_turn ?? false,
           ...(deliveries.length === 0 ? {} : { deliveries }),
         }),
+        ...(contentParts.length === 0 ? {} : { content_parts: contentParts }),
         status: 'success',
         endTurn: input.end_turn === true,
       };

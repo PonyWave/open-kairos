@@ -36,8 +36,8 @@
   --shadow-big: 0 20px 70px #26304b22;
   --shadow-menu: 0 6px 24px #23242614, 0 2px 6px #23242608;
   --sidebar: 224px;
-  --reading: 820px;
-  --gutter: 24px;
+  --reading: 940px;
+  --gutter: 32px;
   --icon-size: 16px;
   --icon-small: 14px;
   --icon-large: 24px;
@@ -2097,7 +2097,7 @@ button.icon-button.failure-details {
   flex-shrink: 0;
 }
 .conversation-list-page {
-  max-width: 900px;
+  max-width: 940px;
   width: 100%;
   margin: 0 auto;
   padding: 28px 32px 40px;
@@ -2953,7 +2953,7 @@ button.dropdown-item {
 /* Workspace overview and device-independent metadata. */
 .workspaces-page {
   width: 100%;
-  max-width: 980px;
+  max-width: 940px;
   padding: 28px 32px 40px;
   margin: 0 auto;
   overflow-y: auto;

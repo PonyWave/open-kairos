@@ -337,7 +337,12 @@ export class WechatChannel implements OutboundChannel {
   }
 
   async send(
-    input: { externalUserId: string; contextToken: string | null; markdown: string },
+    input: {
+      externalUserId: string;
+      contextToken: string | null;
+      markdown: string;
+      attachments?: { fileName: string; mediaType: string; bytes: Uint8Array }[];
+    },
     signal: AbortSignal,
   ): Promise<void> {
     const ownerId = this.#ownerId();
@@ -346,7 +351,7 @@ export class WechatChannel implements OutboundChannel {
       throw new ChannelDeliveryError(false, 'channel_not_configured', '微信渠道未登录。');
     }
     const segments = renderWechatSegments(input.markdown);
-    if (segments.length === 0) {
+    if (segments.length === 0 && (input.attachments?.length ?? 0) === 0) {
       throw new ChannelDeliveryError(false, 'empty_message', '没有可发送的文本内容。');
     }
     for (const segment of segments) {
@@ -356,6 +361,28 @@ export class WechatChannel implements OutboundChannel {
         input.externalUserId,
         input.contextToken,
         segment,
+        signal,
+      );
+    }
+    for (const attachment of input.attachments ?? []) {
+      signal.throwIfAborted();
+      const isImage = attachment.mediaType === 'image/png' || attachment.mediaType === 'image/jpeg';
+      const uploaded = await this.#client.uploadMedia(
+        credentials.botToken,
+        input.externalUserId,
+        isImage ? 1 : 3,
+        attachment.bytes,
+        signal,
+      );
+      await this.#client.sendMediaMessage(
+        credentials.botToken,
+        input.externalUserId,
+        input.contextToken,
+        {
+          ...uploaded,
+          kind: isImage ? 'image' : 'file',
+          ...(isImage ? {} : { fileName: attachment.fileName }),
+        },
         signal,
       );
     }

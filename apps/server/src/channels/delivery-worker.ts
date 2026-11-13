@@ -6,9 +6,20 @@ import { wrapSystemReminder } from '../sessions/system-reminder.js';
 import type { ChannelDeliveryRecord, ChannelIdValue, ChannelStore } from './store.js';
 import { ChannelDeliveryError } from './store.js';
 
+export interface OutboundAttachment {
+  fileName: string;
+  mediaType: string;
+  bytes: Uint8Array;
+}
+
 export interface OutboundChannel {
   send(
-    input: { externalUserId: string; contextToken: string | null; markdown: string },
+    input: {
+      externalUserId: string;
+      contextToken: string | null;
+      markdown: string;
+      attachments?: OutboundAttachment[];
+    },
     signal: AbortSignal,
   ): Promise<{ externalMessageId?: string } | void>;
 }
@@ -100,11 +111,23 @@ export class ChannelDeliveryWorker {
         );
       }
       const timeout = AbortSignal.timeout(this.#options.sendTimeoutMs ?? 60_000);
+      const attachments = claimed.attachmentIds.map((attachmentId) => {
+        const content = this.#options.sessionStore.attachments.readForWorkspace(
+          ownerId,
+          attachmentId,
+        );
+        return {
+          fileName: content.fileName,
+          mediaType: content.mediaType,
+          bytes: content.bytes,
+        };
+      });
       const sent = await adapter.send(
         {
           externalUserId: state.externalUserId,
           contextToken: state.contextToken,
           markdown: claimed.content,
+          ...(attachments.length === 0 ? {} : { attachments }),
         },
         timeout,
       );

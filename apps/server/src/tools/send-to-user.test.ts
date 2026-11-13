@@ -438,3 +438,49 @@ it('rejects channels outside the global main conversation', async () => {
     database.close();
   }
 });
+
+it('attaches files to the result and channel deliveries', async () => {
+  const { database, store, run, channelStore, tool } = channelFixture();
+  try {
+    const withFiles = createSendToUserTool({
+      store,
+      source: run,
+      channels: { store: channelStore },
+      readFile: (path) => {
+        expect(path).toBe('/workspace/report.pdf');
+        return Promise.resolve(new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x00]));
+      },
+    });
+    const call = {
+      id: 'send-files',
+      name: 'send_to_user',
+      arguments: {
+        content: '报告在这里。',
+        channels: ['feishu'],
+        files: ['/workspace/report.pdf'],
+      },
+    };
+    store.appendModelMessage({
+      runId: run.runId,
+      message: { role: 'assistant', content: '', tool_calls: [call] },
+    });
+    const result = await withFiles.execute(await withFiles.validate(call.arguments), {
+      call,
+      signal: new AbortController().signal,
+    });
+    const payload = JSON.parse(typeof result === 'string' ? result : result.content) as {
+      deliveries: { channel: string; delivery_id: string; status: string }[];
+    };
+    expect(payload.deliveries[0]?.status).toBe('queued');
+    const parts = typeof result === 'string' ? undefined : result.content_parts;
+    expect(parts).toHaveLength(1);
+    const attachmentId = parts?.[0]?.type === 'attachment' ? parts[0].attachment_id : '';
+    const delivery = channelStore.getDelivery(ownerId, payload.deliveries[0]?.delivery_id ?? '');
+    expect(delivery.attachmentIds).toEqual([attachmentId]);
+    const content = store.attachments.readForWorkspace(ownerId, attachmentId);
+    expect(content.fileName).toBe('report.pdf');
+    expect(content.mediaType).toBe('application/octet-stream');
+  } finally {
+    database.close();
+  }
+});

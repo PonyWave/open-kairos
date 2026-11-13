@@ -150,6 +150,7 @@ export function MessageCard({
         continuation={continuation}
         deliveryStatuses={channelDeliveries}
         mainThreadId={mainThreadId}
+        clients={clients}
       />
     );
   }

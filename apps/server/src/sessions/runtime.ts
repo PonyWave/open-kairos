@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import {
   AgentLoop,
   type AgentLoopEvent,
@@ -2030,6 +2031,7 @@ export class RunCoordinator {
           createSendToUserTool({
             store: this.store,
             source: run,
+            readFile: readMainEnvFile,
             ...(this.#options.channels === undefined ? {} : { channels: this.#options.channels }),
           }),
         );
@@ -2326,6 +2328,31 @@ function inputModelContent(input: InputRecord): Omit<UserMessage, 'role'> {
         }
       : {}),
   };
+}
+
+const SEND_FILE_MAX_BYTES = 20_000_000;
+
+async function readMainEnvFile(path: string): Promise<Uint8Array> {
+  if (!path.startsWith('/')) {
+    throw new SessionError(
+      'invalid_argument',
+      'The file path must be absolute on the main environment.',
+    );
+  }
+  let resolved: string;
+  try {
+    resolved = await realpath(path);
+  } catch {
+    throw new SessionError('not_found', `File not found on the main environment: ${path}`);
+  }
+  const info = await stat(resolved);
+  if (!info.isFile()) {
+    throw new SessionError('invalid_argument', `Not a regular file: ${path}`);
+  }
+  if (info.size > SEND_FILE_MAX_BYTES) {
+    throw new SessionError('input_too_large', `File exceeds the 20000000-byte limit: ${path}`);
+  }
+  return new Uint8Array(await readFile(resolved));
 }
 
 function delegationMapKey(key: DelegationKey): string {

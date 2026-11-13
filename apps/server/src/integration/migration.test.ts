@@ -41,7 +41,7 @@ describe('baseline installation', () => {
       ]);
       const expectedVersions: Record<string, number> = {
         context_recap: 3,
-        server_runtime: 6,
+        server_runtime: 7,
         devices: 1,
         environment_operations: 1,
       };

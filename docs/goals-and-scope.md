@@ -35,7 +35,7 @@
 - 网页访问：`web_fetch` 抓取网页，`web_search` 搜索（需配置外部索引）。
 - MCP 工具桥接：配置经设备通道注入指定环境，命名 `mcp__<server>__<tool>`，远程 server 支持 OAuth 授权。
 - `send_to_user`：全局 main 向用户投递回复的通道。
-- IM 渠道：微信（ClawBot 扫码绑定）与飞书（自建应用长连接）接入全局 main，入站消息标注来源，出站通过 `send_to_user` 的 `channels` 参数投递，投递失败重试后通知全局 main。设置页「渠道」栏目管理绑定。文件类消息暂不支持。
+- IM 渠道：微信（ClawBot 扫码绑定）与飞书（自建应用长连接）接入全局 main，入站消息标注来源，出站通过 `send_to_user` 的 `channels` 参数投递，投递失败重试后通知全局 main。设置页「渠道」栏目管理绑定。入站媒体统一下载进附件管线（物化到工作区按路径读取），出站经 `send_to_user` 的 `files` 参数发送文件（飞书图片/文件两步上传，微信 CDN 加密上传）。
 
 ## 与 Kairos 的关系
 

@@ -64,6 +64,7 @@ export interface ChannelDeliveryRecord {
   lastErrorRetryable: boolean | null;
   nextAttemptAt: string | null;
   notifiedAt: string | null;
+  attachmentIds: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -109,6 +110,7 @@ const deliveryRowSchema = z.object({
   last_error_retryable: z.union([z.literal(0), z.literal(1)]).nullable(),
   next_attempt_at: z.string().nullable(),
   notified_at: z.string().nullable(),
+  attachment_ids_json: z.string().default('[]'),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -395,6 +397,7 @@ export class ChannelStore {
     toolCallId?: string | null;
     content: string;
     maxAttempts?: number;
+    attachmentIds?: readonly string[];
   }): ChannelDeliveryRecord {
     const deliveryId = randomUUID();
     const now = isoTime(undefined, this.#clock);
@@ -402,8 +405,8 @@ export class ChannelStore {
       .prepare(
         `INSERT INTO channel_deliveries(
           delivery_id, owner_id, channel, message_id, tool_call_id, content,
-          status, attempts, max_attempts, next_attempt_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, ?)`,
+          status, attempts, max_attempts, next_attempt_at, attachment_ids_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, ?, ?)`,
       )
       .run(
         deliveryId,
@@ -414,6 +417,7 @@ export class ChannelStore {
         input.content,
         input.maxAttempts ?? defaultMaxAttempts,
         now,
+        JSON.stringify(input.attachmentIds ?? []),
         now,
         now,
       );
@@ -575,6 +579,7 @@ export class ChannelStore {
       lastErrorRetryable: row.last_error_retryable === null ? null : row.last_error_retryable === 1,
       nextAttemptAt: row.next_attempt_at,
       notifiedAt: row.notified_at,
+      attachmentIds: z.array(z.string()).parse(JSON.parse(row.attachment_ids_json)),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

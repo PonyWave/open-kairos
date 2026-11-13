@@ -153,7 +153,12 @@ export class FeishuChannel implements OutboundChannel {
   }
 
   async send(
-    input: { externalUserId: string; contextToken: string | null; markdown: string },
+    input: {
+      externalUserId: string;
+      contextToken: string | null;
+      markdown: string;
+      attachments?: { fileName: string; mediaType: string; bytes: Uint8Array }[];
+    },
     _signal: AbortSignal,
   ): Promise<{ externalMessageId?: string } | void> {
     const ownerId = this.#ownerId();
@@ -178,6 +183,9 @@ export class FeishuChannel implements OutboundChannel {
           replyTo,
         );
       }
+      for (const attachment of input.attachments ?? []) {
+        lastMessageId = await this.#sendAttachment(client, input.externalUserId, attachment);
+      }
     } catch (error) {
       if (error instanceof ChannelDeliveryError && !error.retryable) {
         const fallback = renderFeishuTextFallback(input.markdown);
@@ -197,10 +205,61 @@ export class FeishuChannel implements OutboundChannel {
     return { ...(lastMessageId === undefined ? {} : { externalMessageId: lastMessageId }) };
   }
 
+  async #sendAttachment(
+    client: lark.Client,
+    openId: string,
+    attachment: { fileName: string; mediaType: string; bytes: Uint8Array },
+  ): Promise<string | undefined> {
+    const isImage = attachment.mediaType === 'image/png' || attachment.mediaType === 'image/jpeg';
+    const cap = isImage ? 10_000_000 : 30_000_000;
+    if (attachment.bytes.length > cap) {
+      throw new ChannelDeliveryError(
+        false,
+        'attachment_too_large',
+        `附件超过飞书${isImage ? '图片 10MB' : '文件 30MB'}限制：${attachment.fileName}`,
+      );
+    }
+    let msgType: 'image' | 'file';
+    let content: string;
+    try {
+      if (isImage) {
+        const uploaded = await client.im.image.create({
+          data: { image_type: 'message', image: Buffer.from(attachment.bytes) },
+        });
+        if (uploaded?.image_key === undefined) {
+          throw new ChannelDeliveryError(false, 'upload_failed', '飞书图片上传未返回 image_key。');
+        }
+        msgType = 'image';
+        content = JSON.stringify({ image_key: uploaded.image_key });
+      } else {
+        const uploaded = await client.im.file.create({
+          data: {
+            file_type: 'stream',
+            file_name: attachment.fileName,
+            file: Buffer.from(attachment.bytes),
+          },
+        });
+        if (uploaded?.file_key === undefined) {
+          throw new ChannelDeliveryError(false, 'upload_failed', '飞书文件上传未返回 file_key。');
+        }
+        msgType = 'file';
+        content = JSON.stringify({ file_key: uploaded.file_key });
+      }
+    } catch (error) {
+      if (error instanceof ChannelDeliveryError) throw error;
+      throw new ChannelDeliveryError(
+        true,
+        'network_error',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    return this.#sendPayload(client, openId, msgType, content);
+  }
+
   async #sendPayload(
     client: lark.Client,
     openId: string,
-    msgType: 'interactive' | 'text',
+    msgType: 'interactive' | 'text' | 'image' | 'file',
     content: string,
     replyTo?: string | undefined,
   ): Promise<string | undefined> {

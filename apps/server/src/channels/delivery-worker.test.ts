@@ -225,3 +225,50 @@ it('records outbound message map entries when the channel returns a message id',
     database.close();
   }
 });
+
+it('passes delivery attachments to the channel adapter', async () => {
+  const database = openDatabase(':memory:');
+  const sessionStore = new SessionStore(database);
+  seedTestTenant(database, ownerId);
+  const channelStore = new ChannelStore(database, secret);
+  const received: { fileName: string; mediaType: string; bytes: Uint8Array }[][] = [];
+  const adapter = {
+    send: async (input: {
+      attachments?: { fileName: string; mediaType: string; bytes: Uint8Array }[];
+    }) => {
+      received.push(input.attachments ?? []);
+    },
+  };
+  const worker = new ChannelDeliveryWorker({
+    channelStore,
+    sessionStore,
+    ownerId: () => ownerId,
+    channels: { feishu: adapter },
+  });
+  try {
+    channelStore.saveFeishuCredentials(
+      ownerId,
+      { kind: 'feishu', appId: 'cli_1', appSecret: 's' },
+      '123456',
+    );
+    channelStore.bindExternalUser(ownerId, 'feishu', 'ou_1');
+    const uploaded = sessionStore.attachments.uploadChannel({
+      ownerId,
+      fileName: 'data.bin',
+      bytes: new Uint8Array([9, 8, 7]),
+    });
+    channelStore.createDelivery({
+      ownerId,
+      channel: 'feishu',
+      content: '带附件',
+      attachmentIds: [uploaded.attachmentId],
+    });
+    await worker.processNow();
+    expect(received).toHaveLength(1);
+    expect(received[0]).toHaveLength(1);
+    expect(received[0]?.[0]?.fileName).toBe('data.bin');
+    expect([...(received[0]?.[0]?.bytes ?? [])]).toEqual([9, 8, 7]);
+  } finally {
+    database.close();
+  }
+});

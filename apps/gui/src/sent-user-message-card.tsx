@@ -1,4 +1,6 @@
 import type { Message } from '@kairos/contracts';
+import { AttachmentList } from './attachment-list.js';
+import type { KairosClients } from './client.js';
 import { FailureNotice } from './failure-notice.js';
 import { Icon } from './icon.js';
 import { MessageAvatar } from './message-avatar.js';
@@ -59,6 +61,7 @@ export function SentUserMessageCard({
   continuation,
   deliveryStatuses,
   mainThreadId,
+  clients,
 }: {
   message: Message;
   sent: SentUserMessage;
@@ -66,6 +69,7 @@ export function SentUserMessageCard({
   continuation: boolean;
   deliveryStatuses?: ReadonlyMap<string, ChannelDeliveryStatusInfo> | undefined;
   mainThreadId?: string | null | undefined;
+  clients?: KairosClients | undefined;
 }) {
   const badges =
     sent.deliveries.length === 0 ? null : (
@@ -100,6 +104,7 @@ export function SentUserMessageCard({
           {!compact && <span className="sent-message-tag">回复用户</span>}
           {badges}
           <SafeMarkdown>{sent.content}</SafeMarkdown>
+          <AttachmentList attachments={message.attachments} clients={clients} />
         </div>
       </div>
     </article>
