@@ -1590,7 +1590,7 @@ export class SessionStore {
         action.ownerId,
         thread.threadId,
         text,
-        'follow_up',
+        'steer',
         {
           source: 'channel',
           channel: action.channel,

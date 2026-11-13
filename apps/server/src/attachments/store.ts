@@ -33,7 +33,7 @@ const rowSchema = z.object({
   width: z.number().int().positive().safe().nullable(),
   height: z.number().int().positive().safe().nullable(),
   created_at: z.string(),
-  source: z.enum(['file', 'clipboard']).nullable().optional(),
+  source: z.enum(['file', 'clipboard', 'channel']).nullable().optional(),
   workspace_required: z.number().int().min(0).max(1).nullable().optional(),
   workspace_status: z.enum(['pending', 'completed']).nullable().optional(),
   env_id: z.string().nullable().optional(),

@@ -734,6 +734,7 @@ it('gives all Agents execution tools and loads main and task resources from the 
     'task_output',
     'task_stop',
     'task_wait',
+    'thread_archive',
     'thread_call',
     'thread_cancel',
     'thread_list',
@@ -741,6 +742,7 @@ it('gives all Agents execution tools and loads main and task resources from the 
     'web_fetch',
     'web_search',
     'workspace_create',
+    'workspace_delete',
     'workspace_list',
     'write',
   ]);
