@@ -244,3 +244,28 @@ function crc32(bytes: Uint8Array): number {
   for (const byte of bytes) crc = (crcTable[(crc ^ byte) & 0xff] ?? 0) ^ (crc >>> 8);
   return (crc ^ 0xffffffff) >>> 0;
 }
+
+export const MAX_CHANNEL_ATTACHMENT_BYTES = 20_000_000;
+
+export function validateChannelAttachmentBytes(bytes: Uint8Array): ValidatedAttachment {
+  if (bytes.length === 0) {
+    throw new SessionError('invalid_argument', 'Attachment content must not be empty.');
+  }
+  if (bytes.length > MAX_CHANNEL_ATTACHMENT_BYTES) {
+    throw new SessionError(
+      'input_too_large',
+      'Channel attachment exceeds the 20000000-byte file limit.',
+    );
+  }
+  if (startsWith(bytes, pngSignature)) return validatePng(bytes);
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) return validateJpeg(bytes);
+  try {
+    const text = textDecoder.decode(bytes);
+    if (!text.includes('\0') && bytes.length <= MAX_TEXT_ATTACHMENT_BYTES) {
+      return { mediaType: 'text/plain' };
+    }
+  } catch {
+    // 非 UTF-8 内容按二进制处理。
+  }
+  return { mediaType: 'application/octet-stream' };
+}

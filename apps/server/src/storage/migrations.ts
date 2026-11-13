@@ -600,6 +600,64 @@ CREATE UNIQUE INDEX context_messages_owner_seq
         ON context_messages(thread_id, agent_id, seq);
     `,
   },
+  {
+    version: 3,
+    name: 'channel_attachment_types',
+    foreignKeysOff: true,
+    sql: `
+CREATE TABLE attachments_next (
+        attachment_id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        media_type TEXT NOT NULL CHECK(media_type IN (
+          'text/plain', 'image/png', 'image/jpeg', 'application/octet-stream'
+        )),
+        byte_size INTEGER NOT NULL CHECK(byte_size > 0),
+        sha256 TEXT NOT NULL,
+        content BLOB NOT NULL,
+        width INTEGER,
+        height INTEGER,
+        created_at TEXT NOT NULL,
+        UNIQUE(owner_id, sha256),
+        CHECK(
+          (media_type IN ('image/png', 'image/jpeg') AND width > 0 AND height > 0)
+          OR (media_type IN ('text/plain', 'application/octet-stream') AND width IS NULL AND height IS NULL)
+        )
+      );
+INSERT INTO attachments_next (
+        attachment_id, owner_id, file_name, media_type, byte_size, sha256, content,
+        width, height, created_at
+      )
+      SELECT
+        attachment_id, owner_id, file_name, media_type, byte_size, sha256, content,
+        width, height, created_at
+      FROM attachments;
+DROP TABLE attachments;
+ALTER TABLE attachments_next RENAME TO attachments;
+CREATE TABLE context_message_attachments_next (
+        message_seq INTEGER NOT NULL REFERENCES context_messages(seq) ON DELETE CASCADE,
+        position INTEGER NOT NULL CHECK(position > 0),
+        attachment_id TEXT NOT NULL REFERENCES attachments(attachment_id), source TEXT NOT NULL DEFAULT 'file'
+        CHECK(source IN ('file', 'clipboard', 'channel')), workspace_required INTEGER NOT NULL DEFAULT 0
+        CHECK(workspace_required IN (0, 1)), workspace_status TEXT
+        CHECK(workspace_status IN ('pending', 'completed')), env_id TEXT, path TEXT, operation_id TEXT,
+        PRIMARY KEY(message_seq, position),
+        UNIQUE(message_seq, attachment_id)
+      );
+INSERT INTO context_message_attachments_next (
+        message_seq, position, attachment_id, source, workspace_required, workspace_status,
+        env_id, path, operation_id
+      )
+      SELECT
+        message_seq, position, attachment_id, source, workspace_required, workspace_status,
+        env_id, path, operation_id
+      FROM context_message_attachments;
+DROP TABLE context_message_attachments;
+ALTER TABLE context_message_attachments_next RENAME TO context_message_attachments;
+CREATE INDEX context_message_attachments_attachment
+        ON context_message_attachments(attachment_id, message_seq);
+    `,
+  },
 ];
 
 export class SchemaMigrationRequiredError extends Error {

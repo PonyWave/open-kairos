@@ -1879,7 +1879,9 @@ function workspaceAttachmentPath(defaultPwd: string, attachment: AttachmentMetad
       ? '.txt'
       : attachment.mediaType === 'image/png'
         ? '.png'
-        : '.jpg';
+        : attachment.mediaType === 'image/jpeg'
+          ? '.jpg'
+          : '.bin';
   return posix.join(defaultPwd, '.kairos', 'attachments', `${attachment.attachmentId}${extension}`);
 }
 

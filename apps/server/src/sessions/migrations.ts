@@ -491,4 +491,33 @@ CREATE UNIQUE INDEX threads_one_workspace_main_per_workspace
         ON threads(workspace_id) WHERE thread_type = 'workspace_main' AND archived_at IS NULL;
     `,
   },
+  {
+    version: 5,
+    name: 'channel_attachment_source',
+    foreignKeysOff: true,
+    sql: `
+CREATE TABLE input_attachments_next (
+        input_id TEXT NOT NULL REFERENCES inputs(input_id) ON DELETE CASCADE,
+        position INTEGER NOT NULL CHECK(position > 0),
+        attachment_id TEXT NOT NULL REFERENCES attachments(attachment_id), source TEXT NOT NULL DEFAULT 'file'
+        CHECK(source IN ('file', 'clipboard', 'channel')), workspace_required INTEGER NOT NULL DEFAULT 0
+        CHECK(workspace_required IN (0, 1)), workspace_status TEXT
+        CHECK(workspace_status IN ('pending', 'completed')), env_id TEXT, path TEXT, operation_id TEXT,
+        PRIMARY KEY(input_id, position),
+        UNIQUE(input_id, attachment_id)
+      );
+INSERT INTO input_attachments_next (
+        input_id, position, attachment_id, source, workspace_required, workspace_status,
+        env_id, path, operation_id
+      )
+      SELECT
+        input_id, position, attachment_id, source, workspace_required, workspace_status,
+        env_id, path, operation_id
+      FROM input_attachments;
+DROP TABLE input_attachments;
+ALTER TABLE input_attachments_next RENAME TO input_attachments;
+CREATE INDEX input_attachments_attachment
+        ON input_attachments(attachment_id, input_id);
+    `,
+  },
 ];

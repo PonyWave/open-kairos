@@ -15,6 +15,7 @@ import {
   MAX_TEXT_ATTACHMENT_TOTAL_BYTES,
   maximumUploadBytes,
   validateAttachmentBytes,
+  validateChannelAttachmentBytes,
   validateFileName,
 } from './validation.js';
 
@@ -25,7 +26,7 @@ const rowSchema = z.object({
   attachment_id: z.string(),
   owner_id: z.string(),
   file_name: z.string(),
-  media_type: z.enum(['text/plain', 'image/png', 'image/jpeg']),
+  media_type: z.enum(['text/plain', 'image/png', 'image/jpeg', 'application/octet-stream']),
   byte_size: z.number().int().positive().safe(),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
   content: z.instanceof(Uint8Array),
@@ -138,6 +139,61 @@ export class AttachmentStore {
         };
       },
     );
+  }
+
+  uploadChannel(input: {
+    ownerId: string;
+    fileName: string;
+    bytes: Uint8Array;
+  }): AttachmentMetadata {
+    const fileName = validateFileName(input.fileName);
+    const validated = validateChannelAttachmentBytes(input.bytes);
+    const sha256 = createHash('sha256').update(input.bytes).digest('hex');
+    const existing = this.#byHash(input.ownerId, sha256);
+    if (existing) {
+      if (!equalBytes(existing.bytes, input.bytes)) {
+        throw new SessionError('internal', 'Attachment SHA-256 collision detected.');
+      }
+      return { ...metadata(existing), source: 'channel' };
+    }
+    const createdAt = isoTime(undefined, this.#clock);
+    const attachmentId = this.#createId();
+    this.#database
+      .prepare(
+        `INSERT INTO attachments(
+          attachment_id, owner_id, file_name, media_type, byte_size, sha256, content,
+          width, height, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        attachmentId,
+        input.ownerId,
+        fileName,
+        validated.mediaType,
+        input.bytes.length,
+        sha256,
+        input.bytes,
+        validated.width ?? null,
+        validated.height ?? null,
+        createdAt,
+      );
+    return { ...metadata(this.#readById(attachmentId, true)), source: 'channel' };
+  }
+
+  selectForChannelInput(
+    ownerId: string,
+    attachmentIds: readonly string[],
+  ): AttachmentMetadata[] {
+    if (attachmentIds.length > MAX_ATTACHMENTS_PER_INPUT) {
+      throw new SessionError('input_too_large', 'An input can contain at most four attachments.');
+    }
+    if (new Set(attachmentIds).size !== attachmentIds.length) {
+      throw new SessionError('invalid_argument', 'Attachment IDs must not contain duplicates.');
+    }
+    return attachmentIds.map((value) => ({
+      ...metadata(this.#readOwned(ownerId, requireAttachmentId(value), false)),
+      source: 'channel' as const,
+    }));
   }
 
   remove(input: { ownerId: string; clientActionId: string; attachmentId: string }) {

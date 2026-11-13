@@ -1560,9 +1560,11 @@ export class SessionStore {
     action: ActionInput & {
       text: string;
       channel: ChannelReference;
+      attachmentIds?: readonly string[];
     },
   ): { thread: ThreadRecord; input: InputRecord; runId: string } {
     const text = requireText(action.text, 'text', 1_000_000, {
+      allowEmpty: (action.attachmentIds?.length ?? 0) > 0,
       maximumBytes: this.#maxInputBytes,
     });
     if (action.channel.externalMessageId != null) {
@@ -1579,11 +1581,22 @@ export class SessionStore {
           'Cannot submit channel input after cancellation was requested.',
         );
       }
+      const attachments = this.attachments.selectForChannelInput(
+        action.ownerId,
+        action.attachmentIds ?? [],
+      );
       const run = active ?? this.#insertRun(action.ownerId, thread.threadId, 'thread');
-      const input = this.#insertInput(action.ownerId, thread.threadId, text, 'follow_up', {
-        source: 'channel',
-        channel: action.channel,
-      });
+      const input = this.#insertInput(
+        action.ownerId,
+        thread.threadId,
+        text,
+        'follow_up',
+        {
+          source: 'channel',
+          channel: action.channel,
+        },
+        attachments,
+      );
       return { thread, input, runId: run.runId };
     });
   }

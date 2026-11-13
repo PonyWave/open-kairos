@@ -5,7 +5,7 @@ import type { OutboundChannel } from '../delivery-worker.js';
 import { renderFeishuCards, renderFeishuTextFallback } from '../render-feishu.js';
 import type { ChannelStore } from '../store.js';
 import { ChannelDeliveryError } from '../store.js';
-import type { InboundHandler } from '../wechat/adapter.js';
+import type { InboundChannelMedia, InboundHandler } from '../wechat/adapter.js';
 
 const textContentSchema = z.object({ text: z.string() });
 const postContentSchema = z.object({
@@ -47,6 +47,36 @@ export function feishuMessageText(messageType: string, content: string): string 
     default:
       return `[暂不支持的消息类型: ${messageType}]`;
   }
+}
+
+const mediaContentSchema = z.object({
+  image_key: z.string().optional(),
+  file_key: z.string().optional(),
+  file_name: z.string().optional(),
+});
+
+function feishuMediaRef(
+  messageType: string,
+  content: string,
+): { kind: 'image' | 'file'; fileKey: string; fileName: string } | undefined {
+  if (!['image', 'file', 'audio', 'media'].includes(messageType)) return undefined;
+  let parsed: z.infer<typeof mediaContentSchema>;
+  try {
+    parsed = mediaContentSchema.parse(JSON.parse(content));
+  } catch {
+    return undefined;
+  }
+  const fileKey = messageType === 'image' ? parsed.image_key : parsed.file_key;
+  if (fileKey === undefined || fileKey.length === 0) return undefined;
+  const fallback = `feishu-${messageType}-${fileKey.slice(0, 12)}`;
+  return {
+    kind: messageType === 'image' ? 'image' : 'file',
+    fileKey,
+    fileName:
+      messageType === 'file' && parsed.file_name !== undefined && parsed.file_name.length > 0
+        ? parsed.file_name
+        : fallback,
+  };
 }
 
 const authErrorCodes = new Set([99991661, 99991663, 99991664, 99991668]);
@@ -221,8 +251,8 @@ export class FeishuChannel implements OutboundChannel {
       },
     });
     const dispatcher = new lark.EventDispatcher({}).register({
-      'im.message.receive_v1': (data: unknown) => {
-        if (this.#wsClient === client) this.#handleEvent(data);
+      'im.message.receive_v1': async (data: unknown) => {
+        if (this.#wsClient === client) await this.#handleEvent(data);
       },
     });
     this.#wsClient = client;
@@ -253,7 +283,7 @@ export class FeishuChannel implements OutboundChannel {
     }
   }
 
-  #handleEvent(data: unknown): void {
+  async #handleEvent(data: unknown): Promise<void> {
     const ownerId = this.#ownerId();
     const parsed = z
       .object({
@@ -307,12 +337,43 @@ export class FeishuChannel implements OutboundChannel {
     if (state.status !== 'active' || state.externalUserId === null) return;
     if (state.externalUserId !== openId) return;
     if (!this.#store.recordInboundEvent(ownerId, 'feishu', message.message_id)) return;
-    if (text.trim().length === 0) return;
+    const media = await this.#downloadMessageMedia(message);
+    if (text.trim().length === 0 && media.length === 0) return;
     this.#onInbound({
       channel: 'feishu',
       externalMessageId: message.message_id,
       externalUserId: openId,
       text,
+      ...(media.length === 0 ? {} : { media }),
     });
+  }
+
+  async #downloadMessageMedia(message: {
+    message_id: string;
+    message_type: string;
+    content: string;
+  }): Promise<InboundChannelMedia[]> {
+    const ref = feishuMediaRef(message.message_type, message.content);
+    if (ref === undefined) return [];
+    const credentials = this.#store.getCredentials(this.#ownerId(), 'feishu');
+    if (credentials === null || credentials.kind !== 'feishu') return [];
+    try {
+      const response = await this.#apiClient(
+        credentials.appId,
+        credentials.appSecret,
+      ).im.messageResource.get({
+        params: { type: ref.kind },
+        path: { message_id: message.message_id, file_key: ref.fileKey },
+      });
+      const stream = response.getReadableStream();
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
+      }
+      return [{ fileName: ref.fileName, bytes: new Uint8Array(Buffer.concat(chunks)) }];
+    } catch (error) {
+      console.error('feishu media download failed', error);
+      return [];
+    }
   }
 }

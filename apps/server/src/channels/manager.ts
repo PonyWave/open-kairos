@@ -71,6 +71,14 @@ export class ChannelManager {
 
   #handleInbound(message: InboundChannelMessage): void {
     try {
+      const attachmentIds = (message.media ?? []).map(
+        (media) =>
+          this.#sessionStore.attachments.uploadChannel({
+            ownerId: this.#ownerId(),
+            fileName: media.fileName,
+            bytes: media.bytes,
+          }).attachmentId,
+      );
       const accepted = this.#sessionStore.acceptChannelInput({
         ownerId: this.#ownerId(),
         method: 'ChannelInbound',
@@ -82,6 +90,7 @@ export class ChannelManager {
           kind: 'inbound',
           externalMessageId: message.externalMessageId,
         },
+        ...(attachmentIds.length === 0 ? {} : { attachmentIds }),
       });
       void this.#deliver(accepted.input, accepted.runId).catch((error: unknown) => {
         // 输入已持久化，调度失败时由后续重试或重启恢复。

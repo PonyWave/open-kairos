@@ -75,7 +75,12 @@ export function toAttachment(record: AttachmentMetadata) {
     ...(record.height === undefined ? {} : { height: record.height }),
     sha256: record.sha256,
     createdAt: timestamp(record.createdAt),
-    source: record.source === 'clipboard' ? AttachmentSource.CLIPBOARD : AttachmentSource.FILE,
+    source:
+      record.source === 'clipboard'
+        ? AttachmentSource.CLIPBOARD
+        : record.source === 'channel'
+          ? AttachmentSource.CHANNEL
+          : AttachmentSource.FILE,
     ...(record.workspaceStatus === 'completed' && record.path !== undefined
       ? { path: record.path }
       : {}),

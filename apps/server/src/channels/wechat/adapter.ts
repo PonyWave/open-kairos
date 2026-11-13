@@ -6,11 +6,17 @@ import type { ChannelStore } from '../store.js';
 import { ChannelDeliveryError } from '../store.js';
 import { inboundMessageText, WechatClient, type WechatClientApi } from './client.js';
 
+export interface InboundChannelMedia {
+  fileName: string;
+  bytes: Uint8Array;
+}
+
 export interface InboundChannelMessage {
   channel: 'wechat' | 'feishu';
   externalMessageId: string;
   externalUserId: string;
   text: string;
+  media?: InboundChannelMedia[];
 }
 
 export type InboundHandler = (message: InboundChannelMessage) => void;
@@ -399,7 +405,7 @@ export class WechatChannel implements OutboundChannel {
             this.#store.updateInboundCursor(ownerId, 'wechat', response.get_updates_buf);
           }
           for (const message of response.msgs ?? []) {
-            this.handleInboundMessage(ownerId, state.externalUserId, message);
+            await this.handleInboundMessage(ownerId, state.externalUserId, message);
           }
         } catch (error) {
           if (signal.aborted) return;
@@ -417,11 +423,11 @@ export class WechatChannel implements OutboundChannel {
     }
   }
 
-  handleInboundMessage(
+  async handleInboundMessage(
     ownerId: string,
     boundUserId: string | null,
     message: Parameters<typeof inboundMessageText>[0],
-  ): void {
+  ): Promise<void> {
     if (message.message_type !== 1) return;
     if (boundUserId === null || message.from_user_id !== boundUserId) return;
     const externalMessageId =
@@ -432,14 +438,66 @@ export class WechatChannel implements OutboundChannel {
     }
     if (!this.#store.recordInboundEvent(ownerId, 'wechat', externalMessageId)) return;
     const text = inboundMessageText(message);
-    if (text.trim().length === 0) return;
+    const media = await this.#downloadMessageMedia(externalMessageId, message);
+    if (text.trim().length === 0 && media.length === 0) return;
     this.#onInbound({
       channel: 'wechat',
       externalMessageId,
       externalUserId: boundUserId,
       text,
+      ...(media.length === 0 ? {} : { media }),
     });
     void this.#startTyping(boundUserId, message.context_token);
+  }
+
+  async #downloadMessageMedia(
+    externalMessageId: string,
+    message: Parameters<typeof inboundMessageText>[0],
+  ): Promise<InboundChannelMedia[]> {
+    const media: InboundChannelMedia[] = [];
+    const items = message.item_list ?? [];
+    for (const [index, item] of items.entries()) {
+      if (item === undefined) continue;
+      const ref =
+        item.type === 2
+          ? item.image_item
+          : item.type === 3
+            ? item.voice_item
+            : item.type === 4
+              ? item.file_item
+              : item.type === 5
+                ? item.video_item
+                : undefined;
+      const mediaRef = ref?.media;
+      if (ref === undefined || mediaRef === undefined) continue;
+      if (item.type === 3 && item.voice_item?.text !== undefined && item.voice_item.text.length > 0) {
+        continue;
+      }
+      const aesKey =
+        item.type === 2 && item.image_item?.aeskey !== undefined
+          ? item.image_item.aeskey
+          : mediaRef.aes_key;
+      const fileName =
+        item.type === 4 && item.file_item?.file_name !== undefined
+          ? item.file_item.file_name
+          : `wechat-${item.type === 2 ? 'image' : item.type === 3 ? 'voice' : 'video'}-${externalMessageId}-${index + 1}`;
+      try {
+        const bytes = await this.#client.downloadMedia(
+          {
+            ...(mediaRef.full_url === undefined ? {} : { fullUrl: mediaRef.full_url }),
+            ...(mediaRef.encrypt_query_param === undefined
+              ? {}
+              : { encryptQueryParam: mediaRef.encrypt_query_param }),
+          },
+          aesKey,
+          AbortSignal.timeout(60_000),
+        );
+        media.push({ fileName, bytes });
+      } catch (error) {
+        console.error('wechat media download failed', error);
+      }
+    }
+    return media;
   }
 
   async #startTyping(userId: string, contextToken: string | undefined): Promise<void> {

@@ -50,8 +50,19 @@ class StubClient implements WechatClientApi {
     this.sentTexts.push(text);
   }
 
+  mediaBytes: Uint8Array = new Uint8Array();
+  mediaRequests: { ref: unknown; aesKey: string | undefined }[] = [];
+
   async getConfig(): Promise<string | null> {
     return 'ticket-1';
+  }
+
+  async downloadMedia(
+    ref: { fullUrl?: string | undefined; encryptQueryParam?: string | undefined },
+    aesKey: string | undefined,
+  ): Promise<Uint8Array> {
+    this.mediaRequests.push({ ref, aesKey });
+    return this.mediaBytes;
   }
 
   async sendTyping(
@@ -164,7 +175,7 @@ it('shows typing on inbound wechat messages and cancels it after the first deliv
       botId: 'bot-1',
       ilinkUserId: 'user-1',
     });
-    channel.handleInboundMessage(ownerId, 'user-1', {
+    await channel.handleInboundMessage(ownerId, 'user-1', {
       message_type: 1,
       from_user_id: 'user-1',
       message_id: 42,
@@ -256,6 +267,47 @@ it('does not restart a completed login when its original request is retried', as
     expect(store.getState(ownerId, 'wechat').status).toBe('active');
   } finally {
     channel.stop();
+    database.close();
+  }
+});
+
+it('downloads inbound media and passes it to the inbound handler', async () => {
+  const inbound: { text: string; media?: { fileName: string; bytes: Uint8Array }[] }[] = [];
+  const { database, store, client, channel } = fixture((message) => {
+    inbound.push(message);
+  });
+  try {
+    store.completeWechatLogin(ownerId, {
+      kind: 'wechat',
+      botToken: 'token-1',
+      baseUrl: 'https://ilinkai.weixin.qq.com',
+      botId: 'bot-1',
+      ilinkUserId: 'user-1',
+    });
+    client.mediaBytes = new Uint8Array([1, 2, 3, 4]);
+    await channel.handleInboundMessage(ownerId, 'user-1', {
+      message_type: 1,
+      from_user_id: 'user-1',
+      message_id: 77,
+      item_list: [
+        {
+          type: 4,
+          file_item: {
+            file_name: '报告.pdf',
+            media: { encrypt_query_param: 'param-1', aes_key: 'aa'.repeat(16) },
+          },
+        },
+      ],
+    });
+    expect(inbound).toHaveLength(1);
+    expect(inbound[0]?.text).toBe('[文件: 报告.pdf]');
+    expect(inbound[0]?.media).toHaveLength(1);
+    expect(inbound[0]?.media?.[0]?.fileName).toBe('报告.pdf');
+    expect([...(inbound[0]?.media?.[0]?.bytes ?? [])]).toEqual([1, 2, 3, 4]);
+    expect(client.mediaRequests).toEqual([
+      { ref: { encryptQueryParam: 'param-1' }, aesKey: 'aa'.repeat(16) },
+    ]);
+  } finally {
     database.close();
   }
 });

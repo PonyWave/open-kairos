@@ -34,7 +34,7 @@ class StubWechatClient implements WechatClientApi {
   async notifyLifecycle(): Promise<void> {}
 }
 
-it('delivers inbound wechat messages to the run coordinator', () => {
+it('delivers inbound wechat messages to the run coordinator', async () => {
   const database = openDatabase(':memory:');
   const sessionStore = new SessionStore(database);
   seedTestTenant(database, ownerId);
@@ -58,7 +58,7 @@ it('delivers inbound wechat messages to the run coordinator', () => {
       botId: 'bot-1',
       ilinkUserId: 'user-1',
     });
-    manager.wechat.handleInboundMessage(ownerId, 'user-1', {
+    await manager.wechat.handleInboundMessage(ownerId, 'user-1', {
       message_type: 1,
       from_user_id: 'user-1',
       message_id: 42,

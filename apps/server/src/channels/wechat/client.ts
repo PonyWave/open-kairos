@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { ChannelDeliveryError } from '../store.js';
 
@@ -37,6 +37,14 @@ const qrStatusResponseSchema = z.object({
   redirect_host: z.string().optional(),
 });
 
+const cdnMediaSchema = z
+  .object({
+    encrypt_query_param: z.string().optional(),
+    aes_key: z.string().optional(),
+    full_url: z.string().optional(),
+  })
+  .optional();
+
 export const weixinMessageSchema = z.object({
   message_id: z.number().optional(),
   from_user_id: z.string().optional(),
@@ -51,8 +59,29 @@ export const weixinMessageSchema = z.object({
         .object({
           type: z.number().optional(),
           text_item: z.object({ text: z.string().optional() }).optional(),
-          file_item: z.object({ file_name: z.string().optional() }).optional(),
-          voice_item: z.object({ text: z.string().optional() }).optional(),
+          image_item: z
+            .object({
+              aeskey: z.string().optional(),
+              media: cdnMediaSchema,
+            })
+            .optional(),
+          file_item: z
+            .object({
+              file_name: z.string().optional(),
+              media: cdnMediaSchema,
+            })
+            .optional(),
+          voice_item: z
+            .object({
+              text: z.string().optional(),
+              media: cdnMediaSchema,
+            })
+            .optional(),
+          video_item: z
+            .object({
+              media: cdnMediaSchema,
+            })
+            .optional(),
         })
         .optional(),
     )
@@ -100,6 +129,11 @@ export interface WechatClientApi {
     signal: AbortSignal,
   ): Promise<void>;
   getConfig(botToken: string, ilinkUserId: string, contextToken?: string): Promise<string | null>;
+  downloadMedia(
+    ref: { fullUrl?: string | undefined; encryptQueryParam?: string | undefined },
+    aesKey: string | undefined,
+    signal: AbortSignal,
+  ): Promise<Uint8Array>;
   sendTyping(
     botToken: string,
     ilinkUserId: string,
@@ -300,6 +334,41 @@ export class WechatClient implements WechatClientApi {
     );
   }
 
+  async downloadMedia(
+    ref: { fullUrl?: string | undefined; encryptQueryParam?: string | undefined },
+    aesKey: string | undefined,
+    signal: AbortSignal,
+  ): Promise<Uint8Array> {
+    const url =
+      ref.fullUrl ??
+      (ref.encryptQueryParam === undefined
+        ? undefined
+        : `${defaultCdnBaseUrl}/download?encrypted_query_param=${encodeURIComponent(ref.encryptQueryParam)}`);
+    if (url === undefined) {
+      throw new ChannelDeliveryError(false, 'media_unavailable', '微信媒体缺少下载地址。');
+    }
+    let response: Response;
+    try {
+      response = await this.#fetch(url, { method: 'GET', signal });
+    } catch (error) {
+      throw new ChannelDeliveryError(
+        true,
+        'network_error',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    if (!response.ok) {
+      throw new ChannelDeliveryError(
+        response.status >= 500 || response.status === 429,
+        `http_${response.status}`,
+        `微信媒体下载返回 HTTP ${response.status}。`,
+      );
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (aesKey === undefined || aesKey.length === 0) return bytes;
+    return decryptWechatMedia(bytes, aesKey);
+  }
+
   async notifyLifecycle(botToken: string, action: 'start' | 'stop'): Promise<void> {
     try {
       await this.#post(
@@ -338,4 +407,36 @@ export function inboundMessageText(message: WeixinMessage): string {
     } else if (item.type === 5) parts.push('[视频]');
   }
   return parts.join('\n');
+}
+
+const defaultCdnBaseUrl = 'https://novac2c.cdn.weixin.qq.com/c2c';
+
+export function decryptWechatMedia(bytes: Uint8Array, aesKey: string): Uint8Array {
+  const key = parseWechatAesKey(aesKey);
+  if (key === undefined) {
+    throw new ChannelDeliveryError(false, 'media_key_invalid', '微信媒体密钥格式无效。');
+  }
+  try {
+    const decipher = createDecipheriv('aes-128-ecb', key, null);
+    return new Uint8Array(Buffer.concat([decipher.update(bytes), decipher.final()]));
+  } catch (error) {
+    throw new ChannelDeliveryError(
+      false,
+      'media_decrypt_failed',
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
+function parseWechatAesKey(value: string): Buffer | undefined {
+  if (/^[0-9a-fA-F]{32}$/.test(value)) return Buffer.from(value, 'hex');
+  try {
+    const decoded = Buffer.from(value, 'base64');
+    if (decoded.length === 16) return decoded;
+    const asText = decoded.toString('utf8');
+    if (/^[0-9a-fA-F]{32}$/.test(asText)) return Buffer.from(asText, 'hex');
+  } catch {
+    // 按无效密钥处理。
+  }
+  return undefined;
 }

@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { seedTestSession } from '../integration/test-authentication.js';
 import { SessionStore } from '../sessions/store.js';
 import { openDatabase } from '../storage/database.js';
@@ -393,4 +393,47 @@ it('creates authorized tool images and materializes them only for model requests
   } finally {
     database.close();
   }
+});
+
+describe('channel attachments', () => {
+  it('stores arbitrary bytes as octet-stream and selects them for channel input', () => {
+    const { database, store } = fixture();
+    try {
+      const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37, 0x00, 0x01]);
+      const uploaded = store.attachments.uploadChannel({
+        ownerId: 'owner',
+        fileName: '报告.pdf',
+        bytes: pdf,
+      });
+      expect(uploaded.mediaType).toBe('application/octet-stream');
+      expect(uploaded.source).toBe('channel');
+      const selected = store.attachments.selectForChannelInput('owner', [uploaded.attachmentId]);
+      expect(selected).toHaveLength(1);
+      expect(selected[0]?.source).toBe('channel');
+      expect(() => store.attachments.selectForChannelInput('other', [uploaded.attachmentId])).toThrow();
+    } finally {
+      database.close();
+    }
+  });
+
+  it('detects png and text content for channel attachments', () => {
+    const { database, store } = fixture();
+    try {
+      const png = store.attachments.uploadChannel({
+        ownerId: 'owner',
+        fileName: 'photo',
+        bytes: pngBytes,
+      });
+      expect(png.mediaType).toBe('image/png');
+      expect(png.width).toBeGreaterThan(0);
+      const text = store.attachments.uploadChannel({
+        ownerId: 'owner',
+        fileName: 'notes',
+        bytes: new TextEncoder().encode('你好，世界'),
+      });
+      expect(text.mediaType).toBe('text/plain');
+    } finally {
+      database.close();
+    }
+  });
 });
