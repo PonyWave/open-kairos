@@ -860,6 +860,7 @@ export function AccountWorkbench({
               <button
                 type="button"
                 className={mainVisible ? 'selected' : ''}
+                data-nav="main"
                 aria-current={mainVisible ? 'page' : undefined}
                 onClick={openMain}
               >
@@ -880,6 +881,7 @@ export function AccountWorkbench({
                     : undefined
                 }
                 onClick={() => openAutomations()}
+                data-nav="automations"
               >
                 <Icon name="clock" />
                 <span className="nav-label">定时任务</span>
@@ -887,6 +889,7 @@ export function AccountWorkbench({
               <button
                 type="button"
                 className={directory.page === 'directory' ? 'selected' : ''}
+                data-nav="topics"
                 aria-current={directory.page === 'directory' ? 'page' : undefined}
                 onClick={openDirectory}
               >

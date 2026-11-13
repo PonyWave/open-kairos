@@ -23,6 +23,7 @@ import { Icon } from './icon.js';
 import { isDirectUserMessage, isRootAgent } from './labels.js';
 import { MessageAvatar } from './message-avatar.js';
 import { ThreadNotificationCallCard, ThreadNotificationCard } from './notification-cards.js';
+import { stripChannelInboundMarker } from './queue-display.js';
 import { EditedMarker } from './response-components.js';
 import type { DelegationCallProjection } from './response-projection.js';
 import type { ChannelDeliveryStatusInfo } from './sent-user-message.js';
@@ -442,7 +443,7 @@ export function MessageCard({
       ) : orderedContent ? null : (
         renderText(
           channelInbound === true
-            ? { ...message, content: message.content.replace(/^\[来自(微信|飞书)\]\n?/, '') }
+            ? { ...message, content: stripChannelInboundMarker(message.content) }
             : message,
         )
       )}
@@ -513,11 +514,19 @@ export function MessageCard({
 
 function ChannelDeliveryFailureCard({ message }: { message: Message }) {
   const channelName = message.channel?.channel === ChannelId.WECHAT ? '微信' : '飞书';
+  const detail =
+    message.content.startsWith('<system-reminder>\n') &&
+    message.content.endsWith('\n</system-reminder>')
+      ? message.content.slice(
+          '<system-reminder>\n'.length,
+          message.content.length - '\n</system-reminder>'.length,
+        )
+      : message.content;
   return (
     <article className="message channel-delivery-failure" data-message-id={message.messageId}>
       <div className="channel-delivery-failure-card">
         <div className="channel-delivery-failure-title">渠道投递失败（{channelName}）</div>
-        <pre className="channel-delivery-failure-detail">{message.content}</pre>
+        <pre className="channel-delivery-failure-detail">{detail}</pre>
       </div>
     </article>
   );

@@ -50,16 +50,153 @@ summary:focus-visible {
     0 0 0 3px color-mix(in srgb, var(--ink) 5%, transparent),
     0 3px 16px #00000005;
 }
+
+/* Loading is delayed independently of the request; resolved content enters on its own mount. */
+.message-list {
+  animation: motion-fade-in var(--motion-enter) var(--motion-out);
+}
+.conversation-loading {
+  min-height: 240px;
+}
+.conversation-skeleton {
+  display: grid;
+  gap: 32px;
+  padding: 12px 0;
+  animation: motion-fade-in 200ms ease;
+}
+.skeleton-user {
+  display: flex;
+  justify-content: flex-end;
+}
+.skeleton-user > span {
+  width: 38%;
+  height: 40px;
+  border-radius: 14px 14px 4px 14px;
+  background: var(--line);
+}
+.skeleton-user-short > span {
+  width: 28%;
+}
+.skeleton-reply {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.skeleton-avatar {
+  flex: 0 0 26px;
+  height: 26px;
+  border-radius: 9px;
+  background: var(--line-strong);
+}
+.skeleton-lines {
+  display: grid;
+  gap: 11px;
+  flex: 1;
+  padding-top: 5px;
+}
+.skeleton-lines > span {
+  width: 78%;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--line-strong);
+}
+.skeleton-lines > span:nth-child(2) {
+  width: 92%;
+}
+.skeleton-lines > span:last-child {
+  width: 54%;
+}
+.skeleton-user > span,
+.skeleton-reply {
+  animation: motion-skeleton-pulse 1800ms ease-in-out infinite;
+}
+.skeleton-reply {
+  animation-delay: 160ms;
+}
+
+/* Icons respond within their existing hit areas; labels and rows retain their layout. */
+.thread-list > :where(button) > .icon,
+.connection-banner > .icon,
+.icon-button > .icon:not(.spinning),
+.brand > .entity-mark,
+.account-trigger .user-avatar,
+.workspace-main-open .workspace-avatar,
+.workspace-overview-toggle > .entity-mark,
+.workspace-task-badge {
+  transition: transform 300ms var(--motion-out);
+}
+.thread-list [data-nav="automations"] .icon > path {
+  transform-origin: 12px 12px;
+  transition: transform 380ms var(--motion-out);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :is(.thread-list > button, .connection-banner):focus-visible > .icon {
+    transform: translateY(-1px) scale(1.1);
+  }
+  .thread-list > [data-nav="main"]:focus-visible > .icon {
+    transform: translateY(-1px) rotate(-8deg) scale(1.12);
+  }
+  .icon-button:focus-visible > .icon[data-icon="settings"] {
+    transform: rotate(30deg);
+  }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .thread-list > [data-nav="main"]:hover > .icon {
+    transform: translateY(-1px) rotate(-8deg) scale(1.12);
+  }
+  .thread-list > [data-nav="automations"]:hover > .icon {
+    transform: rotate(-8deg) scale(1.08);
+  }
+  .thread-list > [data-nav="automations"]:is(:hover, :focus-visible) .icon > path {
+    transform: rotate(30deg);
+  }
+  .thread-list > [data-nav="topics"]:hover > .icon {
+    transform: translateX(2px) rotate(5deg);
+  }
+  .connection-banner:is(:hover, :focus-visible) > .icon[data-icon="monitor"] {
+    transform: translateY(-2px) scale(1.08);
+  }
+  :is(.connection-banner, .icon-button):is(:hover, :focus-visible) > .icon[data-icon="settings"] {
+    transform: rotate(30deg);
+  }
+  .icon-button:is(:hover, :focus-visible):not(:disabled) > .icon[data-icon="plus"] {
+    transform: rotate(90deg) scale(1.08);
+  }
+  .icon-button:is(:hover, :focus-visible):not(:disabled) > .icon[data-icon="grid"] {
+    transform: rotate(-6deg) scale(1.1);
+  }
+  .icon-button:is(:hover, :focus-visible):not(:disabled) > .icon[data-icon="edit"] {
+    transform: translate(1px, -1px) rotate(-8deg);
+  }
+  .icon-button:is(:hover, :focus-visible):not(:disabled) > .icon[data-icon="close"] {
+    transform: rotate(90deg);
+  }
+  .brand:is(:hover, :focus-visible) > .entity-mark,
+  .workspace-main-open:is(:hover, :focus-visible) .workspace-avatar,
+  .workspace-overview-toggle:is(:hover, :focus-visible) > .entity-mark {
+    transform: translateY(-1px) rotate(-6deg) scale(1.08);
+  }
+  .workspace-task-item:is(:hover, :focus-within) .workspace-task-badge {
+    transform: rotate(12deg) scale(1.12);
+  }
+  .account-trigger:is(:hover, :focus-visible) .user-avatar {
+    transform: scale(1.08);
+  }
+}
 .send-btn > .icon:not(.spinning),
 .theme-toggle > .icon,
 .conversation-card-footer > .icon {
   transition: transform var(--motion-enter) var(--motion-out);
 }
-.send-btn > .icon {
+.send-btn > .icon:not(.spinning) {
   animation: motion-fade-in var(--motion-feedback) ease;
 }
 
 @media (hover: hover) and (pointer: fine) {
+  .theme-toggle:hover > .icon {
+    transform: rotate(18deg);
+  }
   :is(.device-primary, .primary):hover:not(:disabled) {
     translate: 0 -1px;
     box-shadow: 0 3px 9px #00000012;
@@ -74,9 +211,6 @@ summary:focus-visible {
   .send-btn:not(.stop-btn):hover:not(:disabled) > .icon:not(.spinning) {
     transform: translateY(-2px);
   }
-  .theme-toggle:hover > .icon {
-    transform: rotate(18deg);
-  }
 }
 
 /* Page containers only fade: a transform would change fixed menu positioning. */
@@ -87,7 +221,7 @@ summary:focus-visible {
   .connected-devices-page,
   .automation-page,
   .conversation-pane:not([hidden]),
-  .login-card
+  .login-screen > section
 ) {
   animation: motion-fade-in var(--motion-enter) var(--motion-out);
 }
@@ -106,7 +240,7 @@ summary:focus-visible {
 
 :is(.workspace-overview, .conversation-list, .device-list, .automation-list)
   > :is(.workspace-overview-group, .conversation-card, .connected-device-row, .automation-row) {
-  animation: motion-rise-in var(--motion-enter) var(--motion-out) both;
+  animation: motion-rise-in var(--motion-enter) var(--motion-out) backwards;
 }
 :is(.workspace-overview, .conversation-list, .device-list, .automation-list) > :nth-child(2) {
   animation-delay: 24ms;
@@ -288,6 +422,15 @@ summary:focus-visible {
     opacity: 1;
   }
 }
+@keyframes motion-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
 @keyframes motion-rise-in {
   from {
     opacity: 0;
@@ -335,18 +478,24 @@ summary:focus-visible {
   *::before,
   *::after,
   *::backdrop {
+    /* biome-ignore lint/complexity/noImportantStyles: The accessibility preference overrides every component's animation. */
     animation: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: Include inline drag-settling transitions. */
     transition: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: Preserve immediate navigation for reduced motion. */
     scroll-behavior: auto !important;
   }
   :is(.primary, .device-primary, .device-secondary, .icon-button, .send-btn, .conversation-card) {
+    /* biome-ignore lint/complexity/noImportantStyles: Disable hover movement at all component specificities. */
     translate: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: Disable pressed movement at all component specificities. */
     scale: none !important;
   }
   .send-btn > .icon:not(.spinning),
   .theme-toggle > .icon,
   .conversation-card-footer > .icon,
   .workspace-main-open .workspace-avatar {
+    /* biome-ignore lint/complexity/noImportantStyles: Preserve stateful chevrons while disabling decorative movement. */
     transform: none !important;
   }
 }

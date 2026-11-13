@@ -24,6 +24,8 @@ const controls = vi.hoisted(() => ({
   dialog: undefined as unknown,
 }));
 
+vi.mock('./use-message-entrance.js', () => ({ useMessageEntrance: () => {} }));
+
 vi.mock('./composer.js', () => ({
   Composer: (props: { onSend: (mode: InputMode) => Promise<void> }) => {
     controls.send = props.onSend;

@@ -222,9 +222,10 @@ describe('Dropdown controls', () => {
     expect(html).toContain('role="listbox"');
   });
 
-  it('sizes the sort list from its trigger without a fixed minimum width', () => {
+  it('positions the sort list using layout dimensions during its entrance transform', () => {
     const anchor = { top: 100, bottom: 130, left: 200, right: 318, width: 118 };
     const style: Record<string, string> = {};
+    const dataset: Record<string, string> = {};
     vi.stubGlobal('window', {
       innerWidth: 1024,
       innerHeight: 768,
@@ -236,14 +237,18 @@ describe('Dropdown controls', () => {
     setRef(element('aria-label', '排序字段'), { getBoundingClientRect: () => anchor });
     setRef(element('role', 'listbox'), {
       style,
+      dataset,
       scrollHeight: 84,
-      getBoundingClientRect: () => ({ width: 118, height: 84 }),
+      offsetWidth: 118,
+      offsetHeight: 84,
+      getBoundingClientRect: () => ({ width: 115.64, height: 82.32 }),
       querySelectorAll: () => [],
     });
     const cleanup = captured.layoutEffects[0]?.();
     expect(style.minWidth).toBe('118px');
     expect(style.left).toBe('200px');
     expect(style.top).toBe('136px');
+    expect(dataset.side).toBe('bottom');
     cleanup?.();
   });
 });

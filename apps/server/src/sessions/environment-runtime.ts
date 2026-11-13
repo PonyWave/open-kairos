@@ -1033,11 +1033,10 @@ export class AgentEnvironmentRuntime {
         : agentId === 'thread'
           ? 'task_thread'
           : 'subagent';
-    const defaultEnv = specification?.defaultEnv ?? policy.defaultEnv;
     const defaultPwd = specification?.defaultPwd ?? policy.defaultPwd;
     const instructions = [
-      'All Agents load AGENTS.md and Skills from the main environment workspace. Omitting env_id executes a file or command tool in the main environment. The main environment env_id and name are both main. Optional env_id selects an authorized target for that call only and does not change subsequent calls or loaded instructions. Relative paths use the main environment workspace in the main environment and the validated recommended directory in another environment. Task Threads and Subagents inherit or narrow the caller authorization. Read project rules explicitly when working in another environment. The environment JSON records the conversation start time; run date in bash when precise current time matters.',
-      `<agent-execution-environment>${jsonStringify({ allowed_env: effectiveAllowed.map((envId) => this.#modelEnvId(ownerId, envId)), main_env: defaultEnv ? this.#modelEnvId(ownerId, defaultEnv) : null, workspace: defaultPwd, resource_version: specification?.resourceVersion ?? binding.resourceVersion, role, started_at: thread.createdAt })}</agent-execution-environment>`,
+      'All Agents load AGENTS.md and Skills from the main environment workspace. Omitting env_id executes a file or command tool in the main environment. The main environment env_id and name are both main. Optional env_id selects an authorized target for that call only and does not change subsequent calls or loaded instructions. Relative paths use the main environment workspace in the main environment and the validated recommended directory in another environment. Task Threads and Subagents inherit or narrow the caller authorization. Read project rules explicitly when working in another environment. Run date in bash when precise current time matters.',
+      `<agent-execution-environment>${jsonStringify({ allowed_env: effectiveAllowed.map((envId) => this.#modelEnvId(ownerId, envId)), workspace: defaultPwd, role })}</agent-execution-environment>`,
     ];
     if (role === 'main_agent')
       instructions.push(

@@ -1620,7 +1620,7 @@ it('does not register thread_notify on automation_only root Threads', async () =
     expect(accepted.thread.automationOnly).toBe(true);
     const automation = accepted.input.automation;
     if (!automation) throw new Error('Automation input metadata is missing.');
-    const automationRequestKey = `user:Kairos Automation trigger; trigger=${automation.trigger}; schedule_id=${automation.scheduleId}; fire_id=${automation.fireId}; scheduled_at=${automation.scheduledAt}.\nThe configured Automation prompt follows; it is not a new human instruction:\n\n${accepted.input.text}`;
+    const automationRequestKey = `user:<system-reminder>\nKairos Automation trigger; trigger=${automation.trigger}; schedule_id=${automation.scheduleId}; fire_id=${automation.fireId}; scheduled_at=${automation.scheduledAt}. The configured Automation prompt follows; it is not a new human instruction.\n</system-reminder>\n\n${accepted.input.text}`;
     provider.register(automationRequestKey, response('hidden work completed'));
     resolveRequest = () => provider.resolve(automationRequestKey);
     await coordinator.deliver(accepted.input, accepted.runId);

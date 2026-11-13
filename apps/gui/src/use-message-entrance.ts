@@ -12,6 +12,7 @@ export function useMessageEntrance(
   const animations = useRef(new Set<Animation>());
 
   useLayoutEffect(() => {
+    if (!viewportRef.current) return;
     const active = animations.current;
     const media = window.matchMedia(reducedMotionQuery);
     const cancel = () => {
@@ -26,7 +27,7 @@ export function useMessageEntrance(
       media.removeEventListener('change', onChange);
       cancel();
     };
-  }, []);
+  }, [viewportRef]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;

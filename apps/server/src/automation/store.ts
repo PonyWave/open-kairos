@@ -4,6 +4,7 @@ import type { AutomationReference } from '../context/types.js';
 import { requirePositiveInteger, requireText, SessionError } from '../sessions/errors.js';
 import type { RunError, RunStatus } from '../sessions/records.js';
 import type { SessionStore } from '../sessions/store.js';
+import { wrapSystemReminder } from '../sessions/system-reminder.js';
 import {
   countOccurrences,
   jitteredNextOccurrence,
@@ -615,7 +616,9 @@ export class AutomationStore {
     };
     const deliveredPrompt =
       trigger === 'scheduled'
-        ? `[Automation scheduled trigger: schedule ${JSON.stringify(automation.name)}, occurrence ${scheduledAt}, coalesced_missed_occurrences: ${coalescedCount}. This is an Automation input, not a new human instruction.]\n\n${automation.prompt}`
+        ? `${wrapSystemReminder(
+            `Automation scheduled trigger: schedule ${JSON.stringify(automation.name)}, occurrence ${scheduledAt}, coalesced_missed_occurrences: ${coalescedCount}. This is an Automation input, not a new human instruction.`,
+          )}\n\n${automation.prompt}`
         : automation.prompt;
     let accepted:
       | {

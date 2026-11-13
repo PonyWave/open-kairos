@@ -23,11 +23,16 @@ function fixture() {
       sent.push({ externalUserId: input.externalUserId, markdown: input.markdown });
     },
   };
+  const delivered: string[] = [];
   const worker = new ChannelDeliveryWorker({
     channelStore,
     sessionStore,
     ownerId: () => ownerId,
     channels: { feishu: adapter },
+    deliver: (input, runId) => {
+      delivered.push(input.inputId);
+      return Promise.resolve(runId);
+    },
     clock,
     retryDelaysMs: [2_000, 10_000, 30_000],
   });
@@ -45,6 +50,7 @@ function fixture() {
     channelStore,
     worker,
     sent,
+    delivered,
     bindFeishu,
     advance: (ms: number) => {
       now = new Date(now.getTime() + ms);
@@ -136,6 +142,7 @@ it('notifies main with retry guidance after retries are exhausted', async () => 
     expect(notice?.text).toContain('retryable: yes');
     expect(notice?.text).toContain(`redeliver_of="${delivery.deliveryId}"`);
     expect(notice?.text).toContain('最终内容');
+    expect(notice === undefined ? [] : value.delivered).toEqual([notice?.inputId]);
     await value.worker.processNow();
     expect(mainInputs(value.sessionStore)).toHaveLength(1);
   } finally {

@@ -1,9 +1,11 @@
 import { openDatabase } from '../storage/database.js';
-import { controlledEnvironmentOperations } from './environment-fixture.js';
+import { controlledEnvironmentOperations, seedTestEnvironment } from './environment-fixture.js';
 import { createTestServer, seedTestSession } from './test-authentication.js';
 
 const database = openDatabase(':memory:');
+seedTestEnvironment(database, 'local-user', 'main', '/workspace');
 const server = createTestServer(database, false, {
+  mainEnvironment: { envId: 'main', workspace: '/workspace' },
   environmentOperations: controlledEnvironmentOperations(database),
   model: {
     providerId: 'fixture',

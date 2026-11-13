@@ -42,6 +42,8 @@ pnpm exec playwright install chromium
 
 `PLAYWRIGHT_BROWSERS_PATH` 可覆盖浏览器二进制的解析位置，见 `.env.example`。
 
+`node scripts/check-motion-browser.mjs` 使用内存数据库与测试 Provider 验证动效相关行为，包括消息入场、加载切换、菜单定位、分组展开与快速反向切换、窄屏焦点和“减少动态效果”。检查截图写入命令输出中的临时目录。
+
 `KAIROS_MCP_CONFIG` 指定 MCP server 配置 JSON 路径（`servers` 数组，字段见 `.env.example` 注释与[整体架构](architecture.md#21-mcp-工具桥接)）；未设置时不注册 MCP 工具。
 
 ## 数据与迁移

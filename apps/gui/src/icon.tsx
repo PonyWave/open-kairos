@@ -322,7 +322,13 @@ export function Icon({
   style?: CSSProperties;
 }) {
   return (
-    <svg className={`icon ${className}`} viewBox="0 0 24 24" aria-hidden="true" style={style}>
+    <svg
+      className={`icon ${className}`}
+      data-icon={name}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      style={style}
+    >
       {shapes[name]}
     </svg>
   );

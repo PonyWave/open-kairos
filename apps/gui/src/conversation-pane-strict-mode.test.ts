@@ -27,6 +27,8 @@ vi.mock('react/jsx-runtime', () => ({
   Fragment: Symbol.for('react.fragment'),
 }));
 
+vi.mock('./use-message-entrance.js', () => ({ useMessageEntrance: () => {} }));
+
 function installReactDomContainer(): HTMLElement {
   const noop = () => {};
   const element = (nodeName: string, namespaceURI = 'http://www.w3.org/1999/xhtml') => ({

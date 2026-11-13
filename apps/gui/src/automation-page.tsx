@@ -48,6 +48,7 @@ import {
 } from './automation-schedule.js';
 import { automationTimeZoneLabel, automationTimeZoneOptions } from './automation-time-zone.js';
 import type { KairosClients } from './client.js';
+import { DelayedStatus } from './delayed-status.js';
 import { Dropdown, dropdownPosition } from './dropdown.js';
 import { formatClientError } from './errors.js';
 import { FailureNotice } from './failure-notice.js';
@@ -447,7 +448,9 @@ export function AutomationPage({
               />
             </>
           ) : !detail?.error ? (
-            <p role="status">正在读取定时任务…</p>
+            <DelayedStatus>
+              <p role="status">正在读取定时任务…</p>
+            </DelayedStatus>
           ) : null}
         </div>
       )}
@@ -528,7 +531,9 @@ export function AutomationListView({
         />
       )}
       {state.loading && state.automations.length === 0 ? (
-        <p role="status">正在加载定时任务…</p>
+        <DelayedStatus>
+          <p role="status">正在加载定时任务…</p>
+        </DelayedStatus>
       ) : state.automations.length === 0 && !state.error ? (
         <div className="automation-empty">
           <Icon name="clock" className="i-lg" />
@@ -630,7 +635,9 @@ export function AutomationFireHistory({
         />
       )}
       {state?.loading && fires.length === 0 ? (
-        <p role="status">正在读取执行历史…</p>
+        <DelayedStatus>
+          <p role="status">正在读取执行历史…</p>
+        </DelayedStatus>
       ) : fires.length === 0 && !state?.error ? (
         <p className="automation-history-empty">尚无执行记录。</p>
       ) : (

@@ -27,6 +27,7 @@ import {
   initialHiddenTurnCount,
   revealEarlierTurnCount,
 } from './conversation-history.js';
+import { ConversationLoading } from './conversation-loading.js';
 import { delegationKey } from './delegation.js';
 import type { OpenTopicRequest } from './delegation-cards.js';
 import { type DraftAttachment, localTaskDraftId } from './drafts.js';
@@ -898,7 +899,7 @@ export function ConversationPane({
             </div>
           ) : null}
           {!isDraft && threadSync.state.status === 'loading' && !snapshot ? (
-            <p role="status">正在加载消息…</p>
+            <ConversationLoading />
           ) : conversationItems.length === 0 ? (
             variant === 'main' && !readOnly ? (
               <div className="empty conversation-empty conversation-onboarding">

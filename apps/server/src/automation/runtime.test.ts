@@ -62,7 +62,7 @@ function automationKey(input: { text: string; automation: unknown }): string {
     fireId: string;
     scheduledAt: string;
   };
-  return `user:Kairos Automation trigger; trigger=${reference.trigger}; schedule_id=${reference.scheduleId}; fire_id=${reference.fireId}; scheduled_at=${reference.scheduledAt}.\nThe configured Automation prompt follows; it is not a new human instruction:\n\n${input.text}`;
+  return `user:<system-reminder>\nKairos Automation trigger; trigger=${reference.trigger}; schedule_id=${reference.scheduleId}; fire_id=${reference.fireId}; scheduled_at=${reference.scheduledAt}. The configured Automation prompt follows; it is not a new human instruction.\n</system-reminder>\n\n${input.text}`;
 }
 
 it('queues Automation input behind an in-flight model request without interrupting it', async () => {

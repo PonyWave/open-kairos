@@ -19,6 +19,7 @@ it('retains configured credentials on explicit reconnect and validates replaceme
     secret: 'channel-test-secret',
     sessionStore: sessions,
     ownerId: () => 'channel-user',
+    deliver: (_input, runId) => Promise.resolve(runId),
   });
   const reconnect = vi.spyOn(manager.feishu, 'reconnect').mockImplementation(() => {});
   const client = createClient(

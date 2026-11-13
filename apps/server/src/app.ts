@@ -148,15 +148,16 @@ export function createServer(
   });
   const memory =
     options.memory === false ? undefined : new MemoryWiki(options.memory ?? serverConfig.memory);
+  let coordinator: RunCoordinator;
   const channelManager = new ChannelManager({
     database,
     secret: identity.secret,
     sessionStore: store,
     ownerId: () => options.tenantId ?? authentication.authService.ensureLocalIdentity().tenantId,
+    deliver: (input, runId) => coordinator.deliver(input, runId),
     ...(options.now ? { clock: options.now } : {}),
     ...(options.wechatClient === undefined ? {} : { wechatClient: options.wechatClient }),
   });
-  let coordinator: RunCoordinator;
   const automations = new AutomationService(store, {
     ...(options.now ? { clock: options.now } : {}),
     deliver: (input, runId) => coordinator.deliver(input, runId),

@@ -1,6 +1,8 @@
 import type { ChannelReference } from '../context/types.js';
 import { isoTime, systemClock } from '../context/types.js';
+import type { InputRecord } from '../sessions/records.js';
 import type { SessionStore } from '../sessions/store.js';
+import { wrapSystemReminder } from '../sessions/system-reminder.js';
 import type { ChannelDeliveryRecord, ChannelIdValue, ChannelStore } from './store.js';
 import { ChannelDeliveryError } from './store.js';
 
@@ -16,6 +18,7 @@ export interface DeliveryWorkerOptions {
   sessionStore: SessionStore;
   ownerId: () => string;
   channels: Partial<Record<ChannelIdValue, OutboundChannel>>;
+  deliver: (input: InputRecord, runId: string) => Promise<string>;
   pollIntervalMs?: number;
   retryDelaysMs?: readonly number[];
   sendTimeoutMs?: number;
@@ -139,7 +142,7 @@ export class ChannelDeliveryWorker {
     for (const row of rows) {
       const { delivery_id: deliveryId } = row as { delivery_id: string };
       const delivery = this.#options.channelStore.getDelivery(ownerId, deliveryId);
-      this.#options.sessionStore.acceptChannelInput({
+      const accepted = this.#options.sessionStore.acceptChannelInput({
         ownerId,
         method: 'ChannelDeliveryFailure',
         clientActionId: `channel-delivery-failure:${delivery.deliveryId}:${delivery.attempts}`,
@@ -148,6 +151,12 @@ export class ChannelDeliveryWorker {
         channel: failureReference(delivery),
       });
       this.#options.channelStore.markNotified(ownerId, delivery.deliveryId);
+      try {
+        await this.#options.deliver(accepted.input, accepted.runId);
+      } catch (error) {
+        // 失败通知已持久化，调度失败不阻断后续通知。
+        console.error('channel delivery failure notice deliver failed', error);
+      }
     }
   }
 }
@@ -176,5 +185,5 @@ export function failureNoticeText(delivery: ChannelDeliveryRecord): string {
       `guidance: Do not retry; the failure is not transient. Inform the user in the GUI that the ${channelName} channel needs attention in the channel settings (for example a missing login or an expired session), and continue the conversation in the GUI.`,
     );
   }
-  return lines.join('\n');
+  return wrapSystemReminder(lines.join('\n'));
 }

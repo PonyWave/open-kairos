@@ -251,11 +251,14 @@ export function ReplyPreviews({
   );
 }
 
+const wrappedTriggerPrefix =
+  /^(?:<system-reminder>\n(?:Kairos Automation trigger|Automation scheduled trigger)[^\n]*\n<\/system-reminder>\n\n?)+/;
 const automationTriggerPrefix =
   /^Kairos Automation trigger;[^\n]*\nThe configured Automation prompt follows; it is not a new human instruction:\n\n/;
 
 export function plainPreviewText(text: string): string {
   return text
+    .replace(wrappedTriggerPrefix, '')
     .replace(automationTriggerPrefix, '')
     .replace(/```[^\n]*\n?/g, '')
     .replace(/`([^`]*)`/g, '$1')

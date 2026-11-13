@@ -1621,16 +1621,19 @@ export class RunCoordinator {
   }
 
   #backgroundTaskDeliveryText(task: BackgroundTaskRecord): string {
-    return JSON.stringify({
-      task_id: task.taskId,
-      kind: task.kind,
-      description: task.description,
-      status: task.status,
-      source_thread_id: task.threadId,
-      source_agent_id: task.agentId,
-      tool_call_id: task.sourceToolCallId,
-      result: task.resultText,
-    });
+    return wrapSystemReminder(
+      'A background task reached a terminal state. This is an automatic delivery record, not a user message; use its status and result fields and continue the conversation accordingly.\n' +
+        JSON.stringify({
+          task_id: task.taskId,
+          kind: task.kind,
+          description: task.description,
+          status: task.status,
+          source_thread_id: task.threadId,
+          source_agent_id: task.agentId,
+          tool_call_id: task.sourceToolCallId,
+          result: task.resultText,
+        }),
+    );
   }
 
   #deliverBackgroundTask(ownerId: string, taskId: string): void {
@@ -2267,7 +2270,9 @@ function withoutToolContentParts(message: ModelMessage): ModelMessage {
 function inputModelContent(input: InputRecord): Omit<UserMessage, 'role'> {
   const automation = input.automation;
   const content = automation
-    ? `Kairos Automation trigger; trigger=${automation.trigger}; schedule_id=${automation.scheduleId}; fire_id=${automation.fireId}; scheduled_at=${automation.scheduledAt}.\nThe configured Automation prompt follows; it is not a new human instruction:\n\n${input.text}`
+    ? `${wrapSystemReminder(
+        `Kairos Automation trigger; trigger=${automation.trigger}; schedule_id=${automation.scheduleId}; fire_id=${automation.fireId}; scheduled_at=${automation.scheduledAt}. The configured Automation prompt follows; it is not a new human instruction.`,
+      )}\n\n${input.text}`
     : input.text;
   return {
     content,
