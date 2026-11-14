@@ -2127,6 +2127,7 @@ export class SessionStore {
     message: Parameters<ContextStore['append']>[0]['message'];
     inputId?: string;
     responseUsage?: Parameters<ContextStore['append']>[0]['responseUsage'];
+    attachmentIds?: readonly string[];
   }): ContextMessage {
     if (Buffer.byteLength(JSON.stringify(input.message)) > this.#maxMessageBytes) {
       throw new SessionError('input_too_large', 'Model message exceeds the configured byte limit.');
@@ -2164,6 +2165,10 @@ export class SessionStore {
       });
       if (sourceInput !== undefined && input.message.role === 'user') {
         this.attachments.linkMessageFromInput(record.seq, sourceInput.inputId);
+        record = this.context.get(run.threadId, run.agentId, record.seq) ?? record;
+      }
+      if (input.attachmentIds !== undefined && input.attachmentIds.length > 0) {
+        this.attachments.linkMessage(record.seq, run.ownerId, input.attachmentIds);
         record = this.context.get(run.threadId, run.agentId, record.seq) ?? record;
       }
       this.agentEnvironments.recordMessageBinding(run.threadId, run.agentId, record.seq, run);

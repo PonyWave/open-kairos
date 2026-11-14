@@ -311,3 +311,63 @@ it('downloads inbound media and passes it to the inbound handler', async () => {
     database.close();
   }
 });
+
+it('parses a realistic file message payload and downloads the attachment', async () => {
+  const inbound: { text: string; media?: { fileName: string; bytes: Uint8Array }[] }[] = [];
+  const { database, store, client, channel } = fixture((message) => {
+    inbound.push(message);
+  });
+  try {
+    store.completeWechatLogin(ownerId, {
+      kind: 'wechat',
+      botToken: 'token-1',
+      baseUrl: 'https://ilinkai.weixin.qq.com',
+      botId: 'bot-1',
+      ilinkUserId: 'user-1',
+    });
+    client.mediaBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+    await channel.handleInboundMessage(ownerId, 'user-1', {
+      seq: 1024,
+      message_id: '7483920192837465102',
+      from_user_id: 'user-1',
+      to_user_id: 'bot-1',
+      client_id: 'client-abc',
+      create_time_ms: 1794592000000,
+      message_type: 1,
+      message_state: 2,
+      session_id: 'session-1',
+      context_token: 'ctx-file',
+      item_list: [
+        {
+          type: 4,
+          create_time_ms: 1794592000000,
+          is_completed: true,
+          msg_id: 'item-1',
+          file_item: {
+            file_name: '合同扫描件.pdf',
+            len: '4',
+            md5: 'd41d8cd98f00b204e9800998ecf8427e',
+            media: {
+              encrypt_query_param: 'eqp-file-1',
+              aes_key: Buffer.from('aa'.repeat(16), 'utf8').toString('base64'),
+              encrypt_type: 1,
+              full_url:
+                'https://novac2c.cdn.weixin.qq.com/c2c/download?encrypted_query_param=eqp-file-1',
+            },
+          },
+        },
+      ],
+    });
+    expect(inbound).toHaveLength(1);
+    expect(inbound[0]?.text).toBe('[文件: 合同扫描件.pdf]');
+    expect(inbound[0]?.media).toHaveLength(1);
+    expect(inbound[0]?.media?.[0]?.fileName).toBe('合同扫描件.pdf');
+    expect(client.mediaRequests).toHaveLength(1);
+    expect(client.mediaRequests[0]?.ref).toEqual({
+      fullUrl: 'https://novac2c.cdn.weixin.qq.com/c2c/download?encrypted_query_param=eqp-file-1',
+      encryptQueryParam: 'eqp-file-1',
+    });
+  } finally {
+    database.close();
+  }
+});

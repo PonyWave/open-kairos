@@ -1215,13 +1215,11 @@ export class RunCoordinator {
       };
       const attachmentIds = toolAttachmentIds(message);
       this.store.transaction(() => {
-        const record = this.store.appendModelMessage({
+        this.store.appendModelMessage({
           runId: ownerRunId,
           message: withoutToolContentParts(message),
+          ...(attachmentIds.length === 0 ? {} : { attachmentIds }),
         });
-        if (attachmentIds.length > 0) {
-          this.store.attachments.linkMessage(record.seq, run.ownerId, attachmentIds);
-        }
       });
     }
   }

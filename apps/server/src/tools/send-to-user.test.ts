@@ -414,3 +414,55 @@ it('attaches files to the result and channel deliveries', async () => {
     database.close();
   }
 });
+
+it('publishes the tool result event with attachments already linked', async () => {
+  const { database, store, run } = fixture();
+  try {
+    const withFiles = createSendToUserTool({
+      store,
+      source: run,
+      readFile: () => Promise.resolve(new Uint8Array([1, 2, 3])),
+    });
+    const call = {
+      id: 'send-event-files',
+      name: 'send_to_user',
+      arguments: { content: '附件在此。', files: ['/workspace/a.bin'] },
+    };
+    store.appendModelMessage({
+      runId: run.runId,
+      message: { role: 'assistant', content: '', tool_calls: [call] },
+    });
+    const result = await withFiles.execute(await withFiles.validate(call.arguments), {
+      call,
+      signal: new AbortController().signal,
+    });
+    const parts = typeof result === 'string' ? undefined : result.content_parts;
+    const attachmentId = parts?.[0]?.type === 'attachment' ? parts[0].attachment_id : '';
+    store.appendModelMessage({
+      runId: run.runId,
+      message: {
+        role: 'tool',
+        tool_call_id: call.id,
+        tool_name: 'send_to_user',
+        content: typeof result === 'string' ? result : result.content,
+        status: 'success',
+      },
+      attachmentIds: [attachmentId],
+    });
+    const events = store
+      .listEvents(run.threadId, 0n)
+      .filter((event) => event.payload.case === 'messageCommitted');
+    const toolEvent = events.find(
+      (event) =>
+        event.payload.case === 'messageCommitted' &&
+        event.payload.value.message.message.role === 'tool',
+    );
+    expect(toolEvent?.payload.case).toBe('messageCommitted');
+    if (toolEvent?.payload.case === 'messageCommitted') {
+      expect(toolEvent.payload.value.message.attachments).toHaveLength(1);
+      expect(toolEvent.payload.value.message.attachments?.[0]?.attachmentId).toBe(attachmentId);
+    }
+  } finally {
+    database.close();
+  }
+});
