@@ -1190,7 +1190,7 @@ export function AccountWorkbench({
                   <FailureNotice
                     key={failure.key}
                     label="操作失败"
-                    message={`${failure.message}${failure.outcome === 'unknown' ? ' 操作结果未知，重试将沿用原操作编号。' : ' 本次操作失败，可以重新提交。'}`}
+                    message={`${failure.excerpt === undefined ? '' : `「${failure.excerpt}」`}${failure.message}${failure.outcome === 'unknown' ? ' 操作结果未知，重试将沿用原操作编号。' : ' 本次操作失败，可以重新提交。'}`}
                     busy={actions.busy}
                     onRetry={
                       failure.outcome === 'unknown'

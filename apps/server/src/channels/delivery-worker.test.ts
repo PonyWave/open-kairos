@@ -301,3 +301,177 @@ it('keeps wechat stale-token deliveries pending with a long retry and no attempt
     value.database.close();
   }
 });
+
+it('sends a failure notice to the source channel when a channel-originated run fails', async () => {
+  const value = fixture();
+  try {
+    value.bindFeishu();
+    const accepted = value.sessionStore.acceptChannelInput({
+      ownerId,
+      method: 'ChannelInbound',
+      clientActionId: 'inbound-1',
+      parameters: {},
+      text: '帮我查一下天气',
+      channel: { channel: 'feishu', kind: 'inbound', externalMessageId: 'om_1' },
+    });
+    value.sessionStore.appendModelMessage({
+      runId: accepted.runId,
+      message: { role: 'user', content: '帮我查一下天气' },
+      inputId: accepted.input.inputId,
+    });
+    value.sessionStore.updateRunStatus(accepted.runId, 'failed', {
+      code: 'internal',
+      message: '模型请求超时',
+      retryable: true,
+    });
+    await value.worker.processNow();
+    await value.worker.processNow();
+    expect(value.sent).toHaveLength(1);
+    expect(value.sent[0]?.externalUserId).toBe('ou_1');
+    expect(value.sent[0]?.markdown).toContain('【处理失败】');
+    expect(value.sent[0]?.markdown).toContain('模型请求超时');
+    expect(value.sent[0]?.markdown).toContain('帮我查一下天气');
+    await value.worker.processNow();
+    expect(value.sent).toHaveLength(1);
+    expect(mainInputs(value.sessionStore)).toHaveLength(1);
+  } finally {
+    value.database.close();
+  }
+});
+
+it('does not send run failure notices for GUI-originated or cancelled runs', async () => {
+  const value = fixture();
+  try {
+    value.bindFeishu();
+    const thread = value.sessionStore.getOrCreateMainThread(ownerId);
+    const gui = value.sessionStore.sendMessage({
+      ownerId,
+      method: 'SendMessage',
+      clientActionId: 'gui-1',
+      parameters: {},
+      threadId: thread.threadId,
+      text: 'gui 消息',
+      mode: 'follow_up',
+    });
+    value.sessionStore.updateRunStatus(gui.runId, 'failed', {
+      code: 'internal',
+      message: '模型请求超时',
+      retryable: true,
+    });
+    const cancelled = value.sessionStore.acceptChannelInput({
+      ownerId,
+      method: 'ChannelInbound',
+      clientActionId: 'inbound-2',
+      parameters: {},
+      text: '用户取消的消息',
+      channel: { channel: 'feishu', kind: 'inbound', externalMessageId: 'om_2' },
+    });
+    value.sessionStore.appendModelMessage({
+      runId: cancelled.runId,
+      message: { role: 'user', content: '用户取消的消息' },
+      inputId: cancelled.input.inputId,
+    });
+    value.sessionStore.updateRunStatus(cancelled.runId, 'cancelled');
+    await value.worker.processNow();
+    await value.worker.processNow();
+    expect(value.sent).toHaveLength(0);
+  } finally {
+    value.database.close();
+  }
+});
+
+it('sends the run failure notice only to the source channel', async () => {
+  const value = fixture();
+  try {
+    value.bindFeishu();
+    const accepted = value.sessionStore.acceptChannelInput({
+      ownerId,
+      method: 'ChannelInbound',
+      clientActionId: 'inbound-w1',
+      parameters: {},
+      text: '微信消息',
+      channel: { channel: 'wechat', kind: 'inbound', externalMessageId: 'wx_1' },
+    });
+    value.sessionStore.appendModelMessage({
+      runId: accepted.runId,
+      message: { role: 'user', content: '微信消息' },
+      inputId: accepted.input.inputId,
+    });
+    value.sessionStore.updateRunStatus(accepted.runId, 'failed', {
+      code: 'internal',
+      message: '环境离线',
+      retryable: true,
+    });
+    await value.worker.processNow();
+    await value.worker.processNow();
+    expect(value.sent).toHaveLength(0);
+    const notice = value.database
+      .prepare(
+        "SELECT channel, status, last_error_code FROM channel_deliveries WHERE kind = 'failure_notice'",
+      )
+      .get();
+    expect(notice).toMatchObject({
+      channel: 'wechat',
+      status: 'failed',
+      last_error_code: 'channel_not_configured',
+    });
+  } finally {
+    value.database.close();
+  }
+});
+
+it('enqueues an IM failure notice when a message delivery finally fails', async () => {
+  const value = fixture();
+  try {
+    value.bindFeishu();
+    const delivery = value.channelStore.createDelivery({
+      ownerId,
+      channel: 'feishu',
+      content: '最终内容',
+      maxAttempts: 1,
+    });
+    value.fail(new ChannelDeliveryError(true, 'network_error', '网络超时'));
+    await value.worker.processNow();
+    expect(value.channelStore.getDelivery(ownerId, delivery.deliveryId).status).toBe('failed');
+    value.fail(null);
+    await value.worker.processNow();
+    expect(value.sent).toHaveLength(1);
+    expect(value.sent[0]?.markdown).toContain('【发送失败】');
+    expect(value.sent[0]?.markdown).toContain('网络超时');
+    expect(value.sent[0]?.markdown).toContain('最终内容');
+    expect(mainInputs(value.sessionStore)).toHaveLength(1);
+    await value.worker.processNow();
+    expect(value.sent).toHaveLength(1);
+  } finally {
+    value.database.close();
+  }
+});
+
+it('does not loop when a failure notice delivery itself fails', async () => {
+  const value = fixture();
+  try {
+    value.bindFeishu();
+    const delivery = value.channelStore.createDelivery({
+      ownerId,
+      channel: 'feishu',
+      content: '内容',
+      maxAttempts: 1,
+    });
+    value.fail(new ChannelDeliveryError(false, 'auth_invalid', '飞书应用凭证无效'));
+    await value.worker.processNow();
+    await value.worker.processNow();
+    const notices = value.database
+      .prepare("SELECT status FROM channel_deliveries WHERE kind = 'failure_notice'")
+      .all();
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ status: 'failed' });
+    await value.worker.processNow();
+    expect(mainInputs(value.sessionStore)).toHaveLength(1);
+    const count = value.database
+      .prepare("SELECT COUNT(*) AS c FROM channel_deliveries WHERE kind = 'failure_notice'")
+      .get();
+    expect(count).toMatchObject({ c: 1 });
+  } finally {
+    value.database.close();
+  }
+});

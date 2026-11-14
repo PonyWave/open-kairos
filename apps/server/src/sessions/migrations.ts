@@ -546,4 +546,15 @@ CREATE INDEX channel_message_map_inbound
 ALTER TABLE channel_deliveries ADD COLUMN attachment_ids_json TEXT NOT NULL DEFAULT '[]';
     `,
   },
+  {
+    version: 8,
+    name: 'channel_delivery_notice_kind',
+    sql: `
+ALTER TABLE channel_deliveries ADD COLUMN kind TEXT NOT NULL DEFAULT 'message'
+        CHECK(kind IN ('message', 'failure_notice'));
+ALTER TABLE channel_deliveries ADD COLUMN dedup_key TEXT;
+CREATE UNIQUE INDEX channel_deliveries_dedup
+        ON channel_deliveries(owner_id, dedup_key) WHERE dedup_key IS NOT NULL;
+    `,
+  },
 ];

@@ -1,8 +1,10 @@
+import { z } from 'zod';
 import type { ChannelReference } from '../context/types.js';
 import { isoTime, systemClock } from '../context/types.js';
 import type { InputRecord } from '../sessions/records.js';
 import type { SessionStore } from '../sessions/store.js';
 import { wrapSystemReminder } from '../sessions/system-reminder.js';
+import { parseChannelJson } from './reference.js';
 import type { ChannelDeliveryRecord, ChannelIdValue, ChannelStore } from './store.js';
 import { ChannelDeliveryError } from './store.js';
 
@@ -37,6 +39,15 @@ export interface DeliveryWorkerOptions {
 }
 
 const defaultRetryDelaysMs = [2_000, 10_000, 30_000] as const;
+const runFailureNoticeWindowMs = 15 * 60 * 1000;
+
+const runFailureRowSchema = z.object({
+  run_id: z.string(),
+  error_message: z.string().nullable(),
+  error_retryable: z.union([z.literal(0), z.literal(1)]).nullable(),
+  channel_json: z.string(),
+  excerpt: z.string(),
+});
 
 export class ChannelDeliveryWorker {
   readonly #options: DeliveryWorkerOptions;
@@ -76,6 +87,7 @@ export class ChannelDeliveryWorker {
     try {
       await this.#processDue();
       await this.#notifyFailures();
+      await this.#notifyRunFailures();
     } finally {
       this.#processing = false;
     }
@@ -176,12 +188,19 @@ export class ChannelDeliveryWorker {
     const ownerId = this.#options.ownerId();
     const rows = this.#options.channelStore.database
       .prepare(
-        "SELECT delivery_id FROM channel_deliveries WHERE owner_id = ? AND status = 'failed' AND notified_at IS NULL ORDER BY created_at, delivery_id LIMIT 10",
+        "SELECT delivery_id FROM channel_deliveries WHERE owner_id = ? AND status = 'failed' AND kind = 'message' AND notified_at IS NULL ORDER BY created_at, delivery_id LIMIT 10",
       )
       .all(ownerId);
     for (const row of rows) {
       const { delivery_id: deliveryId } = row as { delivery_id: string };
       const delivery = this.#options.channelStore.getDelivery(ownerId, deliveryId);
+      this.#options.channelStore.createDelivery({
+        ownerId,
+        channel: delivery.channel,
+        kind: 'failure_notice',
+        dedupKey: `delivery-failure:${delivery.deliveryId}`,
+        content: deliveryFailureNoticeText(delivery),
+      });
       const accepted = this.#options.sessionStore.acceptChannelInput({
         ownerId,
         method: 'ChannelDeliveryFailure',
@@ -199,10 +218,72 @@ export class ChannelDeliveryWorker {
       }
     }
   }
+
+  async #notifyRunFailures(): Promise<void> {
+    const ownerId = this.#options.ownerId();
+    const since = new Date(this.#clock().getTime() - runFailureNoticeWindowMs).toISOString();
+    const rows = this.#options.channelStore.database
+      .prepare(
+        `SELECT r.run_id, r.error_message, r.error_retryable, i.channel_json, substr(i.text, 1, 200) AS excerpt
+         FROM runs r JOIN inputs i ON i.consumed_run_id = r.run_id
+         WHERE r.owner_id = ? AND r.status IN ('failed', 'interrupted') AND r.finished_at >= ?
+           AND i.channel_json IS NOT NULL
+         ORDER BY r.finished_at, r.run_id, i.position`,
+      )
+      .all(ownerId, since);
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const parsed = runFailureRowSchema.parse(row);
+      const channel = parseChannelJson(parsed.channel_json);
+      if (channel === null || channel.kind !== 'inbound') continue;
+      const key = `${parsed.run_id}:${channel.channel}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      this.#options.channelStore.createDelivery({
+        ownerId,
+        channel: channel.channel,
+        kind: 'failure_notice',
+        dedupKey: `run-failure:${key}`,
+        content: runFailureNoticeText({
+          errorMessage: parsed.error_message,
+          retryable: parsed.error_retryable === null ? null : parsed.error_retryable === 1,
+          excerpt: parsed.excerpt,
+        }),
+      });
+    }
+  }
 }
 
 function failureReference(delivery: ChannelDeliveryRecord): ChannelReference {
   return { channel: delivery.channel, kind: 'delivery_failure', deliveryId: delivery.deliveryId };
+}
+
+export function runFailureNoticeText(input: {
+  errorMessage: string | null;
+  retryable: boolean | null;
+  excerpt: string;
+}): string {
+  const lines = [
+    '【处理失败】你发送的消息未能完成处理。',
+    `原因：${input.errorMessage ?? '未知错误'}`,
+    input.retryable === false
+      ? '请在 GUI 中查看详情，调整后再试。'
+      : '这通常是临时问题，请重新发送。',
+  ];
+  const excerpt = input.excerpt.trim().slice(0, 100);
+  if (excerpt) lines.push(`原文：${excerpt}`);
+  return lines.join('\n');
+}
+
+export function deliveryFailureNoticeText(delivery: ChannelDeliveryRecord): string {
+  const channelName = delivery.channel === 'wechat' ? '微信' : '飞书';
+  const lines = [
+    `【发送失败】一条消息未能送达${channelName}。`,
+    `原因：${delivery.lastErrorMessage ?? '未知错误'}`,
+  ];
+  const excerpt = delivery.content.trim().slice(0, 100);
+  if (excerpt) lines.push(`原文摘要：${excerpt}`);
+  return lines.join('\n');
 }
 
 export function failureNoticeText(delivery: ChannelDeliveryRecord): string {

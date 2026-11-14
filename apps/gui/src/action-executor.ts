@@ -8,6 +8,14 @@ export interface ActionFailure {
   message: string;
   outcome: ActionFailureOutcome;
   restored: boolean;
+  excerpt?: string;
+}
+
+function payloadExcerpt(payload: unknown): string | undefined {
+  if (typeof payload !== 'object' || payload === null) return undefined;
+  const text = Reflect.get(payload, 'text') ?? Reflect.get(payload, 'initialText');
+  if (typeof text !== 'string' || !text.trim()) return undefined;
+  return text.trim().slice(0, 50);
 }
 
 export interface ActionExecutorState {
@@ -28,6 +36,8 @@ export class ActionExecutor {
   >();
   private readonly failures = new Map<string, ActionFailure>();
   private readonly listeners = new Set<Listener>();
+  private readonly autoRetryAttempts = new Map<string, number>();
+  private readonly autoRetryDelaysMs: readonly number[];
   private pendingCount = 0;
   private generation = 0;
 
@@ -35,7 +45,9 @@ export class ActionExecutor {
     private store: ClientActionStore,
     private readonly handlers: ActionHandlers,
     private readonly complete?: ActionCompletion,
+    options?: { autoRetryDelaysMs?: readonly number[] },
   ) {
+    this.autoRetryDelaysMs = options?.autoRetryDelaysMs ?? [];
     this.restoreFailures();
   }
 
@@ -57,6 +69,7 @@ export class ActionExecutor {
     this.pendingCount = 0;
     this.store = store;
     this.failures.clear();
+    this.autoRetryAttempts.clear();
     this.restoreFailures();
     this.emit();
   }
@@ -68,7 +81,7 @@ export class ActionExecutor {
     try {
       record = store.begin(key, kind, payload);
     } catch (cause) {
-      this.setFailure(key, kind, cause, false, undefined, generation);
+      this.setFailure(key, kind, cause, false, undefined, generation, payloadExcerpt(payload));
       return undefined;
     }
     return this.start<T>(record, store, generation);
@@ -81,6 +94,7 @@ export class ActionExecutor {
       this.emit();
       return undefined;
     }
+    this.autoRetryAttempts.delete(key);
     return this.start<T>(record, this.store, this.generation);
   }
 
@@ -129,10 +143,19 @@ export class ActionExecutor {
         if (generation !== this.generation) return undefined;
         store.succeed(record.key, record.id);
         this.failures.delete(record.key);
+        this.autoRetryAttempts.delete(record.key);
         return result as T;
       } catch (cause) {
         if (generation === this.generation) {
-          this.setFailure(record.key, record.kind, cause, false, 'unknown', generation);
+          this.setFailure(
+            record.key,
+            record.kind,
+            cause,
+            false,
+            'unknown',
+            generation,
+            payloadExcerpt(record.payload),
+          );
         }
         return undefined;
       }
@@ -153,6 +176,7 @@ export class ActionExecutor {
   ): void {
     const outcome = classifyActionFailure(cause);
     if (outcome !== 'unknown') {
+      this.autoRetryAttempts.delete(record.key);
       try {
         store.fail(record.key, record.id);
       } catch (cleanupCause) {
@@ -161,7 +185,34 @@ export class ActionExecutor {
         return;
       }
     }
-    this.setFailure(record.key, record.kind, cause, false, outcome, generation);
+    this.setFailure(
+      record.key,
+      record.kind,
+      cause,
+      false,
+      outcome,
+      generation,
+      payloadExcerpt(record.payload),
+    );
+    if (outcome === 'unknown') this.scheduleAutoRetry(record, store, generation);
+  }
+
+  private scheduleAutoRetry(
+    record: ClientActionRecord,
+    store: ClientActionStore,
+    generation: number,
+  ): void {
+    const attempt = this.autoRetryAttempts.get(record.key) ?? 0;
+    const delay = this.autoRetryDelaysMs[attempt];
+    if (delay === undefined) return;
+    this.autoRetryAttempts.set(record.key, attempt + 1);
+    const timer = setTimeout(() => {
+      if (generation !== this.generation || this.store !== store) return;
+      const current = this.store.get(record.key);
+      if (current === undefined || current.id !== record.id) return;
+      void this.start(record, store, generation);
+    }, delay);
+    timer.unref?.();
   }
 
   private setFailure(
@@ -171,6 +222,7 @@ export class ActionExecutor {
     restored: boolean,
     outcome: ActionFailureOutcome | undefined,
     generation: number,
+    excerpt?: string,
   ): void {
     if (generation !== this.generation) return;
     this.failures.set(key, {
@@ -179,18 +231,21 @@ export class ActionExecutor {
       message: formatClientError(cause),
       outcome: outcome ?? classifyActionFailure(cause),
       restored,
+      ...(excerpt === undefined ? {} : { excerpt }),
     });
     this.emit();
   }
 
   private restoreFailures(): void {
     for (const record of this.store.pending()) {
+      const excerpt = payloadExcerpt(record.payload);
       this.failures.set(record.key, {
         key: record.key,
         kind: record.kind,
         message: `操作 ${record.key} 在上次会话中尚未确认，可沿用原编号重试。`,
         outcome: 'unknown',
         restored: true,
+        ...(excerpt === undefined ? {} : { excerpt }),
       });
     }
   }

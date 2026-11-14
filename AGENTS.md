@@ -65,8 +65,8 @@
 
 ## 部署
 
-- 每次代码修改完成并通过验证后，部署到 k1 开发机（`~/.ssh/config` Host `k1`），无需再次确认。
-- k1 部署目录为 `~/personal/open-kairos`，不是 git 仓库，使用 rsync 同步源码，排除 `.git`、`node_modules`、`dist`、`.pnpm-store`、`reference`、`.env`、`start-k1.sh`、`.DS_Store`、`.tower`、`.kairos` 和 `*.log`。
-- 同步后在 k1 执行 `pnpm install --frozen-lockfile` 和 `pnpm build`，Node 26 与 pnpm 位于 `~/opt/node-v26.4.0-linux-x64/bin`。
-- 构建完成后重启 tmux 会话 `kairos`（先 `tmux kill-session -t kairos`，再 `tmux new-session -d -s kairos ~/personal/open-kairos/start-k1.sh`）。`start-k1.sh` 加载 `.env` 后执行 `pnpm start`，日志写入 `/tmp/kairos.log`。
-- 服务监听 4317 端口，经 mgc reverse-proxy 暴露为 `https://kairos-whl.app.msh.work`。部署后确认 4317 端口恢复监听且日志无启动错误。
+- K1 双环境（`~/.ssh/config` Host `k1`）：正式环境 `~/personal/open-kairos`（端口 4317，tmux 会话 `kairos`，数据目录 `~/.kairos`，mgc 暴露 `https://kairos-whl.app.msh.work`）；测试环境 `~/personal/open-kairos-test`（端口 4318，tmux 会话 `kairos-test`，数据目录 `~/.kairos-test`，mgc 暴露 `https://kairos-test-whl.app.msh.work`）。
+- 自我迭代工作流：在开发 clone（如 `~/personal/open-kairos-dev`）修改代码并通过验证后，运行 `scripts/deploy-k1.sh test` 部署到测试环境；用户在测试环境确认无误且代码合入 origin/main 后，运行 `scripts/deploy-k1.sh prod` 升级正式环境。不在正式部署目录内直接修改代码。
+- `scripts/deploy-k1.sh prod` 将正式部署目录对齐 origin/main、预检数据库版本并在需要时执行显式迁移（自动备份）、重启并健康检查；健康检查失败时自动回滚到部署前提交，本次执行过迁移时同时恢复数据库备份。
+- 两个环境的 `.env`、数据目录与 `start-k1.sh` 均为环境本地文件，部署脚本不修改。正式环境数据库 `~/.kairos` 只能由显式迁移命令变更，部署脚本不得删除或覆盖。
+- 部署后确认对应端口恢复监听且日志无启动错误（正式 `/tmp/kairos.log`，测试 `/tmp/kairos-test.log`）。

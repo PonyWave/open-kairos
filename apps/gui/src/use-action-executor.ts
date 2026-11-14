@@ -17,8 +17,11 @@ export function useActionExecutor(
   completionRef.current = complete;
   const [executor] = useState(
     () =>
-      new ActionExecutor(store, handlers, (record, result) =>
-        completionRef.current(record, result),
+      new ActionExecutor(
+        store,
+        handlers,
+        (record, result) => completionRef.current(record, result),
+        { autoRetryDelaysMs: [2_000, 10_000] },
       ),
   );
   const [state, setState] = useState<ActionExecutorState>(executor.state);

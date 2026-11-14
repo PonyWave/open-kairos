@@ -50,6 +50,10 @@ pnpm exec playwright install chromium
 
 SQLite 数据库为 `<KAIROS_DATA_DIR>/kairos.sqlite`，新库安装即最终结构（`context_recap` 为 v2，`server_runtime` 为 v3，其余命名空间为 v1）。`node apps/server/dist/migrate.js --data-dir <dir> --backup-dir <dir>` 用于检查与迁移：旧数据库带备份升级到当前版本，未版本化应用表的数据库明确拒绝。
 
+## K1 双环境
+
+K1 开发机运行两套环境：正式环境（`~/personal/open-kairos`，端口 4317，`https://kairos-whl.app.msh.work`）与测试环境（`~/personal/open-kairos-test`，端口 4318，`https://kairos-test-whl.app.msh.work`），两者使用独立的 `.env`、数据目录与 tmux 会话。`scripts/deploy-k1.sh test` 把当前仓库目录同步到测试环境并重启；`scripts/deploy-k1.sh prod` 把正式环境对齐 origin/main，预检并显式迁移数据库（自动备份）后重启，健康检查失败时回滚代码与数据库备份。日常修改在开发 clone 中进行，流程为：开发 clone 修改并验证 → `deploy-k1.sh test` → 测试环境确认 → 合入 origin/main → `deploy-k1.sh prod`。
+
 ## 验证
 
 - 修改代码、依赖或构建配置后执行 `pnpm check`。

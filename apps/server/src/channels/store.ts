@@ -49,10 +49,14 @@ export interface ChannelStateRecord {
   updatedAt: string;
 }
 
+export type ChannelDeliveryKind = 'message' | 'failure_notice';
+
 export interface ChannelDeliveryRecord {
   deliveryId: string;
   ownerId: string;
   channel: ChannelIdValue;
+  kind: ChannelDeliveryKind;
+  dedupKey: string | null;
   messageId: string | null;
   toolCallId: string | null;
   content: string;
@@ -99,6 +103,8 @@ const deliveryRowSchema = z.object({
   delivery_id: z.string(),
   owner_id: z.string(),
   channel: z.enum(['wechat', 'feishu']),
+  kind: z.enum(['message', 'failure_notice']).default('message'),
+  dedup_key: z.string().nullable().default(null),
   message_id: z.string().nullable(),
   tool_call_id: z.string().nullable(),
   content: z.string(),
@@ -393,25 +399,40 @@ export class ChannelStore {
   createDelivery(input: {
     ownerId: string;
     channel: ChannelIdValue;
+    kind?: ChannelDeliveryKind;
+    dedupKey?: string | null;
     messageId?: string | null;
     toolCallId?: string | null;
     content: string;
     maxAttempts?: number;
     attachmentIds?: readonly string[];
   }): ChannelDeliveryRecord {
+    if (input.dedupKey != null) {
+      const existing = this.database
+        .prepare('SELECT delivery_id FROM channel_deliveries WHERE owner_id = ? AND dedup_key = ?')
+        .get(input.ownerId, input.dedupKey);
+      if (existing !== undefined) {
+        return this.getDelivery(
+          input.ownerId,
+          z.object({ delivery_id: z.string() }).parse(existing).delivery_id,
+        );
+      }
+    }
     const deliveryId = randomUUID();
     const now = isoTime(undefined, this.#clock);
     this.database
       .prepare(
         `INSERT INTO channel_deliveries(
-          delivery_id, owner_id, channel, message_id, tool_call_id, content,
+          delivery_id, owner_id, channel, kind, dedup_key, message_id, tool_call_id, content,
           status, attempts, max_attempts, next_attempt_at, attachment_ids_json, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, ?, ?)`,
       )
       .run(
         deliveryId,
         input.ownerId,
         input.channel,
+        input.kind ?? 'message',
+        input.dedupKey ?? null,
         input.messageId ?? null,
         input.toolCallId ?? null,
         input.content,
@@ -565,6 +586,8 @@ export class ChannelStore {
       deliveryId: row.delivery_id,
       ownerId: row.owner_id,
       channel: row.channel,
+      kind: row.kind,
+      dedupKey: row.dedup_key,
       messageId: row.message_id,
       toolCallId: row.tool_call_id,
       content: row.content,
