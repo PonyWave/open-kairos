@@ -65,6 +65,7 @@
   border-top: 1px solid var(--line);
 }
 .connected-device-row {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
@@ -286,19 +287,13 @@ p.device-dialog-note {
 .device-copy-command {
   min-width: 108px;
 }
-.device-wake-guide {
-  display: grid;
-  justify-items: start;
-  gap: 6px;
-  margin-top: 10px;
-}
-.device-wake-guide p {
-  color: var(--muted);
+.device-copy-start {
+  position: absolute;
+  right: 0;
+  gap: 4px;
+  min-height: 28px;
+  padding: 2px 8px;
   font-size: 12px;
-  line-height: 1.5;
-}
-.device-wake-guide .device-field-error {
-  color: var(--danger);
 }
 .device-daemon-guide {
   margin-top: 18px;

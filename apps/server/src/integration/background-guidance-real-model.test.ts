@@ -36,7 +36,7 @@ const expectedModelId = 'kimi-k2.8-highspeed';
 const resultMarker = 'BACKGROUND_GUIDANCE_CONTROLLED_RESULT';
 const syntheticCommand = "printf 'BACKGROUND_GUIDANCE_CONTROLLED_RESULT\\n'";
 const terminalStatuses: RunStatus[] = ['completed', 'failed', 'cancelled', 'interrupted'];
-const proactiveReadNames = new Set(['thread_read', 'subagent_status']);
+const proactiveReadNames = new Set(['thread_read', 'task_output']);
 const checkNames = [
   'background_delegation_accepted',
   'source_completed_without_proactive_read_or_wait',
@@ -400,7 +400,6 @@ function receiptSummary(row: StoredToolCall): Record<string, unknown> | null {
     if (!isRecord(value)) return null;
     return {
       status: typeof value.status === 'string' ? value.status : null,
-      automatic_delivery: value.automatic_delivery === true,
       thread_id: typeof value.thread_id === 'string' ? value.thread_id : null,
     };
   } catch {
@@ -550,7 +549,6 @@ function captureEvidence(): void {
       target_run_id: targetRunId,
       status: interaction.status,
       receipt_status: receipt?.status ?? null,
-      automatic_delivery: receipt?.automatic_delivery === true,
     };
     report.behavior.background_call_seq =
       storedToolCalls(fixture).find(
@@ -666,8 +664,7 @@ async function runAcceptance(config: RealModelConfig): Promise<void> {
     interactions.length === 1 &&
       backgrounds.length === 1 &&
       interaction !== undefined &&
-      receipt?.status === 'accepted' &&
-      receipt.automatic_delivery === true,
+      receipt?.status === 'accepted',
     `Expected exactly one accepted background delegation; observed ${interactions.length} interactions and ${backgrounds.length} background interactions.`,
   );
   if (!interaction) return;

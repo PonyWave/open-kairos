@@ -528,25 +528,6 @@ export class ChannelStore {
       .run(isoTime(undefined, this.#clock), isoTime(undefined, this.#clock), deliveryId, ownerId);
   }
 
-  requeueDelivery(ownerId: string, deliveryId: string): ChannelDeliveryRecord {
-    const now = isoTime(undefined, this.#clock);
-    const result = this.database
-      .prepare(
-        `UPDATE channel_deliveries
-         SET status = 'pending', attempts = 0, next_attempt_at = ?, notified_at = NULL, updated_at = ?
-         WHERE delivery_id = ? AND owner_id = ? AND status = 'failed'`,
-      )
-      .run(now, now, deliveryId, ownerId);
-    if (result.changes === 0) {
-      throw new ChannelDeliveryError(
-        false,
-        'delivery_not_failed',
-        '只有失败的投递记录可以重新投递。',
-      );
-    }
-    return this.getDelivery(ownerId, deliveryId);
-  }
-
   #toState(row: z.infer<typeof stateRowSchema>): ChannelStateRecord {
     return {
       channel: row.channel,

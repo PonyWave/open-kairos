@@ -286,6 +286,9 @@ describe('sent user messages', () => {
         content: '',
         sendToUserEnabled: true,
         toolCalls: [call('send-1', 'send_to_user', { content: '**正式回复**', end_turn: false })],
+        contentBlocks: [
+          create(ContentBlockSchema, { type: ContentBlockType.THINKING, text: 'send thinking' }),
+        ],
       }),
       sendResult('sent', {
         content: JSON.stringify({
@@ -299,6 +302,9 @@ describe('sent user messages', () => {
         content: '',
         sendToUserEnabled: true,
         toolCalls: [call('bash-1', 'bash')],
+        contentBlocks: [
+          create(ContentBlockSchema, { type: ContentBlockType.THINKING, text: 'bash thinking' }),
+        ],
       }),
     ];
     const projected = projectConversation({ threadId, messages, runs: [], transientResponses: [] });
@@ -313,19 +319,43 @@ describe('sent user messages', () => {
     expect(html).toContain('channel-delivery-badge channel-feishu');
     expect(html).not.toContain('data-tool-call-id="send-1"');
     expect(html).toContain('data-message-id="read"');
-    expect(html).not.toContain('data-message-id="send"');
+    expect(html).toContain('data-message-id="send"');
     expect(html).toContain('data-message-id="sent"');
     const first = full.find((item) => item.key === 'read');
+    const sender = full.find((item) => item.key === 'send');
     const last = full.find((item) => item.key === 'bash');
+    const firstGroup =
+      first?.kind === 'message' && first.value.toolItems?.[0]?.kind === 'ordinary'
+        ? first.value.toolItems[0]
+        : undefined;
+    expect(firstGroup?.calls.map((item) => item.toolCallId)).toEqual(['read-1']);
+    const senderItems = sender?.kind === 'message' ? sender.value.toolItems : undefined;
+    expect(senderItems?.map((item) => item.kind)).toEqual(['ordinary', 'send']);
     expect(
-      first?.kind === 'message' &&
-        first.value.toolItems?.[0]?.kind === 'ordinary' &&
-        first.value.toolItems[0].calls.map((item) => item.toolCallId),
-    ).toEqual(['read-1', 'bash-1']);
-    expect(last?.kind === 'message' && last.value.toolItems).toEqual([]);
+      senderItems?.[0]?.kind === 'ordinary' &&
+        senderItems[0].operations.some(
+          (operation) => operation.kind === 'thinking' && operation.text === 'send thinking',
+        ),
+    ).toBe(true);
+    const lastGroup =
+      last?.kind === 'message' && last.value.toolItems?.[0]?.kind === 'ordinary'
+        ? last.value.toolItems[0]
+        : undefined;
+    expect(lastGroup?.calls.map((item) => item.toolCallId)).toEqual(['bash-1']);
+    expect(
+      lastGroup?.operations.some(
+        (operation) => operation.kind === 'thinking' && operation.text === 'bash thinking',
+      ),
+    ).toBe(true);
     expect(full.find((item) => item.key === 'sent')).toMatchObject({
       value: { sentMessage: { content: '**正式回复**', endTurn: true } },
     });
+    expect(html.indexOf('data-tool-call-id="read-1"')).toBeLessThan(
+      html.indexOf('data-user-message-call-id="send-1"'),
+    );
+    expect(html.indexOf('data-user-message-call-id="send-1"')).toBeLessThan(
+      html.indexOf('data-tool-call-id="bash-1"'),
+    );
 
     const compactHtml = render(projectConversationDisplay(projected, [], 'compact'), messages);
     expect(compactHtml).toContain('data-user-message-call-id="send-1"');

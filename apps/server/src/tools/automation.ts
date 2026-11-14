@@ -154,7 +154,7 @@ export function createAutomationTools(
     {
       name: 'automation_create',
       description:
-        'Create a persistent Automation from the main conversation. Use a five-field cron with an explicit IANA time_zone, or once with an offset-bearing run_at. Stored fire times carry a deterministic per-schedule jitter: recurring fires shift later by up to min(period * 10%, 15 minutes), and once fires landing exactly on the hour or half hour shift earlier by up to 90 seconds; automation_read shows the actual next fire time. Missed occurrences while the Server is down coalesce into one immediate fire on recovery, and the delivered input notes the occurrence time and coalesced count. Targets are main, existing_thread, new_task or new_automation_only. New Threads use the main environment by default; allowed_env narrows environment access. automation_only Threads are persistent but hidden from ordinary Thread lists and readable through Automation history. Scheduled triggers and run_now execute the configured prompt as Automation input, not as a new human instruction.',
+        'Create a persistent Automation from the main conversation. Use a five-field cron with an explicit IANA time_zone, or once with an offset-bearing run_at. Stored fire times carry a deterministic per-schedule jitter: recurring fires shift later by up to min(period * 10%, 15 minutes), and once fires landing exactly on the hour or half hour shift earlier by up to 90 seconds; automation_read shows the actual next fire time. Missed occurrences while the Server is down coalesce into one immediate fire on recovery, and the delivered input notes the occurrence time and coalesced count. Targets are main, existing_thread, new_task or new_automation_only. New Threads use the main environment by default; allowed_env narrows environment access. automation_only Threads are persistent but hidden from ordinary Thread lists and readable through Automation history.',
       parameters: {
         type: 'object',
         additionalProperties: false,
@@ -253,6 +253,7 @@ export function createAutomationTools(
           automation: automationResult(
             options.automations.store.getAutomation(options.source.ownerId, input.schedule_id),
             options.projectEnvironmentIds,
+            true,
           ),
           fires: fires.slice(0, limit).map(fireResult),
           ...(fires.length > limit ? { next_fire_cursor: String(fires[limit - 1]?.seq ?? 0) } : {}),
@@ -380,21 +381,12 @@ function readTarget(
 function automationResult(
   automation: AutomationRecord,
   projectEnvironmentIds?: (envIds: readonly string[]) => string[],
+  includePrompt = false,
 ) {
-  const target = automation.target.environmentPolicy
-    ? {
-        ...automation.target,
-        environmentPolicy: {
-          allowedEnv: projectEnvironmentIds?.(automation.target.environmentPolicy.allowedEnv) ?? [
-            ...automation.target.environmentPolicy.allowedEnv,
-          ],
-        },
-      }
-    : automation.target;
   return {
     schedule_id: automation.scheduleId,
     name: automation.name,
-    prompt: automation.prompt,
+    ...(includePrompt ? { prompt: automation.prompt } : {}),
     schedule:
       automation.schedule.kind === 'cron'
         ? {
@@ -407,7 +399,22 @@ function automationResult(
             run_at: automation.schedule.runAt,
             time_zone: automation.schedule.timeZone,
           },
-    target,
+    target: {
+      kind: automation.target.kind,
+      ...(automation.target.threadId === undefined
+        ? {}
+        : { thread_id: automation.target.threadId }),
+      ...(automation.target.workspaceId === undefined
+        ? {}
+        : { workspace_id: automation.target.workspaceId }),
+      ...(automation.target.environmentPolicy === undefined
+        ? {}
+        : {
+            allowed_env: projectEnvironmentIds?.(
+              automation.target.environmentPolicy.allowedEnv,
+            ) ?? [...automation.target.environmentPolicy.allowedEnv],
+          }),
+    },
     enabled: automation.enabled,
     version: automation.version,
     next_fire_at: automation.nextFireAt,
@@ -419,18 +426,12 @@ function automationResult(
 function fireResult(fire: AutomationFireRecord) {
   return {
     fire_id: fire.fireId,
-    schedule_id: fire.scheduleId,
     trigger: fire.trigger,
-    schedule_version: fire.scheduleVersion,
     scheduled_at: fire.scheduledAt,
     actual_at: fire.actualAt,
     coalesced_count: fire.coalescedCount,
-    prompt: fire.prompt,
     target_kind: fire.targetKind,
     target_thread_id: fire.targetThreadId,
-    input_id: fire.inputId,
-    accepted_run_id: fire.acceptedRunId,
-    consumed_run_id: fire.consumedRunId,
     status: fire.status,
     error: fire.error,
     finished_at: fire.finishedAt,

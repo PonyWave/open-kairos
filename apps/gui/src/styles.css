@@ -1144,6 +1144,13 @@ button.title-icon {
   margin-top: 0;
   margin-bottom: 16px;
 }
+.message.sent-user-message-embedded {
+  display: block;
+  margin: 0;
+}
+.message.sent-user-message-embedded .message-content {
+  margin-right: 0;
+}
 .sent-message-bubble {
   width: fit-content;
   max-width: 100%;
@@ -1859,40 +1866,80 @@ button.thread-call-open {
   font-size: 10px;
 }
 .attachment-list {
-  display: grid;
-  gap: 6px;
   margin: 0 0 8px;
-  padding: 0;
-  list-style: none;
 }
-.attachment-list > li {
-  padding: 7px 9px;
+.attachment-row {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 2px 0;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.attachment-card {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+  padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--wash);
 }
-.attachment-item-heading {
+.attachment-card.expanded {
+  border-color: var(--line-strong);
+}
+.attachment-card-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.attachment-card-text {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
+  min-width: 0;
+  flex-direction: column;
+}
+.attachment-card-text strong {
+  overflow: hidden;
   font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.attachment-item-heading > :not(strong) {
+.attachment-card-text small {
   color: var(--muted);
-  font-size: 10px;
-}
-.attachment-list .button-row {
-  gap: 12px;
-  margin-top: 4px;
-}
-.attachment-list .button-row button {
-  min-height: 22px;
-  padding: 0;
-  border: 0;
-  background: none;
   font-size: 11px;
-  color: var(--muted);
+}
+.attachment-card-actions {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+}
+.attachment-card-actions .icon-button {
+  width: 22px;
+  height: 22px;
+}
+.attachment-card .error-text {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-size: 11px;
+}
+.attachment-preview-panel {
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--wash);
+}
+.attachment-preview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
 }
 .attachment-text-preview {
   max-height: 240px;
@@ -2034,6 +2081,11 @@ button.icon-button.failure-details {
 .failure-details:hover .failure-tooltip,
 .failure-details:focus .failure-tooltip {
   display: block;
+}
+.pane-errors .failure-tooltip,
+.operation-failures .failure-tooltip {
+  top: calc(100% + 6px);
+  bottom: auto;
 }
 .failure-retry {
   color: var(--muted);

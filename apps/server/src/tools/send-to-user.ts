@@ -19,15 +19,11 @@ const sendToUserInputSchema = z
       .optional(),
     end_turn: z.boolean().optional(),
     channels: z.array(channelIdSchema).min(1).max(2).optional(),
-    redeliver_of: z.string().min(1).max(200).optional(),
-    files: z.array(z.string().min(1).max(4096)).min(1).max(4).optional(),
+    files: z.array(z.string().min(1).max(4096)).min(1).optional(),
   })
   .strict()
-  .refine((value) => value.redeliver_of !== undefined || value.content !== undefined, {
-    message: 'content is required unless redeliver_of is set.',
-  })
-  .refine((value) => value.redeliver_of === undefined || value.files === undefined, {
-    message: 'files cannot be combined with redeliver_of.',
+  .refine((value) => value.content !== undefined, {
+    message: 'content is required.',
   });
 
 export function createSendToUserTool(options: {
@@ -39,7 +35,7 @@ export function createSendToUserTool(options: {
   return {
     name: 'send_to_user',
     description:
-      'Deliver one user-facing message in this main conversation; ordinary assistant text is private execution content, never a reply, and must not appear in this conversation. Keep the message as short as the content allows, in plain text without Markdown formatting or filler. Each call creates one message bubble, so keep related paragraphs together and do not fragment one answer. Omit end_turn or set false while work continues; set end_turn true on the final send, as the only tool call in that response, after all work for this reply is complete. A successful final send saves its tool result and ends this reply; a sent message does not imply the user has read it. The message always appears in the GUI; set channels to also deliver it to bound IM channels (wechat or feishu). Use redeliver_of with a failed delivery id to retry that channel delivery without creating a new bubble.',
+      'Deliver one user-facing message in this main conversation; ordinary assistant text is private execution content, never a reply. Each call creates one message bubble. The message always appears in the GUI; set channels to also deliver it to bound IM channels (wechat or feishu).',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -50,12 +46,12 @@ export function createSendToUserTool(options: {
           minLength: 1,
           maxLength: 20_000,
           description:
-            'One complete user-facing message in plain text with real newlines, as short as the content allows. Provide the answer, concrete first step, meaningful update or final result as appropriate. Keep related paragraphs together, use supported facts and avoid Markdown formatting, filler, private reasoning, duplicate updates or sentence fragments. Required unless redeliver_of is set.',
+            'One complete user-facing message in plain text with real newlines, as short as the content allows.',
         },
         end_turn: {
           type: 'boolean',
           description:
-            'Set true for a complete direct answer, final result or a question that hands control to the user. Finish other work required for this reply first; this must be the only tool call in the response. A successful send saves its result and ends this reply. Omit or set false for an opening acknowledgement or progress update when work continues.',
+            'Set true on the final send that completes a reply; the final send must be the only tool call in its response. Omit or set false while work continues.',
         },
         channels: {
           type: 'array',
@@ -65,18 +61,10 @@ export function createSendToUserTool(options: {
           description:
             'IM channels that should also receive this message. Only available in the global main conversation. Each channel is delivered asynchronously after the message is saved; a delivery failure produces a channel delivery failure notice with a delivery id.',
         },
-        redeliver_of: {
-          type: 'string',
-          minLength: 1,
-          maxLength: 200,
-          description:
-            'Retry a failed channel delivery by its delivery id from a delivery failure notice. The original stored content is resent to the same channel; no new message bubble is created. Set only when the failure notice says the error is retryable.',
-        },
         files: {
           type: 'array',
           items: { type: 'string', minLength: 1, maxLength: 4096 },
           minItems: 1,
-          maxItems: 4,
           description:
             'Absolute paths of files on the main environment to attach to this message. The files appear as downloadable attachments in the GUI bubble and are uploaded to the IM channels selected in channels. Use real paths from actual tool results; mention each file in content.',
         },
@@ -144,8 +132,7 @@ export function createSendToUserTool(options: {
         intendedInput.content !== input.content ||
         (intendedInput.end_turn ?? false) !== (input.end_turn ?? false) ||
         JSON.stringify(intendedInput.channels ?? null) !== JSON.stringify(input.channels ?? null) ||
-        JSON.stringify(intendedInput.files ?? null) !== JSON.stringify(input.files ?? null) ||
-        (intendedInput.redeliver_of ?? null) !== (input.redeliver_of ?? null)
+        JSON.stringify(intendedInput.files ?? null) !== JSON.stringify(input.files ?? null)
       ) {
         throw new SessionError('action_conflict', 'The send_to_user parameters changed.');
       }
@@ -165,41 +152,6 @@ export function createSendToUserTool(options: {
           'invalid_argument',
           'channels delivery is only available in the global main conversation.',
         );
-      }
-
-      if (input.redeliver_of !== undefined) {
-        const channels = options.channels;
-        if (channels === undefined) {
-          throw new SessionError('failed_precondition', 'Channel delivery is not configured.');
-        }
-        let delivery: ReturnType<ChannelStore['getDelivery']>;
-        try {
-          delivery = channels.store.getDelivery(source.ownerId, input.redeliver_of);
-        } catch {
-          throw new SessionError('not_found', 'The redeliver_of delivery does not exist.');
-        }
-        if (delivery.status !== 'failed') {
-          throw new SessionError(
-            'failed_precondition',
-            'Only a failed channel delivery can be redelivered.',
-          );
-        }
-        channels.store.requeueDelivery(source.ownerId, delivery.deliveryId);
-        return {
-          content: JSON.stringify({
-            status: 'sent',
-            redelivered: true,
-            message_seq: assistant.seq,
-            delivery: {
-              channel: delivery.channel,
-              delivery_id: delivery.deliveryId,
-              status: 'queued',
-            },
-            end_turn: input.end_turn ?? false,
-          }),
-          status: 'success',
-          endTurn: input.end_turn === true,
-        };
       }
 
       const attachmentIds: string[] = [];
@@ -267,7 +219,6 @@ export function createSendToUserTool(options: {
       return {
         content: JSON.stringify({
           status: 'sent',
-          content: input.content,
           message_seq: assistant.seq,
           end_turn: input.end_turn ?? false,
           ...(deliveries.length === 0 ? {} : { deliveries }),

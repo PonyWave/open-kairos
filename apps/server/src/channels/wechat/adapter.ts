@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { OutboundChannel } from '../delivery-worker.js';
-import { renderWechatSegments } from '../render-wechat.js';
 import type { ChannelStore } from '../store.js';
 import { ChannelDeliveryError } from '../store.js';
 import { inboundMessageText, WechatClient, type WechatClientApi } from './client.js';
@@ -344,23 +343,24 @@ export class WechatChannel implements OutboundChannel {
       attachments?: { fileName: string; mediaType: string; bytes: Uint8Array }[];
     },
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<{ externalMessageId?: string } | void> {
     const ownerId = this.#ownerId();
     const credentials = this.#store.getCredentials(ownerId, 'wechat');
     if (credentials === null || credentials.kind !== 'wechat') {
       throw new ChannelDeliveryError(false, 'channel_not_configured', '微信渠道未登录。');
     }
-    const segments = renderWechatSegments(input.markdown);
-    if (segments.length === 0 && (input.attachments?.length ?? 0) === 0) {
+    const markdown = input.markdown.trim();
+    if (markdown.length === 0 && (input.attachments?.length ?? 0) === 0) {
       throw new ChannelDeliveryError(false, 'empty_message', '没有可发送的文本内容。');
     }
-    for (const segment of segments) {
+    let lastMessageId: string | undefined;
+    if (markdown.length > 0) {
       signal.throwIfAborted();
-      await this.#client.sendText(
+      lastMessageId = await this.#client.sendText(
         credentials.botToken,
         input.externalUserId,
         input.contextToken,
-        segment,
+        markdown,
         signal,
       );
     }
@@ -374,7 +374,7 @@ export class WechatChannel implements OutboundChannel {
         attachment.bytes,
         signal,
       );
-      await this.#client.sendMediaMessage(
+      lastMessageId = await this.#client.sendMediaMessage(
         credentials.botToken,
         input.externalUserId,
         input.contextToken,
@@ -387,6 +387,7 @@ export class WechatChannel implements OutboundChannel {
       );
     }
     this.#stopTyping();
+    return { ...(lastMessageId === undefined ? {} : { externalMessageId: lastMessageId }) };
   }
 
   #startMonitor(): void {
@@ -470,8 +471,14 @@ export class WechatChannel implements OutboundChannel {
       this.#store.updateContextToken(ownerId, 'wechat', message.context_token);
     }
     if (!this.#store.recordInboundEvent(ownerId, 'wechat', externalMessageId)) return;
-    const text = inboundMessageText(message);
-    const media = await this.#downloadMessageMedia(externalMessageId, message);
+    const { media, downloadFailures } = await this.#downloadMessageMedia(
+      externalMessageId,
+      message,
+    );
+    const failureNote = downloadFailures.map((name) => `[附件下载失败: ${name}]`).join('\n');
+    const text = [inboundMessageText(message), failureNote]
+      .filter((part) => part.length > 0)
+      .join('\n');
     if (text.trim().length === 0 && media.length === 0) return;
     const quote = this.#resolveQuote(ownerId, message);
     this.#onInbound({
@@ -492,18 +499,14 @@ export class WechatChannel implements OutboundChannel {
     for (const item of message.item_list ?? []) {
       const ref = item?.ref_msg;
       if (ref === undefined) continue;
-      const excerpt = ['text', 'title', 'content', 'description']
-        .map((key) => ref[key])
-        .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
-      const refId = ['msg_id', 'message_id', 'id']
-        .map((key) => ref[key])
-        .find((value): value is number | string =>
-          typeof value === 'number' ? Number.isSafeInteger(value) : typeof value === 'string',
-        );
+      const excerpt =
+        ref.title !== undefined && ref.title.trim().length > 0
+          ? ref.title
+          : ref.message_item?.text_item?.text;
       const mapped =
-        refId === undefined
+        ref.svr_id === undefined
           ? undefined
-          : this.#store.findMessageMap(ownerId, 'wechat', String(refId));
+          : this.#store.findMessageMap(ownerId, 'wechat', ref.svr_id);
       if (mapped === undefined && excerpt === undefined) continue;
       return {
         ...(mapped?.messageSeq == null ? {} : { quoteSeq: mapped.messageSeq }),
@@ -516,8 +519,9 @@ export class WechatChannel implements OutboundChannel {
   async #downloadMessageMedia(
     externalMessageId: string,
     message: Parameters<typeof inboundMessageText>[0],
-  ): Promise<InboundChannelMedia[]> {
+  ): Promise<{ media: InboundChannelMedia[]; downloadFailures: string[] }> {
     const media: InboundChannelMedia[] = [];
+    const downloadFailures: string[] = [];
     const items = message.item_list ?? [];
     for (const [index, item] of items.entries()) {
       if (item === undefined) continue;
@@ -559,12 +563,14 @@ export class WechatChannel implements OutboundChannel {
           aesKey,
           AbortSignal.timeout(60_000),
         );
+        if (bytes.length === 0) throw new Error('empty download');
         media.push({ fileName, bytes });
       } catch (error) {
-        console.error('wechat media download failed', error);
+        console.error('wechat media download failed', JSON.stringify(item).slice(0, 500), error);
+        downloadFailures.push(fileName);
       }
     }
-    return media;
+    return { media, downloadFailures };
   }
 
   async #startTyping(userId: string, contextToken: string | undefined): Promise<void> {

@@ -1,6 +1,7 @@
 import { type RefObject, useLayoutEffect, useRef } from 'react';
 
 const reducedMotionQuery = '(prefers-reduced-motion: reduce)';
+const enterEasing = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
 /** Only reveal appended messages while following the conversation's bottom. */
 export function useMessageEntrance(
@@ -9,6 +10,7 @@ export function useMessageEntrance(
   context: string,
 ) {
   const previous = useRef<{ context: string; keys: string[] } | null>(null);
+  const seenBubbles = useRef(new WeakSet<Element>());
   const animations = useRef(new Set<Animation>());
 
   useLayoutEffect(() => {
@@ -33,10 +35,20 @@ export function useMessageEntrance(
     const viewport = viewportRef.current;
     if (!enabled || !viewport) {
       previous.current = null;
+      seenBubbles.current = new WeakSet();
       for (const animation of animations.current) animation.cancel();
       animations.current.clear();
       return;
     }
+    const active = animations.current;
+    const play = (node: Element, frames: Keyframe[], id: string) => {
+      if (!node.animate) return;
+      const animation = node.animate(frames, { duration: 260, easing: enterEasing, id });
+      active.add(animation);
+      const release = () => active.delete(animation);
+      animation.onfinish = release;
+      animation.oncancel = release;
+    };
     const elements = Array.from(
       viewport.querySelectorAll<HTMLElement>('.message-list > [data-message-id]'),
     );
@@ -45,14 +57,29 @@ export function useMessageEntrance(
     );
     const before = previous.current;
     previous.current = { context, keys };
-    if (
-      !before ||
-      before.context !== context ||
-      viewport.dataset.followBottom === 'false' ||
-      document.visibilityState === 'hidden' ||
-      window.matchMedia(reducedMotionQuery).matches
-    )
-      return;
+    const gatesPass =
+      before !== null &&
+      before.context === context &&
+      viewport.dataset.followBottom !== 'false' &&
+      document.visibilityState !== 'hidden' &&
+      !window.matchMedia(reducedMotionQuery).matches;
+
+    // 气泡入场：新出现的气泡轻微弹出；首次渲染与历史回放只登记、不播放。
+    for (const bubble of viewport.querySelectorAll('.sent-message-bubble, .pending-agent-bubble')) {
+      if (seenBubbles.current.has(bubble)) continue;
+      seenBubbles.current.add(bubble);
+      if (!gatesPass) continue;
+      if (bubble instanceof HTMLElement) bubble.style.transformOrigin = 'left bottom';
+      play(
+        bubble,
+        [
+          { opacity: 0, transform: 'translateY(4px) scale(0.92)' },
+          { opacity: 1, transform: 'translateY(0) scale(1)' },
+        ],
+        'kairos-bubble-enter',
+      );
+    }
+    if (!gatesPass || before === null) return;
 
     const tail = before.keys.at(-1);
     const anchor = tail === undefined ? -1 : keys.lastIndexOf(tail);
@@ -64,16 +91,15 @@ export function useMessageEntrance(
       if (index <= anchor || known.has(keys[index] ?? '') || !element.animate) continue;
       const rect = element.getBoundingClientRect();
       if (rect.bottom <= bounds.top || rect.top >= bounds.bottom) continue;
-      // Opacity preserves the geometry used by conversation scroll anchoring.
-      const animation = element.animate([{ opacity: 0 }, { opacity: 1 }], {
-        duration: 220,
-        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-        id: 'kairos-message-enter',
-      });
-      animations.current.add(animation);
-      const release = () => animations.current.delete(animation);
-      animation.onfinish = release;
-      animation.oncancel = release;
+      // Transform does not change layout, so scroll anchoring keeps its geometry.
+      play(
+        element,
+        [
+          { opacity: 0, transform: 'translateY(8px)' },
+          { opacity: 1, transform: 'translateY(0)' },
+        ],
+        'kairos-message-enter',
+      );
     }
   });
 }

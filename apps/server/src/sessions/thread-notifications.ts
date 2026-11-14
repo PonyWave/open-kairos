@@ -9,7 +9,6 @@ export function threadNotificationDeliveryText(key: DelegationKey, message: stri
         source_thread_id: key.sourceThreadId,
         source_agent_id: key.sourceAgentId,
         tool_call_id: key.sourceToolCallId,
-        thread_id: key.sourceThreadId,
         message,
       }),
   );

@@ -7,6 +7,7 @@ import {
 import { BlobUrlLease } from './blob-url-lease.js';
 import type { KairosClients } from './client.js';
 import { formatClientError } from './errors.js';
+import { Icon, type IconName } from './icon.js';
 import { downloadAttachmentBytes } from './queries.js';
 
 type AttachmentClients = Pick<KairosClients, 'attachments'>;
@@ -37,45 +38,110 @@ export function AttachmentList({
   attachments: readonly AttachmentMetadata[];
   clients?: AttachmentClients | undefined;
 }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   if (attachments.length === 0) return null;
   if (!clients) return <AttachmentMetadataList attachments={attachments} />;
+  const expanded = attachments.find((attachment) => attachment.attachmentId === expandedId);
   return (
-    <ul className="attachment-list" aria-label="消息附件">
-      {attachments.map((attachment) => (
-        <AttachmentItem key={attachment.attachmentId} attachment={attachment} clients={clients} />
-      ))}
-    </ul>
+    <div className="attachment-list">
+      <ul className="attachment-row" aria-label="消息附件">
+        {attachments.map((attachment) => (
+          <AttachmentCard
+            key={attachment.attachmentId}
+            attachment={attachment}
+            clients={clients}
+            expanded={expandedId === attachment.attachmentId}
+            onTogglePreview={() =>
+              setExpandedId((current) =>
+                current === attachment.attachmentId ? null : attachment.attachmentId,
+              )
+            }
+          />
+        ))}
+      </ul>
+      {expanded && (
+        <div className="attachment-preview-panel">
+          <div className="attachment-preview-heading">
+            <strong>{expanded.fileName}</strong>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={`关闭 ${expanded.fileName} 预览`}
+              onClick={() => setExpandedId(null)}
+            >
+              <Icon name="close" className="i-sm" />
+            </button>
+          </div>
+          <AttachmentPreview attachment={expanded} clients={clients} />
+        </div>
+      )}
+    </div>
   );
 }
 
-function AttachmentItem({
+function attachmentIcon(attachment: AttachmentMetadata): IconName {
+  const type = attachment.mediaType.toLowerCase();
+  const name = attachment.fileName.toLowerCase();
+  if (type.startsWith('image/')) return 'image';
+  if (type === 'text/csv' || /\.(csv|tsv|xlsx?)$/.test(name)) return 'table';
+  if (/\.(zip|tgz|tar|gz|7z|rar)$/.test(name) || type.includes('zip') || type.includes('tar')) {
+    return 'archive';
+  }
+  if (
+    /\.(ts|tsx|js|jsx|py|go|rs|java|c|h|cpp|sh|css|html|xml|ya?ml|toml|json|sql)$/.test(name) ||
+    type === 'application/json' ||
+    type.includes('javascript')
+  ) {
+    return 'code';
+  }
+  if (type.startsWith('text/')) return 'files';
+  return 'clip';
+}
+
+function AttachmentCard({
   attachment,
   clients,
+  expanded,
+  onTogglePreview,
 }: {
   attachment: AttachmentMetadata;
   clients: AttachmentClients;
+  expanded: boolean;
+  onTogglePreview: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   return (
-    <li>
-      <div className="attachment-item-heading">
+    <li
+      className={`attachment-card${expanded ? ' expanded' : ''}`}
+      title={`${attachment.fileName} · ${attachment.mediaType}`}
+    >
+      <span className="attachment-card-icon" aria-hidden="true">
+        <Icon name={attachmentIcon(attachment)} />
+      </span>
+      <span className="attachment-card-text">
         <strong>{attachment.fileName}</strong>
-        <span>{attachment.mediaType}</span>
-        <span>{formatAttachmentSize(attachment.sizeBytes)}</span>
-        {attachment.width !== undefined && attachment.height !== undefined && (
-          <span>
-            {attachment.width} × {attachment.height}
-          </span>
-        )}
-      </div>
-      <div className="button-row compact">
-        <button type="button" onClick={() => setExpanded((value) => !value)}>
-          {expanded ? '收起预览' : '预览'}
+        <small>
+          {formatAttachmentSize(attachment.sizeBytes)}
+          {attachment.width !== undefined && attachment.height !== undefined
+            ? ` · ${attachment.width} × ${attachment.height}`
+            : ''}
+        </small>
+      </span>
+      <span className="attachment-card-actions">
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={expanded ? `收起 ${attachment.fileName} 预览` : `预览 ${attachment.fileName}`}
+          aria-expanded={expanded}
+          onClick={onTogglePreview}
+        >
+          <Icon name="eye" className="i-sm" />
         </button>
         <button
           type="button"
+          className="icon-button"
+          aria-label={`下载 ${attachment.fileName}`}
           disabled={downloading}
           onClick={() => {
             setDownloading(true);
@@ -91,11 +157,17 @@ function AttachmentItem({
               .finally(() => setDownloading(false));
           }}
         >
-          {downloading ? '正在分页下载' : '下载'}
+          <Icon
+            name={downloading ? 'spinner' : 'download'}
+            className={`i-sm${downloading ? ' spinning' : ''}`}
+          />
         </button>
-      </div>
-      {downloadError && <p className="error-text">{downloadError}</p>}
-      {expanded && <AttachmentPreview attachment={attachment} clients={clients} />}
+      </span>
+      {downloadError && (
+        <p className="error-text" role="alert">
+          {downloadError}
+        </p>
+      )}
     </li>
   );
 }

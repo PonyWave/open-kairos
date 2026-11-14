@@ -13,7 +13,7 @@ const envTargetParameters = {
     minLength: 1,
     maxLength: 200,
     description:
-      'Authorized target environment for this call only. Omit to use the main environment (env_id main); the choice does not affect later calls or loaded instructions.',
+      'Target environment for this call only; omit to use the main environment (env_id main).',
   },
 };
 const pathParameter = {
@@ -128,7 +128,7 @@ export function createEnvironmentTools(
     {
       name: 'env_list',
       description:
-        'List authorized environments with their connection and lifecycle states, including the main environment. Listing does not start an environment.',
+        'List authorized environments with their recommended working directory and readiness, including the main environment. Listing does not start an environment.',
       parameters: { type: 'object', additionalProperties: false, properties: {} },
       concurrent: true,
       validate: (value) => envListSchema.parse(value),
@@ -516,7 +516,7 @@ export function createEnvironmentTools(
     {
       name: 'env_sync',
       description:
-        'Copy a regular file or directory between two different authorized environments using normalized absolute POSIX paths. The main environment env_id is main. on_conflict defaults to fail; skip and overwrite apply only to files with different content, while identical files are always skipped. overwrite never deletes extra target entries.',
+        'Copy a regular file or directory between two different authorized environments using normalized absolute POSIX paths. on_conflict defaults to fail; skip and overwrite apply only to files with different content, while identical files are always skipped. overwrite never deletes extra target entries.',
       parameters: {
         type: 'object',
         additionalProperties: false,

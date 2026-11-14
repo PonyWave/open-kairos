@@ -305,7 +305,6 @@ it('keeps env_list and main-environment events free of lifecycle side effects', 
       expect.objectContaining({
         env_id: 'main',
         name: 'main',
-        is_main: true,
       }),
     );
     const environment = f.environments.get(ownerId, main.currentBinding?.envId ?? '');
@@ -772,15 +771,7 @@ it('executes standalone main, Rerun, tasks and inherited agents through the read
       environmentUse: f.environmentUse,
     });
     expect(JSON.parse(runtime.list(f.store.getRunById(accepted.runId)))).toMatchObject({
-      main_env: 'main',
-      environments: [
-        {
-          env_id: 'main',
-          kind: 'self_hosted_linux',
-          is_main: true,
-          ready: true,
-        },
-      ],
+      environments: [{ env_id: 'main', kind: 'self_hosted_linux', ready: true }],
     });
     const user = f.store
       .listContext(ownerId, main.threadId, 'thread')

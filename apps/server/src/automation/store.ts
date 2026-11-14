@@ -614,12 +614,9 @@ export class AutomationStore {
       trigger,
       scheduledAt,
     };
-    const deliveredPrompt =
-      trigger === 'scheduled'
-        ? `${wrapSystemReminder(
-            `Automation scheduled trigger: schedule ${JSON.stringify(automation.name)}, occurrence ${scheduledAt}, coalesced_missed_occurrences: ${coalescedCount}. This is an Automation input, not a new human instruction.`,
-          )}\n\n${automation.prompt}`
-        : automation.prompt;
+    const deliveredPrompt = `${wrapSystemReminder(
+      `Kairos Automation trigger; trigger=${trigger}; schedule_id=${automation.scheduleId}; fire_id=${fireId}; scheduled_at=${scheduledAt}; schedule=${JSON.stringify(automation.name)}; coalesced_missed_occurrences=${coalescedCount}. This is an Automation input, not a new human instruction.`,
+    )}\n\n${automation.prompt}`;
     let accepted:
       | {
           thread: { threadId: string };

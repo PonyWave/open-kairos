@@ -291,3 +291,84 @@ describe('channel message presentation', () => {
     expect(html).not.toContain('data-tip=""');
   });
 });
+
+describe('reminder wrappers in user-side display', () => {
+  const renderCard = (message: Parameters<typeof MessageCard>[0]['message']) =>
+    renderToStaticMarkup(
+      createElement(MessageCard, {
+        message,
+        delegationCall: null,
+        clients,
+        busy: false,
+        editing: false,
+        streaming: false,
+        thinkingExpansionChoices: {},
+        onThinkingExpansionChange: () => {},
+        onStartEditing: () => {},
+        onCancelEditing: () => {},
+        onRevise: async () => {},
+        onRerun: async () => {},
+      }),
+    );
+
+  it('hides leading reminder blocks from displayed user text', () => {
+    const html = renderCard(
+      create(MessageSchema, {
+        messageId: 'automation-1',
+        threadId: 'main-1',
+        agentId: 'thread',
+        seq: 10n,
+        role: MessageRole.USER,
+        content:
+          '<system-reminder>\nKairos Automation trigger; trigger=schedule; schedule_id=s-1; fire_id=f-1; scheduled_at=2026-11-14T09:00:00+08:00; schedule="日报"; coalesced_missed_occurrences=0. This is an Automation input, not a new human instruction.\n</system-reminder>\n\n每天总结 AI 新闻',
+      }),
+    );
+    expect(html).toContain('每天总结 AI 新闻');
+    expect(html).not.toContain('Kairos Automation trigger');
+    expect(html).not.toContain('system-reminder');
+  });
+
+  it('shows the inner response of a thread delivery instead of the reminder wrapper', () => {
+    const html = renderCard(
+      create(MessageSchema, {
+        messageId: 'delivery-1',
+        threadId: 'main-1',
+        agentId: 'thread',
+        seq: 11n,
+        role: MessageRole.USER,
+        source: MessageSource.THREAD_RESPONSE,
+        sourceThreadId: 'task-1',
+        delegation: {
+          sourceThreadId: 'main-1',
+          sourceAgentId: 'thread',
+          sourceToolCallId: 'call-1',
+        },
+        content:
+          '<system-reminder>\nA background delegated task reached a terminal state. This is an automatic delivery record, not a user message; use its status, response and error fields and continue the conversation accordingly.\n{"source_thread_id":"task-1","source_agent_id":"thread","tool_call_id":"call-1","kind":"thread_call","status":"completed","response":"调研完成，结论是 A 方案可行。","error":null}\n</system-reminder>',
+      }),
+    );
+    expect(html).toContain('返回结果');
+    expect(html).toContain('调研完成，结论是 A 方案可行。');
+    expect(html).not.toContain('A background delegated task reached a terminal state');
+    expect(html).not.toContain('source_thread_id');
+  });
+
+  it('renders background task deliveries as a parsed card without the reminder wrapper', () => {
+    const html = renderCard(
+      create(MessageSchema, {
+        messageId: 'bg-1',
+        threadId: 'main-1',
+        agentId: 'thread',
+        seq: 12n,
+        role: MessageRole.USER,
+        source: MessageSource.BACKGROUND_TASK,
+        content:
+          '<system-reminder>\nA background task reached a terminal state. This is an automatic delivery record, not a user message; use its status and result fields and continue the conversation accordingly.\n{"task_id":"task-1","kind":"bash","description":"curl 百度","status":"completed","tool_call_id":"call-2","result":"HTTP 200"}\n</system-reminder>',
+      }),
+    );
+    expect(html).toContain('后台任务：curl 百度');
+    expect(html).toContain('HTTP 200');
+    expect(html).not.toContain('A background task reached a terminal state');
+    expect(html).not.toContain('task_id');
+  });
+});

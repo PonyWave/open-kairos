@@ -204,7 +204,7 @@ describe('background bash tasks', () => {
     const task = store.getBackgroundTask(ownerId, accepted.task_id);
     expect(task.kind).toBe('bash');
     expect(task.description).toBe('long sleep');
-    expect(task.resultText).toContain('"status":"completed"');
+    expect(task.resultText).toContain('"exit_code":0');
   });
 
   it('task_list and task_output report bash tasks and task_stop cancels them', async () => {

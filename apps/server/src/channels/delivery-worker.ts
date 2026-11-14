@@ -214,7 +214,7 @@ export function failureNoticeText(delivery: ChannelDeliveryRecord): string {
   ];
   if (delivery.lastErrorRetryable === true) {
     lines.push(
-      `guidance: This is a transient error. Retry by calling send_to_user with redeliver_of="${delivery.deliveryId}"; the stored content is resent and no new message bubble is created. Do not resend the same content as a new message.`,
+      'guidance: This is a transient error. You may retry by resending the same message with the channels parameter; the GUI copy will appear again, so prefer retrying only when the IM copy matters.',
     );
   } else {
     lines.push(

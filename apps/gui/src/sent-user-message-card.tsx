@@ -62,6 +62,7 @@ export function SentUserMessageCard({
   deliveryStatuses,
   mainThreadId,
   clients,
+  embedded = false,
 }: {
   message: Message;
   sent: SentUserMessage;
@@ -70,6 +71,7 @@ export function SentUserMessageCard({
   deliveryStatuses?: ReadonlyMap<string, ChannelDeliveryStatusInfo> | undefined;
   mainThreadId?: string | null | undefined;
   clients?: KairosClients | undefined;
+  embedded?: boolean;
 }) {
   const badges =
     sent.deliveries.length === 0 ? null : (
@@ -85,11 +87,11 @@ export function SentUserMessageCard({
     );
   return (
     <article
-      className={`message assistant sent-user-message${compact ? ' sent-user-message-compact' : ''}${continuation ? ' assistant-continuation' : ''}${sent.deliveries.length > 0 ? ' has-channel-deliveries' : ''}`}
+      className={`message assistant sent-user-message${compact ? ' sent-user-message-compact' : ''}${continuation ? ' assistant-continuation' : ''}${embedded ? ' sent-user-message-embedded' : ''}${sent.deliveries.length > 0 ? ' has-channel-deliveries' : ''}`}
       data-message-id={message.messageId}
       data-user-message-call-id={message.toolCallId}
     >
-      {continuation ? (
+      {embedded ? null : continuation ? (
         <span className="avatar-spacer" aria-hidden="true" />
       ) : (
         <MessageAvatar

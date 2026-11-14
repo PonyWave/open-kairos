@@ -14,6 +14,7 @@ import type { KairosClients } from './client.js';
 import { ToolResultCard } from './conversation.js';
 import { delegationForToolCall, delegationKey } from './delegation.js';
 import {
+  BackgroundTaskDeliveryCard,
   DelegationCallCard,
   type OpenTopicRequest,
   originFromDelegation,
@@ -24,10 +25,15 @@ import { isDirectUserMessage, isRootAgent } from './labels.js';
 import { MessageAvatar } from './message-avatar.js';
 import { ThreadNotificationCallCard, ThreadNotificationCard } from './notification-cards.js';
 import { stripChannelInboundMarker } from './queue-display.js';
+import { stripLeadingReminderBlocks } from './reminder-display.js';
 import { EditedMarker } from './response-components.js';
 import type { DelegationCallProjection } from './response-projection.js';
 import type { ChannelDeliveryStatusInfo } from './sent-user-message.js';
-import { type SentUserMessage, sentUserMessage } from './sent-user-message.js';
+import {
+  type SentUserMessage,
+  sentContentFromArguments,
+  sentUserMessage,
+} from './sent-user-message.js';
 import { SentUserMessageCard, UserMessageFailure } from './sent-user-message-card.js';
 import { SubagentCard } from './subagent-card.js';
 import { MessageContent } from './thinking-block.js';
@@ -141,7 +147,7 @@ export function MessageCard({
   const showActions = isUser && allowActions && channelInbound !== true;
   const editingActive = editing && showActions;
   const sent = sentMessage === undefined ? sentUserMessage(message) : sentMessage;
-  if (sent) {
+  if (sent && (compact || !associatedToolResultIds?.has(message.toolCallId))) {
     return (
       <SentUserMessageCard
         message={message}
@@ -202,6 +208,10 @@ export function MessageCard({
     );
   }
 
+  if (message.source === MessageSource.BACKGROUND_TASK) {
+    return <BackgroundTaskDeliveryCard message={message} />;
+  }
+
   const toolItems =
     projectedToolItems ??
     projectToolItems(message.toolCalls, {
@@ -229,7 +239,6 @@ export function MessageCard({
     projectedToolItems &&
     message.role === MessageRole.ASSISTANT &&
     toolItems.length === 0 &&
-    (message.toolCalls.length > 0 || mergedThinking.size > 0) &&
     !hasVisibleContent &&
     message.attachments.length === 0 &&
     !message.delegation?.sourceThreadId &&
@@ -259,10 +268,29 @@ export function MessageCard({
       side={isUser ? 'right' : 'left'}
     />
   );
+  const visibleTextMessage = (contentMessage: Message): Message => {
+    if (contentMessage.role !== MessageRole.USER) return contentMessage;
+    const content = stripLeadingReminderBlocks(contentMessage.content);
+    const blocksChanged = contentMessage.contentBlocks.some(
+      (block) =>
+        block.type === ContentBlockType.TEXT &&
+        stripLeadingReminderBlocks(block.text) !== block.text,
+    );
+    if (content === contentMessage.content && !blocksChanged) return contentMessage;
+    return {
+      ...contentMessage,
+      content,
+      contentBlocks: contentMessage.contentBlocks.map((block) =>
+        block.type === ContentBlockType.TEXT
+          ? { ...block, text: stripLeadingReminderBlocks(block.text) }
+          : block,
+      ),
+    };
+  };
   const renderText = (contentMessage: Message, key?: string) => (
     <div key={key} className={`message-text${message.revisionId ? ' has-edited' : ''}`}>
       <MessageContent
-        message={contentMessage}
+        message={visibleTextMessage(contentMessage)}
         streaming={streaming}
         choices={thinkingExpansionChoices}
         hiddenThinkingBlockIndexes={mergedThinking}
@@ -308,6 +336,42 @@ export function MessageCard({
           call={item.call}
           view={subagentViews.get(key)}
           onOpen={onOpenSubagent}
+        />
+      );
+    }
+    if (item.kind === 'send') {
+      const outcome = toolOutcomes?.get(item.call.toolCallId);
+      const sentMessage = outcome
+        ? sentUserMessage(outcome.message, sentContentFromArguments(item.call.argumentsJson))
+        : null;
+      if (outcome && sentMessage) {
+        return (
+          <SentUserMessageCard
+            key={item.id}
+            message={outcome.message}
+            sent={sentMessage}
+            compact={false}
+            continuation={false}
+            embedded={true}
+            deliveryStatuses={channelDeliveries}
+            mainThreadId={mainThreadId}
+            clients={clients}
+          />
+        );
+      }
+      return (
+        <ToolOperationGroup
+          key={item.id}
+          message={message}
+          calls={[item.call]}
+          progressByCall={toolProgress}
+          outcomes={toolOutcomes ?? new Map<string, ToolOutcome>()}
+          streaming={streaming}
+          clients={clients}
+          choices={toolExpansionChoices}
+          onExpandedChange={onToolExpansionChange}
+          thinkingExpansionChoices={thinkingExpansionChoices}
+          onThinkingExpansionChange={onThinkingExpansionChange}
         />
       );
     }

@@ -97,13 +97,9 @@ export function createThreadDelegationTools(
           threads: page.map((thread) => ({
             thread_id: thread.threadId,
             title: thread.title,
-            thread_type: thread.threadType,
             workspace_id: thread.workspaceId ?? null,
             environment_policy: thread.environmentPolicy
-              ? {
-                  ...environmentPolicyJson(thread.environmentPolicy, options.projectEnvironmentIds),
-                  policy_version: thread.environmentPolicy.policyVersion,
-                }
+              ? environmentPolicyJson(thread.environmentPolicy, options.projectEnvironmentIds)
               : undefined,
             current_binding: thread.currentBinding
               ? {
@@ -111,8 +107,6 @@ export function createThreadDelegationTools(
                     options.projectEnvironmentIds?.([thread.currentBinding.envId])[0] ??
                     thread.currentBinding.envId,
                   pwd: thread.currentBinding.pwd,
-                  binding_version: thread.currentBinding.bindingVersion,
-                  resource_version: thread.currentBinding.resourceVersion,
                 }
               : undefined,
           })),
@@ -210,8 +204,6 @@ export function createThreadDelegationTools(
           tool_call_id: accepted.interaction.sourceToolCallId,
           thread_id: accepted.interaction.targetThreadId,
           status: 'accepted',
-          automatic_delivery: true,
-          next_step: BACKGROUND_ACCEPTED_NEXT_STEP,
         });
       },
     },
@@ -254,11 +246,6 @@ export function createThreadDelegationTools(
     },
   ];
 }
-
-export const BACKGROUND_ACCEPTED_NEXT_STEP =
-  'Accepted is not completion. Continue other work, or finish this turn after stating that the task is still running. The terminal result is persisted and injected automatically, with a root Run scheduled if needed; no status read or wait_ms is needed to receive it.';
-const BACKGROUND_TIMEOUT_NEXT_STEP =
-  'The wait timed out and the target was not cancelled. Do not repeat short waits or poll. Continue other work, or finish this turn after stating that the task is still running; the terminal result is persisted and injected automatically, with a root Run scheduled if needed.';
 
 const readParameters = {
   type: 'object',
@@ -311,15 +298,13 @@ function interactionResult(
   waited: boolean,
 ) {
   const response = options.store.getCurrentInteractionResponse(options.source.ownerId, interaction);
-  const timedOut = waited && !isTerminal(interaction.status);
   return {
     tool_call_id: interaction.sourceToolCallId,
     agent_id: interaction.targetAgentId,
     status: interaction.status,
     response: response?.message.role === 'assistant' ? response.message.content : null,
     error: interaction.error,
-    timed_out: timedOut,
-    ...(timedOut ? { automatic_delivery: true, next_step: BACKGROUND_TIMEOUT_NEXT_STEP } : {}),
+    timed_out: waited && !isTerminal(interaction.status),
   };
 }
 
@@ -468,7 +453,7 @@ export function createWorkspaceListTool(
   return {
     name: 'workspace_list',
     description:
-      'List workspaces available to this tenant. Each workspace pins a device and a working directory as the default execution target for its Threads, and has its own workspace main conversation. Use workspace_id when creating a task Thread in a workspace with thread_call, or main_thread_id to talk to the workspace main.',
+      'List workspaces available to this tenant with the id of each workspace main conversation. Use workspace_id with thread_call to create a task Thread in a workspace, or main_thread_id to talk to the workspace main.',
     parameters: { type: 'object', additionalProperties: false, properties: {} },
     concurrent: true,
     validate: (value) => workspaceListInputSchema.parse(value),

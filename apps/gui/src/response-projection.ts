@@ -14,8 +14,11 @@ import {
 } from '@kairos/contracts';
 import { delegationForToolCall, delegationKey } from './delegation.js';
 import { isRootAgent } from './labels.js';
-import { stripLeadingReminders, stripStreamingReminders } from './reminder-text.js';
-import { type SentUserMessage, sentUserMessage } from './sent-user-message.js';
+import {
+  type SentUserMessage,
+  sentContentFromArguments,
+  sentUserMessage,
+} from './sent-user-message.js';
 import type { TransientResponse } from './thread-projection.js';
 import { timestampDate } from './time-format.js';
 import {
@@ -90,16 +93,26 @@ export function projectConversation({
     (message) =>
       message.threadId === threadId && message.agentId === agentId && !message.supersededByRunId,
   );
+  const sentContents = new Map<string, string>();
+  for (const message of currentMessages) {
+    if (message.role !== MessageRole.ASSISTANT) continue;
+    for (const call of message.toolCalls) {
+      if (call.toolName !== 'send_to_user') continue;
+      const content = sentContentFromArguments(call.argumentsJson);
+      if (content !== undefined) sentContents.set(call.toolCallId, content);
+    }
+  }
+  const sentFor = (message: Message): SentUserMessage | null =>
+    sentUserMessage(message, message.toolCallId ? sentContents.get(message.toolCallId) : undefined);
   const sourceCalls = projectSourceCalls(
     messages.filter((message) => message.threadId === threadId && !message.supersededByRunId),
   );
   const persistedIds = new Set(currentMessages.map((message) => message.messageId));
-  const displayMessages: DisplayMessage[] = currentMessages.map((current) => {
-    const message = visibleAssistantMessage(current);
+  const displayMessages: DisplayMessage[] = currentMessages.map((message) => {
     const matches = message.delegation
       ? sourceCalls.get(delegationKey(message.delegation))
       : undefined;
-    const sent = sentUserMessage(message);
+    const sent = sentFor(message);
     return {
       message,
       streaming: false,
@@ -112,23 +125,15 @@ export function projectConversation({
     if (
       owner !== agentId ||
       persistedIds.has(response.messageId) ||
-      (response.runId !== undefined && terminalRunIds.has(response.runId))
+      (response.runId !== undefined && terminalRunIds.has(response.runId)) ||
+      !response.contentBlocks.some((block) => block.text.trim())
     ) {
       continue;
     }
-    const visibleBlocks = response.contentBlocks.map((block) =>
-      block.type === ContentBlockType.TEXT
-        ? { ...block, text: stripStreamingReminders(block.text) }
-        : block,
-    );
-    const visibleText = visibleBlocks
+    const visibleText = response.contentBlocks
       .filter((block) => block.type === ContentBlockType.TEXT)
       .map((block) => block.text)
       .join('');
-    const hasVisibleContent =
-      visibleText.trim().length > 0 ||
-      visibleBlocks.some((block) => block.type !== ContentBlockType.TEXT && block.text.trim());
-    if (!hasVisibleContent) continue;
     const responseRun = response.runId === undefined ? undefined : runsById.get(response.runId);
     const createdAt = responseRun?.startedAt ?? responseRun?.createdAt;
     displayMessages.push({
@@ -138,7 +143,7 @@ export function projectConversation({
         agentId,
         role: MessageRole.ASSISTANT,
         content: visibleText,
-        contentBlocks: visibleBlocks,
+        contentBlocks: [...response.contentBlocks],
         ...(response.runId === undefined ? {} : { runId: response.runId }),
         ...(responseRun?.sendToUserEnabled === undefined
           ? {}
@@ -254,7 +259,7 @@ export function projectConversation({
     if (
       activeRun &&
       !currentMessages.some(
-        (message) => message.runId === activeRun.runId && sentUserMessage(message) !== null,
+        (message) => message.runId === activeRun.runId && sentFor(message) !== null,
       )
     ) {
       items.push({
@@ -273,10 +278,6 @@ function projectMixedOperationGroups(
 ): ConversationItem[] {
   const outcomes = projectToolOutcomes(messages);
   const associatedToolResultIds = projectAssociatedToolResultIds(messages, outcomes);
-  const sentCallIds = new Set<string>();
-  for (const message of messages) {
-    if (sentUserMessage(message)) sentCallIds.add(message.toolCallId);
-  }
   let open:
     | {
         display: DisplayMessage;
@@ -314,8 +315,7 @@ function projectMixedOperationGroups(
     ) {
       open = undefined;
     }
-    const visibleCalls = message.toolCalls.filter((call) => !sentCallIds.has(call.toolCallId));
-    const ownItems = projectToolItems(visibleCalls, {
+    const ownItems = projectToolItems(message.toolCalls, {
       contentBlocks: message.contentBlocks,
       messageId: message.messageId,
       streaming: display.streaming,
@@ -337,19 +337,11 @@ function projectMixedOperationGroups(
         : message.content.trim().length > 0;
     const first = ownItems[0];
     if (
-      ownItems.length === 0 &&
-      message.toolCalls.length > 0 &&
-      !hasText &&
-      message.attachments.length === 0
-    ) {
-      continue;
-    }
-    if (
       open &&
       !hasText &&
       message.attachments.length === 0 &&
       first?.kind === 'ordinary' &&
-      (first.calls.length > 0 || visibleCalls.length === 0)
+      (first.calls.length > 0 || message.toolCalls.length === 0)
     ) {
       open.group = {
         ...open.group,
@@ -377,26 +369,6 @@ function projectMixedOperationGroups(
         : undefined;
   }
   return items;
-}
-
-function visibleAssistantMessage(message: Message): Message {
-  if (message.role !== MessageRole.ASSISTANT) return message;
-  const hasReminderText =
-    message.content.startsWith('<system-reminder>\n') ||
-    message.contentBlocks.some(
-      (block) =>
-        block.type === ContentBlockType.TEXT && block.text.startsWith('<system-reminder>\n'),
-    );
-  if (!hasReminderText) return message;
-  return create(MessageSchema, {
-    ...message,
-    content: stripLeadingReminders(message.content),
-    contentBlocks: message.contentBlocks.map((block) =>
-      block.type === ContentBlockType.TEXT && block.text.startsWith('<system-reminder>\n')
-        ? { ...block, text: stripLeadingReminders(block.text) }
-        : block,
-    ),
-  });
 }
 
 function projectSourceCalls(

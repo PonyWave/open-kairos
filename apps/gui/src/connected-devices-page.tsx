@@ -266,15 +266,10 @@ function DeviceRow({
             >
               编辑
             </button>
-          </div>
-          {device.directoryStatus === EnvironmentDirectoryStatus.FAILED && (
-            <p className="device-field-error">工作目录不可用，请检查目录及访问权限。</p>
-          )}
-          {!online && (
-            <div className="device-wake-guide">
+            {!online && (
               <button
                 type="button"
-                className="device-secondary"
+                className="device-secondary device-copy-start"
                 aria-label={`复制 ${device.name} 的启动命令`}
                 aria-live="polite"
                 disabled={busy || wake?.phase === 'loading' || wake?.phase === 'copying'}
@@ -293,13 +288,15 @@ function DeviceRow({
                       ? '获取命令…'
                       : '复制启动命令'}
               </button>
-              <p>仅启动已安装并绑定的 Daemon；目标机未安装时，请先执行“添加设备”流程。</p>
-              {wake?.error && (
-                <p className="device-field-error" role="alert">
-                  {wake.error}
-                </p>
-              )}
-            </div>
+            )}
+          </div>
+          {device.directoryStatus === EnvironmentDirectoryStatus.FAILED && (
+            <p className="device-field-error">工作目录不可用，请检查目录及访问权限。</p>
+          )}
+          {!online && wake?.error && (
+            <p className="device-field-error" role="alert">
+              {wake.error}
+            </p>
           )}
         </div>
       </div>

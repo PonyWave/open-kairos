@@ -45,7 +45,21 @@ function parseDeliveries(value: unknown): SentDelivery[] {
   return deliveries;
 }
 
-export function sentUserMessage(message: Message): SentUserMessage | null {
+export function sentContentFromArguments(argumentsJson: string): string | undefined {
+  try {
+    const args: unknown = JSON.parse(argumentsJson);
+    if (!args || typeof args !== 'object' || Array.isArray(args)) return undefined;
+    const content: unknown = Reflect.get(args, 'content');
+    return typeof content === 'string' && content.trim() ? content : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function sentUserMessage(
+  message: Message,
+  argumentsContent?: string,
+): SentUserMessage | null {
   if (
     message.role !== MessageRole.TOOL ||
     message.agentId !== 'thread' ||
@@ -66,7 +80,9 @@ export function sentUserMessage(message: Message): SentUserMessage | null {
     ) {
       return null;
     }
-    const content: unknown = Reflect.get(result, 'content');
+    const resultContent: unknown = Reflect.get(result, 'content');
+    const content =
+      typeof resultContent === 'string' && resultContent.trim() ? resultContent : argumentsContent;
     const endTurn: unknown = Reflect.get(result, 'end_turn');
     if (typeof content !== 'string' || !content.trim() || typeof endTurn !== 'boolean') {
       return null;

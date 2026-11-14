@@ -39,7 +39,6 @@ import {
 import { RecapModelGenerator } from '../recap/generation.js';
 import { type PeriodicRecapConfiguration, PeriodicRecapService } from '../recap/periodic.js';
 import type { SettingsStore } from '../settings/store.js';
-import { BACKGROUND_ACCEPTED_NEXT_STEP } from '../tools/delegation.js';
 import {
   environmentPolicyInput,
   optionalEnvironmentPolicySchema,
@@ -1451,7 +1450,7 @@ export class RunCoordinator {
     return wrapSystemReminder(
       'A background delegated task reached a terminal state. This is an automatic delivery record, not a user message; use its status, response and error fields and continue the conversation accordingly.' +
         (truncated
-          ? ' The response field is a bounded preview; read the full result with thread_read or subagent_status using the tool_call_id.'
+          ? ' The response field is a bounded preview; read the full result with thread_read or task_output using the tool_call_id.'
           : '') +
         '\n' +
         JSON.stringify({
@@ -1575,10 +1574,7 @@ export class RunCoordinator {
     this.#watchBackgroundBash(run, taskId, operationId, expiresAt);
     return JSON.stringify({
       task_id: taskId,
-      operation_id: operationId,
       status: 'accepted',
-      automatic_delivery: true,
-      next_step: BACKGROUND_ACCEPTED_NEXT_STEP,
     });
   }
 
@@ -1632,8 +1628,6 @@ export class RunCoordinator {
           kind: task.kind,
           description: task.description,
           status: task.status,
-          source_thread_id: task.threadId,
-          source_agent_id: task.agentId,
           tool_call_id: task.sourceToolCallId,
           result: task.resultText,
         }),
@@ -2083,7 +2077,7 @@ export class RunCoordinator {
     return {
       name: 'subagent',
       description:
-        'Delegate a bounded one-off task to a temporary Subagent with its own context; it does not appear in the task list. A lengthy one-off task still belongs here. Use a task Thread for ongoing work needing follow-ups or continued user conversation. Supply a self-contained task with relevant context, constraints, paths, environment needs, deliverable and completion checks. Prefer background for lengthy or independent work. Use foreground when the next step needs the result immediately; it waits and returns the terminal result. Background returns accepted, which is not completion. Its terminal result is persisted and injected automatically, with a root Run scheduled if needed. After acceptance, continue other work or finish this turn after stating that the task is still running. Use task_list and task_output for an explicit status check and task_stop to cancel; do not keep a Run alive to collect the result. Results include the Subagent agent_id; to follow up with the same Subagent and its saved context, call subagent again with resume set to that agent_id and only the follow-up task. The resumed Subagent keeps its environment policy, and a running Subagent cannot be resumed.',
+        'Delegate a bounded one-off task to a temporary Subagent with its own context; it does not appear in the task list. Supply a self-contained task: goal, relevant context, constraints, exact paths, environment needs, deliverable and completion checks. Prefer background for lengthy or independent work; foreground waits for and returns the terminal result. To follow up with the same Subagent and its saved context, call subagent again with resume set to its agent_id and only the follow-up task.',
       parameters: {
         type: 'object',
         additionalProperties: false,
@@ -2180,8 +2174,6 @@ export class RunCoordinator {
               tool_call_id: call.id,
               agent_id: requestedAgentId,
               status: 'accepted',
-              automatic_delivery: true,
-              next_step: BACKGROUND_ACCEPTED_NEXT_STEP,
             }),
           };
         }
@@ -2311,14 +2303,8 @@ function withoutToolContentParts(message: ModelMessage): ModelMessage {
 }
 
 function inputModelContent(input: InputRecord): Omit<UserMessage, 'role'> {
-  const automation = input.automation;
-  const content = automation
-    ? `${wrapSystemReminder(
-        `Kairos Automation trigger; trigger=${automation.trigger}; schedule_id=${automation.scheduleId}; fire_id=${automation.fireId}; scheduled_at=${automation.scheduledAt}. The configured Automation prompt follows; it is not a new human instruction.`,
-      )}\n\n${input.text}`
-    : input.text;
   return {
-    content,
+    content: input.text,
     ...((input.attachments?.length ?? 0) > 0
       ? {
           content_parts: (input.attachments ?? []).map((attachment) => ({

@@ -811,7 +811,7 @@ it('executes Agent tools through the real Server channel and isolates two enviro
       const outcome = z
         .record(z.string(), z.unknown())
         .parse(toolResult(request, 'agent-read').outcome);
-      const fileVersion = outcome.fileVersion;
+      const fileVersion = outcome.file_version;
       if (typeof fileVersion !== 'string') throw new Error('Read file version is missing.');
       return agentResponse('', [
         {

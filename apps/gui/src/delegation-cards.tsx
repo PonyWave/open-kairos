@@ -9,6 +9,7 @@ import type { KairosClients } from './client.js';
 import { EntityMark } from './entity-mark.js';
 import { Icon } from './icon.js';
 import { formatSequence } from './labels.js';
+import { reminderBlockBody } from './reminder-display.js';
 import { SafeMarkdown } from './safe-markdown.js';
 import {
   type AgentOrigin,
@@ -188,7 +189,7 @@ export function ThreadDeliveryCard({
         <Icon name="chevron" className="i-sm" />
       </summary>
       <div className="tool-operation-detail">
-        <p className="delivery-content">{message.content}</p>
+        <p className="delivery-content">{deliveryDisplayText(message.content)}</p>
         <AttachmentList attachments={message.attachments} clients={clients} />
         <button
           type="button"
@@ -206,6 +207,57 @@ export function ThreadDeliveryCard({
       </div>
     </details>
   );
+}
+
+export function BackgroundTaskDeliveryCard({ message }: { message: Message }) {
+  if (message.source !== MessageSource.BACKGROUND_TASK) return null;
+  const body = reminderBlockBody(message.content);
+  const parsed = body === null ? null : reminderJson(body);
+  const description = typeof parsed?.description === 'string' ? parsed.description : '';
+  const result = typeof parsed?.result === 'string' ? parsed.result : '';
+  return (
+    <details className="tool-operation thread-delivery">
+      <summary>
+        <Icon name="code" className="i-sm" />
+        <span className="tool-operation-title">
+          {description ? `后台任务：${description}` : '后台任务结果'}
+        </span>
+        <Icon name="chevron" className="i-sm" />
+      </summary>
+      <div className="tool-operation-detail">
+        <p className="delivery-content">{result || body || message.content}</p>
+      </div>
+    </details>
+  );
+}
+
+function reminderJson(body: string): Record<string, unknown> | null {
+  const start = body.indexOf('{');
+  if (start === -1) return null;
+  try {
+    const value: unknown = JSON.parse(body.slice(start));
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function deliveryDisplayText(content: string): string {
+  const body = reminderBlockBody(content);
+  if (body === null) return content;
+  const parsed = reminderJson(body);
+  if (parsed) {
+    const response = parsed.response;
+    if (typeof response === 'string' && response.trim()) return response;
+    const error = parsed.error;
+    if (error && typeof error === 'object' && !Array.isArray(error)) {
+      const errorMessage = Reflect.get(error, 'message');
+      if (typeof errorMessage === 'string' && errorMessage.trim()) return errorMessage;
+    }
+  }
+  return body;
 }
 
 export function ReplyPreviews({

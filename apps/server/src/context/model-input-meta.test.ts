@@ -10,7 +10,7 @@ function seed() {
 }
 
 describe('message meta in model input', () => {
-  it('annotates direct user and assistant messages with seq, local time and origin', () => {
+  it('annotates direct user messages with seq, local time and origin, leaving assistant messages unwrapped', () => {
     const { database, context } = seed();
     try {
       const user = context.append({
@@ -19,7 +19,7 @@ describe('message meta in model input', () => {
         message: { role: 'user', content: '你好' },
         createdAt: '2026-11-14T02:00:00.000Z',
       });
-      const assistant = context.append({
+      context.append({
         threadId: 'thread',
         agentId: 'thread',
         message: { role: 'assistant', content: '你好，有什么可以帮你？' },
@@ -35,10 +35,7 @@ describe('message meta in model input', () => {
       expect(messages[1]?.content).toBe(
         `${messageMetaReminder({ seq: user.seq, createdAt: user.createdAt, from: 'app' })}\n\n你好`,
       );
-      expect(messages[2]?.content).toBe(
-        `${messageMetaReminder({ seq: assistant.seq, createdAt: assistant.createdAt })}\n\n你好，有什么可以帮你？`,
-      );
-      expect(messages[2]?.content).not.toContain('from=');
+      expect(messages[2]?.content).toBe('你好，有什么可以帮你？');
     } finally {
       database.close();
     }

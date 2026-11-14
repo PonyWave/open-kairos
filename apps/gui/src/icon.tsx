@@ -52,6 +52,13 @@ const shapes = {
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5" />
     </>
   ),
+  image: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="9" cy="10" r="1.6" />
+      <path d="m5 18 5-5 3 3 4-4 2 2" />
+    </>
+  ),
   memory: (
     <>
       <path d="M12 20s-4-2-9-1V4c5-1 9 1 9 1s4-2 9-1v15c-5-1-9 1-9 1zM12 5v15" />

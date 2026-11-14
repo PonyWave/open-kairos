@@ -139,9 +139,6 @@ it('registers thread_notify only on task roots and persists idle delivery with b
     expect(toolResult(await context(fixture, task.threadId), 'notify-idle').content).toContain(
       '"status":"accepted"',
     );
-    expect(toolResult(await context(fixture, task.threadId), 'notify-idle').content).toContain(
-      '"automatic_delivery":true',
-    );
     expect(delivered).toMatchObject({
       source_thread_id: task.threadId,
       source_agent_id: 'thread',
@@ -163,7 +160,6 @@ it('registers thread_notify only on task roots and persists idle delivery with b
       source_thread_id: task.threadId,
       source_agent_id: 'thread',
       tool_call_id: 'notify-idle',
-      thread_id: task.threadId,
       message: '请主对话关注 **已经完成** 的检查。',
     });
     expect(

@@ -44,6 +44,7 @@ export type ToolItem =
   | OrdinaryToolItem
   | (ToolItemPosition & { kind: 'delegation'; call: ToolCall })
   | (ToolItemPosition & { kind: 'notification'; call: ToolCall })
+  | (ToolItemPosition & { kind: 'send'; call: ToolCall })
   | (ToolItemPosition & { kind: 'subagent'; call: ToolCall });
 
 interface ToolItemProjectionOptions {
@@ -214,10 +215,13 @@ function projectOrderedToolItems(
   return items;
 }
 
-function specialToolKind(call: ToolCall): 'delegation' | 'notification' | 'subagent' | undefined {
+function specialToolKind(
+  call: ToolCall,
+): 'delegation' | 'notification' | 'send' | 'subagent' | undefined {
   if (call.toolName === 'subagent') return 'subagent';
   if (isDelegationTool(call)) return 'delegation';
   if (call.toolName === 'thread_notify') return 'notification';
+  if (call.toolName === 'send_to_user') return 'send';
   return undefined;
 }
 

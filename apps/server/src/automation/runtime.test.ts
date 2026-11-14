@@ -52,17 +52,8 @@ async function waitRequest(provider: ControlledProvider, key: string) {
   );
 }
 
-function automationKey(input: { text: string; automation: unknown }): string {
-  if (typeof input.automation !== 'object' || input.automation === null) {
-    throw new Error('Automation provenance is missing.');
-  }
-  const reference = input.automation as {
-    trigger: string;
-    scheduleId: string;
-    fireId: string;
-    scheduledAt: string;
-  };
-  return `user:<system-reminder>\nKairos Automation trigger; trigger=${reference.trigger}; schedule_id=${reference.scheduleId}; fire_id=${reference.fireId}; scheduled_at=${reference.scheduledAt}. The configured Automation prompt follows; it is not a new human instruction.\n</system-reminder>\n\n${input.text}`;
+function automationKey(input: { text: string }): string {
+  return `user:${input.text}`;
 }
 
 it('queues Automation input behind an in-flight model request without interrupting it', async () => {
@@ -289,10 +280,10 @@ it('resolves and projects the sandbox alias throughout Automation management and
       return message.message.content;
     });
     for (const content of contents) expect(content).not.toContain(sandboxId ?? '');
-    expect(contents[0]).toContain('"allowedEnv":["main"]');
-    expect(contents[1]).toContain('"allowedEnv":["main"]');
-    expect(contents[2]).toContain('"allowedEnv":["main"]');
-    expect(contents[3]).toContain('"allowedEnv":["main","env-1"]');
+    expect(contents[0]).toContain('"allowed_env":["main"]');
+    expect(contents[1]).toContain('"allowed_env":["main"]');
+    expect(contents[2]).toContain('"allowed_env":["main"]');
+    expect(contents[3]).toContain('"allowed_env":["main","env-1"]');
     expect(contents[4]).toMatch(/"status":"(queued|running|completed)"/);
 
     const updated = current.service.store.getAutomation(ownerId, scheduleId);

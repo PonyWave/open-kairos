@@ -140,7 +140,7 @@ it('notifies main with retry guidance after retries are exhausted', async () => 
     });
     expect(notice?.text).toContain('network_error');
     expect(notice?.text).toContain('retryable: yes');
-    expect(notice?.text).toContain(`redeliver_of="${delivery.deliveryId}"`);
+    expect(notice?.text).toContain('You may retry by resending');
     expect(notice?.text).toContain('最终内容');
     expect(notice === undefined ? [] : value.delivered).toEqual([notice?.inputId]);
     await value.worker.processNow();

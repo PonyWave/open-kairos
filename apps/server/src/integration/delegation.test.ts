@@ -398,10 +398,6 @@ it('REQ-05 creates a Thread with its first call and resumes it across main Runs 
       tool_call_id: firstToolCallId,
       thread_id: taskId,
       status: 'accepted',
-      automatic_delivery: true,
-      next_step: expect.stringMatching(
-        /Accepted is not completion.*finish this turn.*injected automatically.*no status read or wait_ms/,
-      ),
     });
     expect(parsedTool(firstMainContext, 'read-first')).toMatchObject({
       tool_call_id: firstToolCallId,
@@ -480,7 +476,7 @@ it('REQ-05 creates a Thread with its first call and resumes it across main Runs 
     );
     const listed = parsedTool(await mainContext(fixture, mainId), 'list-cross');
     expect(listed.threads).toEqual([
-      expect.objectContaining({ thread_id: taskId, title: '跨 Run 任务', thread_type: 'task' }),
+      expect.objectContaining({ thread_id: taskId, title: '跨 Run 任务' }),
     ]);
     const targetMessages = await mainContext(fixture, taskId);
     expect(targetMessages.map((message) => message.content)).toEqual([
@@ -621,10 +617,6 @@ it('REQ-05 preserves background progress, tool boundaries and cancellation at mi
       tool_call_id: backgroundToolCallId,
       agent_id: expect.any(String),
       status: 'accepted',
-      automatic_delivery: true,
-      next_step: expect.stringMatching(
-        /Accepted is not completion.*finish this turn.*injected automatically.*no status read or wait_ms/,
-      ),
     });
     const backgroundChild = fixture.database
       .prepare('SELECT run_id, agent_id, status FROM runs WHERE parent_run_id = ?')
@@ -690,10 +682,6 @@ it('REQ-05 preserves background progress, tool boundaries and cancellation at mi
       tool_call_id: backgroundToolCallId,
       response: null,
       timed_out: true,
-      automatic_delivery: true,
-      next_step: expect.stringMatching(
-        /target was not cancelled.*Do not repeat short waits or poll.*finish this turn.*injected automatically/,
-      ),
     });
     expect(['running', 'waiting']).toContain(backgroundStatus.status);
     expect(
@@ -1133,10 +1121,6 @@ it('REQ-05 waits for exact Thread and Subagent results within the 30000 ms bound
       status: 'running',
       response: null,
       timed_out: true,
-      automatic_delivery: true,
-      next_step: expect.stringMatching(
-        /target was not cancelled.*Do not repeat short waits or poll.*finish this turn.*injected automatically/,
-      ),
     });
     expect(interactionRow(fixture.database, threadToolCallId)).toMatchObject({
       status: 'running',
@@ -1467,7 +1451,7 @@ it('REQ-05 isolates target tools, temporary Subagents and hard cuts while reusin
       expect.objectContaining({
         role: 'system',
         content: expect.stringContaining(
-          'All Agents load AGENTS.md and Skills from the main environment workspace',
+          'Relative paths resolve against the main environment workspace',
         ),
       }),
       expect.objectContaining({

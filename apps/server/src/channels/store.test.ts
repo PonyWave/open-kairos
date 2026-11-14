@@ -115,9 +115,6 @@ describe('ChannelStore deliveries', () => {
       );
       expect(record.status).toBe('failed');
       expect(record.lastErrorCode).toBe('network_error');
-      const requeued = store.requeueDelivery('owner', created.deliveryId);
-      expect(requeued.status).toBe('pending');
-      expect(requeued.attempts).toBe(0);
       store.markDelivering('owner', created.deliveryId);
       expect(store.markSucceeded('owner', created.deliveryId).status).toBe('succeeded');
     } finally {
@@ -138,16 +135,6 @@ describe('ChannelStore deliveries', () => {
       );
       expect(record.status).toBe('failed');
       expect(record.lastErrorRetryable).toBe(false);
-    } finally {
-      database.close();
-    }
-  });
-
-  it('rejects redelivery for deliveries that are not failed', () => {
-    const { database, store } = fixture();
-    try {
-      const created = store.createDelivery({ ownerId: 'owner', channel: 'feishu', content: 'x' });
-      expect(() => store.requeueDelivery('owner', created.deliveryId)).toThrow(/失败的投递/);
     } finally {
       database.close();
     }

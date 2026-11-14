@@ -231,14 +231,10 @@ it('exposes main Agent delegation choices and delivery guidance in actual model 
     expect(threadCall?.description).toContain('Do not use thread_read or wait_ms');
     const subagent = request.tools.find((tool) => tool.name === 'subagent');
     expect(subagent?.description).toContain('bounded one-off task');
-    expect(subagent?.description).toContain('A lengthy one-off task still belongs here');
     expect(subagent?.description).toContain('self-contained task');
     expect(subagent?.description).toContain('Prefer background for lengthy or independent work');
-    expect(subagent?.description).toContain(
-      'Use foreground when the next step needs the result immediately',
-    );
-    expect(subagent?.description).toContain('Background returns accepted, which is not completion');
-    expect(subagent?.description).toContain('task_output');
+    expect(subagent?.description).toContain('foreground waits for and returns the terminal result');
+    expect(subagent?.description).toContain('resume set to its agent_id');
 
     for (const name of ['thread_read', 'task_output']) {
       const tool = request.tools.find((candidate) => candidate.name === name);
@@ -368,17 +364,11 @@ it('runs Thread delegation across root Runs and delivers only the linked respons
       tool_call_id: string;
       thread_id: string;
       status: string;
-      automatic_delivery: boolean;
-      next_step: string;
     };
     expect(accepted).toEqual({
       tool_call_id: 'call-1',
       thread_id: task.threadId,
       status: 'accepted',
-      automatic_delivery: true,
-      next_step: expect.stringMatching(
-        /Accepted is not completion.*finish this turn.*injected automatically.*no status read or wait_ms/,
-      ),
     });
     const interactionId = accepted.tool_call_id;
     expect(store.getInteraction(ownerId, delegationKey(main.threadId, interactionId)).status).toBe(
@@ -453,13 +443,11 @@ it('runs Thread delegation across root Runs and delivers only the linked respons
       timed_out: false,
     });
     const listed = JSON.parse(toolMessage(store, main.threadId, 'list-1').content) as {
-      threads: Array<{ thread_id: string; thread_type: string }>;
+      threads: Array<{ thread_id: string }>;
       next_cursor?: string;
     };
     expect(listed).toEqual({
-      threads: [
-        expect.objectContaining({ thread_id: task.threadId, title: '任务甲', thread_type: 'task' }),
-      ],
+      threads: [expect.objectContaining({ thread_id: task.threadId, title: '任务甲' })],
       next_cursor: String(task.seq),
     });
 
@@ -680,10 +668,6 @@ it('times out a read without holding the only model slot or cancelling the targe
       tool_call_id: interactionId,
       status: 'queued',
       timed_out: true,
-      automatic_delivery: true,
-      next_step: expect.stringMatching(
-        /target was not cancelled.*Do not repeat short waits or poll.*finish this turn.*injected automatically/,
-      ),
     });
     expect(store.getInteraction(ownerId, delegationKey(main.threadId, interactionId)).status).toBe(
       'queued',
@@ -839,17 +823,11 @@ it('keeps a background Subagent alive after parent cancellation and delivers it 
       tool_call_id: string;
       agent_id: string;
       status: string;
-      automatic_delivery: boolean;
-      next_step: string;
     };
     expect(accepted).toEqual({
       tool_call_id: 'bg-create',
       agent_id: expect.any(String),
       status: 'accepted',
-      automatic_delivery: true,
-      next_step: expect.stringMatching(
-        /Accepted is not completion.*finish this turn.*injected automatically.*no status read or wait_ms/,
-      ),
     });
     const interactionId = accepted.tool_call_id;
     const child = store
@@ -1624,9 +1602,7 @@ it('does not register thread_notify on automation_only root Threads', async () =
       }),
     );
     expect(accepted.thread.automationOnly).toBe(true);
-    const automation = accepted.input.automation;
-    if (!automation) throw new Error('Automation input metadata is missing.');
-    const automationRequestKey = `user:<system-reminder>\nKairos Automation trigger; trigger=${automation.trigger}; schedule_id=${automation.scheduleId}; fire_id=${automation.fireId}; scheduled_at=${automation.scheduledAt}. The configured Automation prompt follows; it is not a new human instruction.\n</system-reminder>\n\n${accepted.input.text}`;
+    const automationRequestKey = `user:${accepted.input.text}`;
     provider.register(automationRequestKey, response('hidden work completed'));
     resolveRequest = () => provider.resolve(automationRequestKey);
     await coordinator.deliver(accepted.input, accepted.runId);

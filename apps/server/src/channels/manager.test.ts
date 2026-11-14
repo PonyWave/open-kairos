@@ -244,7 +244,7 @@ it('records inbound message map entries and resolves quotes into the channel ref
       message_id: 401,
       item_list: [
         { type: 1, text_item: { text: '引用一下' } },
-        { ref_msg: { msg_id: 400, text: '原始问题' } },
+        { ref_msg: { svr_id: '400', title: '原始问题' } },
       ],
     });
     const mapped = manager.store.findMessageMap(ownerId, 'wechat', '400');

@@ -114,7 +114,6 @@ it('persists a final send, publishes its mode before text and restores exact dis
         status: 'success',
         content: JSON.stringify({
           status: 'sent',
-          content: '**完成。**',
           message_seq: 2,
           end_turn: true,
         }),
@@ -307,7 +306,7 @@ it('keeps the tool and user communication instructions exclusive to the main roo
     ).toContain('ordinary assistant text is private execution content, never a reply');
     expect(
       provider.requests[0]?.tools.find((tool) => tool.name === 'send_to_user')?.description,
-    ).toContain('the only tool call in that response');
+    ).toContain('Each call creates one message bubble');
   } finally {
     await close(current);
   }

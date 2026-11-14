@@ -610,17 +610,16 @@ it('uses the main alias only at the model boundary and keeps real audit routing'
     environmentUse: new ControlledEnvironmentUseGateway(store.database),
   });
   const catalog = JSON.parse(runtime.list(run)) as {
-    main_env: string;
-    environments: Array<{ env_id: string; name: string; is_main: boolean }>;
+    environments: Array<{ env_id: string; name: string; ready: boolean }>;
   };
   const sandboxId = mainEnvId(store);
-  expect(catalog.main_env).toBe('main');
   expect(catalog.environments).toMatchObject([
-    { env_id: 'env-1', name: 'env-1', is_main: false },
-    { env_id: 'env-2', name: 'env-2', is_main: false },
-    { env_id: 'main', name: 'main', is_main: true },
+    { env_id: 'env-1', name: 'env-1' },
+    { env_id: 'env-2', name: 'env-2' },
+    { env_id: 'main', name: 'main' },
   ]);
   expect(JSON.stringify(catalog)).not.toContain(sandboxId);
+  expect(JSON.stringify(catalog)).not.toContain('granted_capabilities');
   expect(runtime.resolveEnvironmentIds(ownerId, ['main', 'env-1'])).toEqual([sandboxId, 'env-1']);
 
   operations.agentsMdPaths.add('/workspace/AGENTS.md');
@@ -786,7 +785,7 @@ it('gives all Agents execution tools and loads main and task resources from the 
   );
   expect(JSON.stringify(taskRequest.messages)).not.toContain('You are the main Agent');
   expect(taskRequest.messages.map((message) => message.content).join('\n')).toContain(
-    '"workspace":"/workspace"',
+    '"default_pwd":"/workspace"',
   );
   expect(operations.started).toHaveLength(2);
   expect(operations.started.at(-1)).toMatchObject({ envId: mainEnvId(store) });
@@ -889,7 +888,7 @@ it('routes remote operations by binding and preserves cwd and output authorizati
     .listContext(ownerId, task.thread.threadId, 'thread')
     .find((message) => message.message.role === 'tool' && message.message.tool_name === 'bash');
   expect(bashResult?.message).toMatchObject({ status: 'success' });
-  expect(bashResult?.message.content).toContain('"endOffset":"14"');
+  expect(bashResult?.message.content).toContain('"exit_code":0');
   const bash = operations.started.find((operation) => operation.action.case === 'bash');
   expect(bash).toMatchObject({ envId: 'env-1', bindingVersion: 1n });
   expect(bash?.action).toMatchObject({ case: 'bash', value: { cwd: '/srv/once' } });
@@ -1394,7 +1393,6 @@ it('recovers a persisted operation result for the owning tenant after restart', 
   });
   const recovered = await runtime.savedResult(sent.runId, 'recover-tenant-call');
   expect(recovered).toMatchObject({ status: 'success' });
-  expect(recovered?.content).toContain('recover-tenant-operation');
   expect(recovered?.content).toContain('remote output');
   expect(store.agentEnvironments.savedResult(sent.runId, 'recover-tenant-call')).toEqual(recovered);
 });

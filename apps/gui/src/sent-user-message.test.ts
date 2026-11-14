@@ -1,6 +1,6 @@
 import { create, MessageRole, MessageSchema, ToolResultStatus } from '@kairos/contracts';
 import { expect, it } from 'vitest';
-import { sentUserMessage } from './sent-user-message.js';
+import { sentContentFromArguments, sentUserMessage } from './sent-user-message.js';
 
 function toolResultMessage(content: unknown) {
   return create(MessageSchema, {
@@ -22,16 +22,18 @@ it('renders a normal send_to_user result as a message bubble', () => {
   expect(sent).toEqual({ content: '**完成。**', endTurn: true, deliveries: [] });
 });
 
-it('does not render a redelivery result as a new bubble', () => {
+it('falls back to the tool call arguments when the result omits content', () => {
   const sent = sentUserMessage(
-    toolResultMessage({
-      status: 'sent',
-      redelivered: true,
-      delivery: { channel: 'feishu', delivery_id: 'd-1', status: 'queued' },
-      end_turn: false,
-    }),
+    toolResultMessage({ status: 'sent', message_seq: 2, end_turn: true }),
+    sentContentFromArguments(JSON.stringify({ content: '**完成。**', end_turn: true })),
   );
-  expect(sent).toBeNull();
+  expect(sent).toEqual({ content: '**完成。**', endTurn: true, deliveries: [] });
+});
+
+it('returns null when neither the result nor the arguments carry content', () => {
+  expect(sentUserMessage(toolResultMessage({ status: 'sent', end_turn: true }))).toBeNull();
+  expect(sentContentFromArguments('{"end_turn":true}')).toBeUndefined();
+  expect(sentContentFromArguments('not json')).toBeUndefined();
 });
 
 it('parses channel deliveries from the send result', () => {

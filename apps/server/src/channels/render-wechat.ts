@@ -1,5 +1,3 @@
-const defaultSegmentBytes = 1500;
-
 interface TableBlock {
   kind: 'table';
   header: string[];
@@ -132,7 +130,7 @@ function hardSplit(text: string, maxBytes: number): string[] {
   return segments;
 }
 
-export function segmentPlainText(text: string, maxBytes: number = defaultSegmentBytes): string[] {
+export function segmentPlainText(text: string, maxBytes: number): string[] {
   const segments: string[] = [];
   let current = '';
   const push = (piece: string) => {
@@ -175,13 +173,4 @@ export function segmentPlainText(text: string, maxBytes: number = defaultSegment
   }
   if (current.length > 0) segments.push(current);
   return segments;
-}
-
-export function renderWechatSegments(
-  markdown: string,
-  maxBytes: number = defaultSegmentBytes,
-): string[] {
-  const plain = markdownToPlainText(markdown);
-  if (plain.length === 0) return [];
-  return segmentPlainText(plain, maxBytes);
 }

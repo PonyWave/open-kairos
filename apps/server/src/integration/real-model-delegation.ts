@@ -633,7 +633,7 @@ export async function runSubagentDelegationDemo(
       fixture,
       mainId,
       'real-subagent-background',
-      `Call subagent exactly once with mode background and this exact task:\n${backgroundTask}\nAfter the acceptance receipt, reply briefly. Do not call subagent_status or any other tool.`,
+      `Call subagent exactly once with mode background and this exact task:\n${backgroundTask}\nAfter the acceptance receipt, reply briefly. Do not call task_output or any other tool.`,
       'subagent',
     );
     const backgroundReceipt = parsedTool(background.result);
@@ -667,8 +667,8 @@ export async function runSubagentDelegationDemo(
       fixture,
       mainId,
       'real-subagent-background-status',
-      `Call subagent_status exactly once with tool_call_id ${backgroundToolCallId} and wait_ms 30000. Report its actual result. Do not call any other tool.`,
-      'subagent_status',
+      `Call task_output exactly once with task_id ${backgroundToolCallId} and wait_ms 30000. Report its actual result. Do not call any other tool.`,
+      'task_output',
     );
     expect(parsedTool(status.result)).toMatchObject({
       tool_call_id: backgroundToolCallId,
@@ -708,7 +708,7 @@ export async function runSubagentDelegationDemo(
       fixture,
       mainId,
       'real-subagent-background-cancel',
-      `Call subagent exactly once with mode background and this exact task:\n${backgroundCancelTask}\nAfter the acceptance receipt, reply briefly. Do not call subagent_cancel or any other tool.`,
+      `Call subagent exactly once with mode background and this exact task:\n${backgroundCancelTask}\nAfter the acceptance receipt, reply briefly. Do not call task_stop or any other tool.`,
       'subagent',
     );
     const backgroundCancelReceipt = parsedTool(backgroundCancel.result);
@@ -728,8 +728,8 @@ export async function runSubagentDelegationDemo(
       fixture,
       mainId,
       'real-subagent-background-cancel-request',
-      `Call subagent_cancel exactly once with tool_call_id ${backgroundCancelToolCallId}. Report its actual receipt. Do not call any other tool.`,
-      'subagent_cancel',
+      `Call task_stop exactly once with task_id ${backgroundCancelToolCallId}. Report its actual receipt. Do not call any other tool.`,
+      'task_stop',
     );
     expect(['cancel_requested', 'cancelled']).toContain(parsedTool(cancel.result).status);
     await waitInteraction(fixture, backgroundCancelToolCallId, 'cancelled');

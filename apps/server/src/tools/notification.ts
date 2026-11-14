@@ -93,8 +93,5 @@ export function threadNotificationAcceptance(
     tool_call_id: notification.sourceToolCallId,
     status: 'accepted',
     target: notification.target,
-    automatic_delivery: true,
-    next_step:
-      'The notification is persisted and will be injected into the target main conversation automatically, with a root Run scheduled if needed. Accepted does not mean the main Agent or user has read it. Continue the task without resending the same notification.',
   };
 }

@@ -25,7 +25,7 @@ export function buildModelMessages(input: {
 
 export function currentModelMessageWithMeta(record: ContextMessage): ModelMessage {
   const message = currentModelMessage(record);
-  if (message.role !== 'user' && message.role !== 'assistant') return message;
+  if (message.role !== 'user') return message;
   return {
     ...message,
     content: `${wrapSystemReminder(messageMetaTag(record))}\n\n${message.content}`,

@@ -210,19 +210,11 @@ it('REQ-05 keeps original tool_call_id triples isolated across shared and later 
       tool_call_id: 'multi-a',
       thread_id: taskId,
       status: 'accepted',
-      automatic_delivery: true,
-      next_step: expect.stringMatching(
-        /Accepted is not completion.*finish this turn.*injected automatically.*no status read or wait_ms/,
-      ),
     });
     expect(toolResult(sourceContext, 'multi-b')).toEqual({
       tool_call_id: 'multi-b',
       thread_id: taskId,
       status: 'accepted',
-      automatic_delivery: true,
-      next_step: expect.stringMatching(
-        /Accepted is not completion.*finish this turn.*injected automatically.*no status read or wait_ms/,
-      ),
     });
 
     const store = new SessionStore(fixture.database);
@@ -498,19 +490,11 @@ it('REQ-05 isolates identical Subagent call IDs across GUI, Provider, SQLite and
       tool_call_id: 'shared-subagent-call',
       agent_id: expect.any(String),
       status: 'accepted',
-      automatic_delivery: true,
-      next_step: expect.stringMatching(
-        /Accepted is not completion.*finish this turn.*injected automatically.*no status read or wait_ms/,
-      ),
     });
     expect(toolResult(taskRootContext, 'shared-subagent-call')).toEqual({
       tool_call_id: 'shared-subagent-call',
       agent_id: expect.any(String),
       status: 'accepted',
-      automatic_delivery: true,
-      next_step: expect.stringMatching(
-        /Accepted is not completion.*finish this turn.*injected automatically.*no status read or wait_ms/,
-      ),
     });
     expect(
       mainRootContext.filter(

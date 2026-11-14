@@ -5,7 +5,7 @@ import type { AssistantMessage, ModelRequest, ToolMessage } from '@kairos/agent-
 import { expect, it } from 'vitest';
 import { openDatabase } from '../storage/database.js';
 import { ContextStore } from './context-store.js';
-import { stripMessageMeta } from './model-input.js';
+import { currentModelMessageWithMeta, stripMessageMeta } from './model-input.js';
 import type { RecapGenerationInput } from './model-input-service.js';
 import { ModelInputService } from './model-input-service.js';
 import { RecallService } from './recall-service.js';
@@ -124,7 +124,7 @@ it('preserves complete and incomplete tool fields through reopen, recall, recap 
     });
     expect(prepared.hardCut).toBe(true);
     const requestMessages = requests[0]?.messages ?? [];
-    expect(requestMessages[0]?.content).toMatch(/^<system-reminder>\n<msg seq="1" /);
+    expect(requestMessages[0]?.content).toBe(assistant.content);
     expect(
       requestMessages.map((message) => ({
         ...message,
@@ -144,6 +144,35 @@ it('preserves complete and incomplete tool fields through reopen, recall, recap 
     ).toEqual({ source_message_seqs: '[1,2,3,4]' });
   } finally {
     if (database.isOpen) database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+it('wraps only user context messages with message meta and leaves assistant content verbatim', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kairos-message-meta-'));
+  const database = openDatabase(join(directory, 'meta.sqlite'));
+  try {
+    const store = new ContextStore(database);
+    const user = store.append({
+      threadId: 'thread',
+      agentId: 'thread',
+      message: { role: 'user', content: '你好' },
+    });
+    const assistant = store.append({
+      threadId: 'thread',
+      agentId: 'thread',
+      message: {
+        role: 'assistant',
+        content:
+          '<system-reminder>\n<msg seq="1" time="2026-11-14T10:00:00+08:00"/>\n</system-reminder>\n\n<system-reminder>\n<msg seq="1" time="2026-11-14T10:00:03+08:00"/>\n</system-reminder>\n\n正文回复',
+      },
+    });
+    expect(currentModelMessageWithMeta(user).content).toMatch(
+      /^<system-reminder>\n<msg seq="1" time="[^"]+" from="app"\/>\n<\/system-reminder>\n\n你好$/,
+    );
+    expect(currentModelMessageWithMeta(assistant).content).toBe(assistant.message.content);
+  } finally {
+    database.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });

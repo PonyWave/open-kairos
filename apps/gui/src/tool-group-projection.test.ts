@@ -239,7 +239,7 @@ describe('mixed Thinking and ordinary tool projection', () => {
     ).toEqual(['thinking:1', 'call:read-1', 'thinking:2', 'call:bash-1']);
   });
 
-  it('splits execution groups at response text and keeps send_to_user ordinary', () => {
+  it('splits execution groups at response text and renders send_to_user as its own item', () => {
     const blocks = [
       create(ContentBlockSchema, { type: ContentBlockType.TEXT, blockIndex: 0, text: '前文' }),
       create(ContentBlockSchema, {
@@ -260,16 +260,14 @@ describe('mixed Thinking and ordinary tool projection', () => {
       messageId: 'segmented-message',
     });
 
-    expect(items.map((item) => item.kind)).toEqual(['ordinary', 'ordinary']);
-    expect(items.map((item) => item.blockIndex)).toEqual([2, 4]);
+    expect(items.map((item) => item.kind)).toEqual(['ordinary', 'ordinary', 'send']);
+    expect(items.map((item) => item.blockIndex)).toEqual([2, 4, 4]);
     expect(
       items.map((item) =>
         item.kind === 'ordinary' ? item.operations.map((operation) => operation.id) : [],
       ),
-    ).toEqual([
-      ['thinking:1', 'read-1'],
-      ['thinking:3', 'send-1'],
-    ]);
+    ).toEqual([['thinking:1', 'read-1'], ['thinking:3'], []]);
+    expect(items[2]).toMatchObject({ kind: 'send', call: { toolCallId: 'send-1' } });
   });
 
   it('uses conservative legacy ordering when any call lacks a cursor', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderFeishuCards, renderFeishuTextFallback } from './render-feishu.js';
-import { markdownToPlainText, renderWechatSegments, segmentPlainText } from './render-wechat.js';
+import { markdownToPlainText, segmentPlainText } from './render-wechat.js';
 
 describe('markdownToPlainText', () => {
   it('strips inline markdown and keeps structure', () => {
@@ -20,32 +20,6 @@ describe('markdownToPlainText', () => {
 
   it('keeps list items as text lines', () => {
     expect(markdownToPlainText('- 第一项\n- 第二项')).toBe('- 第一项\n- 第二项');
-  });
-});
-
-describe('renderWechatSegments', () => {
-  it('returns no segments for empty content', () => {
-    expect(renderWechatSegments('')).toEqual([]);
-    expect(renderWechatSegments('  \n ')).toEqual([]);
-  });
-
-  it('splits long content on paragraph boundaries within the byte budget', () => {
-    const paragraph = '汉'.repeat(400);
-    const segments = renderWechatSegments([paragraph, paragraph, paragraph].join('\n\n'), 1500);
-    expect(segments.length).toBeGreaterThan(1);
-    for (const segment of segments) {
-      expect(Buffer.byteLength(segment, 'utf8')).toBeLessThanOrEqual(1500);
-    }
-    expect(segments.join('\n\n')).toContain(paragraph);
-  });
-
-  it('hard splits a single oversized line', () => {
-    const segments = segmentPlainText('字'.repeat(2000), 1500);
-    expect(segments.length).toBe(4);
-    for (const segment of segments) {
-      expect(Buffer.byteLength(segment, 'utf8')).toBeLessThanOrEqual(1500);
-    }
-    expect(segments.join('')).toBe('字'.repeat(2000));
   });
 });
 

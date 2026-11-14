@@ -23,6 +23,7 @@ import {
 } from '@kairos/contracts';
 import { OperationStatus } from '@kairos/contracts/device';
 import { expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { stripMessageMeta } from '../context/model-input.js';
 import { EnvironmentStore } from '../devices/environment-store.js';
 import { openDatabase } from '../storage/database.js';
@@ -513,7 +514,7 @@ it('AT-07/AT-09/AT-10 preserves hard-cut evidence and recalls it after Server re
       expect.objectContaining({
         role: 'system',
         content: expect.stringContaining(
-          'All Agents load AGENTS.md and Skills from the main environment workspace',
+          'Relative paths resolve against the main environment workspace',
         ),
       }),
       expect.objectContaining({
@@ -738,10 +739,14 @@ it('AT-04/AT-13/AT-14/AT-16 runs a real Daemon, cancels Bash and pages stored lo
     if (typeof parsedResult !== 'object' || parsedResult === null) {
       throw new Error('Device tool result is not an object.');
     }
-    const operationId = Reflect.get(parsedResult, 'operation_id') as unknown;
-    if (typeof operationId !== 'string') {
-      throw new Error('Device tool result is missing its operation ID.');
-    }
+    const operationRow = z
+      .object({ operation_id: z.string() })
+      .parse(
+        fixture.database
+          .prepare("SELECT operation_id FROM environment_operations WHERE action = 'bash'")
+          .get(),
+      );
+    const operationId = operationRow.operation_id;
     const outputFile = Reflect.get(parsedResult, 'output_file') as unknown;
     if (typeof outputFile !== 'object' || outputFile === null) {
       throw new Error('Device tool result is missing its output file.');

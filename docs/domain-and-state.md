@@ -103,5 +103,5 @@ Memory Wiki 是主环境上的用户级长期记忆目录（默认 `<KAIROS_DATA
 | `channel_deliveries`     | 出站投递记录：渠道、原始内容、状态（pending/delivering/succeeded/failed）、尝试次数、最近错误与重试时间、失败通知时间。 |
 
 - 入站消息写入全局 main 输入队列：`source = 'channel'`，`channel_json` 记录渠道、类型（`inbound`/`delivery_failure`）、外部消息 ID 或投递 ID。
-- 投递失败按 2s/10s/30s 退避重试（默认最多 4 次尝试），失败后向全局 main 注入一次失败通知（`notified_at` 去重）。`redeliver_of` 把失败的投递重置为 pending 并清零尝试次数。
+- 投递失败按 2s/10s/30s 退避重试（默认最多 4 次尝试），失败后向全局 main 注入一次失败通知（`notified_at` 去重）。
 - 渠道凭证使用与模型密钥相同的 AES-256-GCM 方案加密，密钥派生标签独立（`kairos-channels-v1`）。

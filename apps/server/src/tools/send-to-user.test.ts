@@ -75,7 +75,6 @@ it('returns a final message only for its persisted main root intent', async () =
     ).resolves.toEqual({
       content: JSON.stringify({
         status: 'sent',
-        content: call.arguments.content,
         message_seq: 1,
         end_turn: true,
       }),
@@ -231,7 +230,6 @@ it('allows a workspace main root Agent to send its reply', async () => {
     ).resolves.toEqual({
       content: JSON.stringify({
         status: 'sent',
-        content: '整理完成。',
         message_seq: 1,
         end_turn: true,
       }),
@@ -323,74 +321,6 @@ it('creates queued deliveries for bound channels and failed deliveries for unbou
     expect(wechat?.error).toContain('未登录');
     expect(channelStore.getDelivery(ownerId, feishu?.delivery_id ?? '').status).toBe('pending');
     expect(channelStore.getDelivery(ownerId, wechat?.delivery_id ?? '').status).toBe('failed');
-  } finally {
-    database.close();
-  }
-});
-
-it('requeues a failed delivery through redeliver_of without creating new deliveries', async () => {
-  const { database, channelStore, tool, store, run } = channelFixture();
-  try {
-    const failed = channelStore.createDelivery({
-      ownerId,
-      channel: 'feishu',
-      content: '原文',
-      maxAttempts: 1,
-    });
-    channelStore.markDelivering(ownerId, failed.deliveryId);
-    channelStore.markAttemptFailed(
-      ownerId,
-      failed.deliveryId,
-      { code: 'network_error', message: '网络超时', retryable: true },
-      null,
-    );
-    const call = {
-      id: 'send-redeliver',
-      name: 'send_to_user',
-      arguments: { redeliver_of: failed.deliveryId },
-    };
-    store.appendModelMessage({
-      runId: run.runId,
-      message: { role: 'assistant', content: '', tool_calls: [call] },
-    });
-    const result = await tool.execute(await tool.validate(call.arguments), {
-      call,
-      signal: new AbortController().signal,
-    });
-    const resultText = typeof result === 'string' ? result : result.content;
-    const payload = JSON.parse(resultText) as {
-      redelivered: boolean;
-      delivery: { delivery_id: string; status: string };
-    };
-    expect(payload.redelivered).toBe(true);
-    expect(payload.delivery.delivery_id).toBe(failed.deliveryId);
-    const requeued = channelStore.getDelivery(ownerId, failed.deliveryId);
-    expect(requeued.status).toBe('pending');
-    expect(requeued.attempts).toBe(0);
-  } finally {
-    database.close();
-  }
-});
-
-it('rejects redeliver_of for deliveries that have not failed', async () => {
-  const { database, channelStore, tool, store, run } = channelFixture();
-  try {
-    const pending = channelStore.createDelivery({ ownerId, channel: 'feishu', content: '原文' });
-    const call = {
-      id: 'send-redeliver-pending',
-      name: 'send_to_user',
-      arguments: { redeliver_of: pending.deliveryId },
-    };
-    store.appendModelMessage({
-      runId: run.runId,
-      message: { role: 'assistant', content: '', tool_calls: [call] },
-    });
-    await expect(
-      tool.execute(await tool.validate(call.arguments), {
-        call,
-        signal: new AbortController().signal,
-      }),
-    ).rejects.toMatchObject({ code: 'failed_precondition' });
   } finally {
     database.close();
   }

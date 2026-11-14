@@ -1035,12 +1035,12 @@ export class AgentEnvironmentRuntime {
           : 'subagent';
     const defaultPwd = specification?.defaultPwd ?? policy.defaultPwd;
     const instructions = [
-      'All Agents load AGENTS.md and Skills from the main environment workspace. Omitting env_id executes a file or command tool in the main environment. The main environment env_id and name are both main. Optional env_id selects an authorized target for that call only and does not change subsequent calls or loaded instructions. Relative paths use the main environment workspace in the main environment and the validated recommended directory in another environment. Task Threads and Subagents inherit or narrow the caller authorization. Read project rules explicitly when working in another environment. Run date in bash when precise current time matters.',
-      `<agent-execution-environment>${jsonStringify({ allowed_env: effectiveAllowed.map((envId) => this.#modelEnvId(ownerId, envId)), workspace: defaultPwd, role })}</agent-execution-environment>`,
+      'Relative paths resolve against the main environment workspace in the main environment and the validated default directory (default_pwd) in another environment. Read project rules explicitly when working in another environment. Run date in bash when precise current time matters.',
+      `<agent-execution-environment>${jsonStringify({ allowed_env: effectiveAllowed.map((envId) => this.#modelEnvId(ownerId, envId)), default_pwd: defaultPwd, role })}</agent-execution-environment>`,
     ];
     if (role === 'main_agent')
       instructions.push(
-        `<authorized-environment-catalog>${this.listForScope(ownerId, effectiveAllowed)}</authorized-environment-catalog>`,
+        `<authorized-environment-catalog>${this.listForScope(ownerId, effectiveAllowed, false)}</authorized-environment-catalog>`,
       );
     if (resources.systemInstructions.length > 0) instructions.push(resources.systemInstructions);
     return instructions;
@@ -1078,10 +1078,14 @@ export class AgentEnvironmentRuntime {
 
   list(run: RunRecord): string {
     const specification = this.store.agentEnvironments.requireExecution(run);
-    return this.listForScope(run.ownerId, specification.allowedEnv);
+    return this.listForScope(run.ownerId, specification.allowedEnv, true);
   }
 
-  private listForScope(ownerId: string, allowedEnv: readonly string[] | null): string {
+  private listForScope(
+    ownerId: string,
+    allowedEnv: readonly string[] | null,
+    includeReady: boolean,
+  ): string {
     const catalog = this.environments.list(ownerId);
     const configuredMain = this.store.agentEnvironments.mainEnvironmentIdFor(ownerId);
     const mainEnv =
@@ -1095,9 +1099,8 @@ export class AgentEnvironmentRuntime {
         )
         .map((environment) => ({
           ...catalogEntry(environment, environment.envId === mainEnv),
-          is_main: environment.envId === mainEnv,
+          ...(includeReady ? { ready: environment.ready } : {}),
         })),
-      main_env: mainEnv === null ? null : 'main',
     });
   }
 
@@ -1223,7 +1226,7 @@ export class AgentEnvironmentRuntime {
       signal: new AbortController().signal,
       expiresAt: new Date(expiresAt),
     });
-    const content = await this.#operationContent(run, policy.bindingVersion, operation);
+    const content = await this.#operationContent(run, operation);
     const status = terminal(operation);
     return {
       operation,
@@ -1350,7 +1353,7 @@ export class AgentEnvironmentRuntime {
             (action.case === 'bash' ? action.value.timeoutSeconds + 30 : 30) * 1000,
         ),
       });
-      const result = await this.#toolResult(run, policy.bindingVersion, operation);
+      const result = await this.#toolResult(run, operation);
       const writtenPath = 'path' in resolvedAction.value ? resolvedAction.value.path : undefined;
       if (
         (action.case === 'write' || action.case === 'edit') &&
@@ -1371,11 +1374,7 @@ export class AgentEnvironmentRuntime {
     } catch (error) {
       if (signal.aborted && remoteStarted) {
         operation = await this.#cancel(run.ownerId, operationId, 'The Agent Run was cancelled.');
-        return this.#toolResult(
-          run,
-          this.store.agentEnvironments.requireHistory(specification.historyId).bindingVersion,
-          operation,
-        );
+        return this.#toolResult(run, operation);
       }
       if (signal.aborted && !remoteStarted && recordedIntent)
         this.store.transaction(() =>
@@ -1416,7 +1415,7 @@ export class AgentEnvironmentRuntime {
     const run = this.store.getRunById(runId);
     const operation = this.operations.getEnvironmentOperation(run.ownerId, association.operationId);
     if (!terminal(operation)) return undefined;
-    const result = await this.#toolResult(run, association.bindingVersion, operation);
+    const result = await this.#toolResult(run, operation);
     this.store.transaction(() => {
       result.commit?.();
     });
@@ -1432,16 +1431,15 @@ export class AgentEnvironmentRuntime {
 
   async #toolResult(
     run: RunRecord,
-    bindingVersion: number,
     operation: EnvironmentOperationRecord,
   ): Promise<ToolExecutionResult> {
     if (
       operation.action.case === 'readImage' &&
       terminal(operation) === OperationStatus.COMPLETED
     ) {
-      return this.#imageResult(run, bindingVersion, operation);
+      return this.#imageResult(run, operation);
     }
-    const content = await this.#operationContent(run, bindingVersion, operation);
+    const content = await this.#operationContent(run, operation);
     const status = terminal(operation) === OperationStatus.COMPLETED ? 'success' : 'error';
     return {
       content,
@@ -1452,20 +1450,13 @@ export class AgentEnvironmentRuntime {
     };
   }
 
-  #imageResult(
-    run: RunRecord,
-    bindingVersion: number,
-    operation: EnvironmentOperationRecord,
-  ): ToolExecutionResult {
+  #imageResult(run: RunRecord, operation: EnvironmentOperationRecord): ToolExecutionResult {
     if (operation.action.case !== 'readImage') {
       throw new SessionError('internal', 'An image read Operation is required.');
     }
     const outcome = readImageOutcomeSchema.parse(outcomeValue(operation, 'readImage'));
     const base = {
-      operation_id: operation.operationId,
-      status: statusName(terminal(operation)),
       env_id: this.#modelEnvId(run.ownerId, operation.envId),
-      binding_version: bindingVersion,
       cwd: operation.action.value.cwd,
     };
     try {
@@ -1741,51 +1732,61 @@ export class AgentEnvironmentRuntime {
     }
   }
 
-  async #operationContent(
-    run: RunRecord,
-    bindingVersion: number,
-    operation: EnvironmentOperationRecord,
-  ): Promise<string> {
-    const base = {
-      operation_id: operation.operationId,
-      status: statusName(terminal(operation)),
-      env_id: this.#modelEnvId(run.ownerId, operation.envId),
-      binding_version: bindingVersion,
-    };
+  async #operationContent(run: RunRecord, operation: EnvironmentOperationRecord): Promise<string> {
+    const envId = this.#modelEnvId(run.ownerId, operation.envId);
     if (terminal(operation) !== OperationStatus.COMPLETED) {
-      return jsonStringify({ ...base, error: 'Environment operation did not complete.' });
+      return jsonStringify({
+        status: statusName(terminal(operation)),
+        env_id: envId,
+        error: 'Environment operation did not complete.',
+      });
     }
     if (operation.action.case === 'read') {
       const read = readOutcomeSchema.parse(outcomeValue(operation, 'read'));
-      const hint =
-        read.hasMore || read.truncated
-          ? `More lines are available; call read again with offset=${read.nextOffset ?? read.endLine + 1} to continue.`
-          : undefined;
       return jsonStringify({
-        ...base,
+        env_id: envId,
         cwd: operation.action.value.cwd,
-        outcome: read,
-        ...(hint === undefined ? {} : { hint }),
+        outcome: {
+          path: read.path,
+          content: read.content,
+          start_line: read.startLine,
+          end_line: read.endLine,
+          has_more: read.hasMore,
+          ...(read.nextOffset === undefined ? {} : { next_offset: read.nextOffset }),
+          file_version: read.fileVersion,
+          truncated: read.truncated,
+        },
       });
     }
     if (operation.action.case === 'write') {
+      const write = writeOutcomeSchema.parse(outcomeValue(operation, 'write'));
       return jsonStringify({
-        ...base,
+        env_id: envId,
         cwd: operation.action.value.cwd,
-        outcome: writeOutcomeSchema.parse(outcomeValue(operation, 'write')),
+        outcome: {
+          path: write.path,
+          bytes_written: write.bytesWritten,
+          file_version: write.fileVersion,
+        },
       });
     }
     if (operation.action.case === 'edit') {
+      const edit = editOutcomeSchema.parse(outcomeValue(operation, 'edit'));
       return jsonStringify({
-        ...base,
+        env_id: envId,
         cwd: operation.action.value.cwd,
-        outcome: editOutcomeSchema.parse(outcomeValue(operation, 'edit')),
+        outcome: {
+          path: edit.path,
+          replacements: edit.replacements,
+          bytes_written: edit.bytesWritten,
+          file_version: edit.fileVersion,
+        },
       });
     }
     if (operation.action.case === 'glob') {
       const outcome = globOutcomeSchema.parse(outcomeValue(operation, 'glob'));
       return jsonStringify({
-        ...base,
+        env_id: envId,
         cwd: operation.action.value.cwd,
         path: outcome.path,
         files: outcome.files,
@@ -1808,7 +1809,7 @@ export class AgentEnvironmentRuntime {
               }
             : { matches: outcome.matches };
       return jsonStringify({
-        ...base,
+        env_id: envId,
         cwd: operation.action.value.cwd,
         path: outcome.path,
         ...selection,
@@ -1835,9 +1836,9 @@ export class AgentEnvironmentRuntime {
       (operation.endOffset !== undefined && operation.endOffset > BigInt(this.#bashPreviewBytes));
     const output = previewBytes.subarray(0, this.#bashPreviewBytes).toString('utf8');
     const result = {
-      ...base,
+      env_id: envId,
       cwd: operation.action.value.cwd,
-      outcome,
+      ...(outcome.exitCode === undefined ? {} : { exit_code: outcome.exitCode }),
       output,
       output_truncated: truncated,
     };
@@ -1972,14 +1973,7 @@ function catalogEntry(
     env_id: main ? 'main' : environment.envId,
     name: main ? 'main' : environment.name,
     kind: environment.kind,
-    recommended_pwd: environment.recommendedPwd,
-    binding_status: environment.bindingStatus,
-    connection_status: environment.connectionStatus,
-    capability_status: environment.capabilityStatus,
-    directory_status: environment.directoryStatus,
-    maintenance_mode: environment.maintenanceMode,
-    granted_capabilities: environment.grantedCapabilities,
-    ready: environment.ready,
+    default_pwd: environment.recommendedPwd,
   };
 }
 

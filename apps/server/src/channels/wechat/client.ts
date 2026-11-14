@@ -46,7 +46,7 @@ const cdnMediaSchema = z
   .optional();
 
 export const weixinMessageSchema = z.object({
-  message_id: z.number().optional(),
+  message_id: z.union([z.string(), z.number()]).optional(),
   from_user_id: z.string().optional(),
   to_user_id: z.string().optional(),
   create_time_ms: z.number().optional(),
@@ -82,7 +82,17 @@ export const weixinMessageSchema = z.object({
               media: cdnMediaSchema,
             })
             .optional(),
-          ref_msg: z.record(z.string(), z.unknown()).optional(),
+          ref_msg: z
+            .object({
+              title: z.string().optional(),
+              svr_id: z.string().optional(),
+              message_item: z
+                .object({
+                  text_item: z.object({ text: z.string().optional() }).optional(),
+                })
+                .optional(),
+            })
+            .optional(),
         })
         .optional(),
     )
@@ -102,6 +112,7 @@ const getUpdatesResponseSchema = z.object({
 const sendMessageResponseSchema = z.object({
   ret: z.number().optional(),
   errmsg: z.string().optional(),
+  message_id: z.union([z.string(), z.number()]).optional(),
 });
 
 export interface WechatUploadedMedia {
@@ -142,7 +153,7 @@ export interface WechatClientApi {
     contextToken: string | null,
     text: string,
     signal: AbortSignal,
-  ): Promise<void>;
+  ): Promise<string | undefined>;
   getConfig(botToken: string, ilinkUserId: string, contextToken?: string): Promise<string | null>;
   downloadMedia(
     ref: { fullUrl?: string | undefined; encryptQueryParam?: string | undefined },
@@ -162,7 +173,7 @@ export interface WechatClientApi {
     contextToken: string | null,
     media: WechatUploadedMedia & { kind: 'image' | 'file'; fileName?: string },
     signal: AbortSignal,
-  ): Promise<void>;
+  ): Promise<string | undefined>;
   sendTyping(
     botToken: string,
     ilinkUserId: string,
@@ -296,7 +307,7 @@ export class WechatClient implements WechatClientApi {
     contextToken: string | null,
     text: string,
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     const response = await this.#post(
       '/ilink/bot/sendmessage',
       {
@@ -324,6 +335,7 @@ export class WechatClient implements WechatClientApi {
           : `微信发送失败（${code}）。`,
       );
     }
+    return response.message_id === undefined ? undefined : String(response.message_id);
   }
 
   async getConfig(
@@ -471,7 +483,7 @@ export class WechatClient implements WechatClientApi {
     contextToken: string | null,
     media: WechatUploadedMedia & { kind: 'image' | 'file'; fileName?: string },
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     const item =
       media.kind === 'image'
         ? {
@@ -522,6 +534,7 @@ export class WechatClient implements WechatClientApi {
           : `微信发送失败（${code}）。`,
       );
     }
+    return response.message_id === undefined ? undefined : String(response.message_id);
   }
 
   async notifyLifecycle(botToken: string, action: 'start' | 'stop'): Promise<void> {
