@@ -389,6 +389,9 @@ export class EnvironmentOperationManager {
       );
     }
     if (this.operations.size >= this.maxOperations) {
+      this.evictRetiredOperations();
+    }
+    if (this.operations.size >= this.maxOperations) {
       throw failure(
         DeviceErrorCode.MESSAGE_TOO_LARGE,
         'The bounded Daemon operation deduplication memory is full.',
@@ -886,5 +889,12 @@ export class EnvironmentOperationManager {
     operation.retired = true;
     delete operation.action;
     delete operation.result;
+  }
+
+  private evictRetiredOperations(): void {
+    for (const [operationId, operation] of this.operations) {
+      if (this.operations.size < this.maxOperations) return;
+      if (operation.retired) this.operations.delete(operationId);
+    }
   }
 }

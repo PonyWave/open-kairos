@@ -248,6 +248,9 @@ export class BashManager {
       return;
     }
     if (this.operations.size + this.completedOperations.size >= this.maxOperations) {
+      this.evictCompletedOperations();
+    }
+    if (this.operations.size + this.completedOperations.size >= this.maxOperations) {
       throw new BashOperationFailure(
         DeviceErrorCode.MESSAGE_TOO_LARGE,
         'The Daemon operation memory limit has been reached.',
@@ -567,6 +570,13 @@ export class BashManager {
     this.operations.delete(operation.command.operationId);
     this.options.onRetired?.(operation.command.operationId);
     return true;
+  }
+
+  private evictCompletedOperations(): void {
+    for (const operationId of this.completedOperations.keys()) {
+      if (this.operations.size + this.completedOperations.size < this.maxOperations) return;
+      this.completedOperations.delete(operationId);
+    }
   }
 
   private requireOperation(operationId: string, instanceId: string, requestId?: string): Operation {

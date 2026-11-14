@@ -505,18 +505,18 @@ describe('BashManager real process execution', () => {
     expect(Date.now() - startedAt).toBeGreaterThanOrEqual(150);
   });
 
-  it('rejects new operation IDs when the bounded deduplication memory is full', async () => {
+  it('rejects new operation IDs only while the bounded memory is fully active', async () => {
     const { events, manager, command } = fixture({ maxOperations: 1 });
-    const first = command({ command: 'printf first' });
+    const first = command({ command: 'sleep 0.5' });
     manager.start(first);
+    expect(() => manager.start(command({ operationId: 'operation-2' }))).toThrowError(
+      expect.objectContaining({ code: DeviceErrorCode.MESSAGE_TOO_LARGE }),
+    );
     const final = await waitFor(() => result(events));
     manager.acknowledgeOutput(first.operationId, 'instance-1', final.endOffset ?? 0n);
     manager.acknowledgeResult(first.operationId, 'instance-1');
     expect(manager.pendingOperationCount).toBe(0);
-    expect(() => manager.start(command({ operationId: 'operation-2' }))).toThrowError(
-      expect.objectContaining({ code: DeviceErrorCode.MESSAGE_TOO_LARGE }),
-    );
-    manager.start(first);
+    manager.start(command({ operationId: 'operation-2', command: 'printf second' }));
     await waitFor(() =>
       events.filter((event) => event.type === 'result').length >= 2 ? true : undefined,
     );

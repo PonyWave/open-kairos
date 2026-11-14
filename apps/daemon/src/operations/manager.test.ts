@@ -164,7 +164,7 @@ afterEach(() => {
 });
 
 describe('EnvironmentOperationManager', () => {
-  it('deduplicates file side effects and expires acknowledged IDs without LRU reuse', async () => {
+  it('deduplicates file side effects and evicts acknowledged IDs to make room', async () => {
     const { directory, manager, messages } = fixture({ maxOperations: 1 });
     const path = join(directory, 'once.txt');
     const initial = start('operation-write', {
@@ -192,19 +192,19 @@ describe('EnvironmentOperationManager', () => {
     await expect(manager.start(initial)).rejects.toMatchObject({
       code: DeviceErrorCode.OPERATION_EXPIRED,
     });
-    await expect(
-      manager.start(
-        start('operation-new', {
-          case: 'write',
-          value: {
-            path: join(directory, 'new.txt'),
-            cwd: directory,
-            content: 'new',
-            overwrite: false,
-          },
-        }),
-      ),
-    ).rejects.toMatchObject({ code: DeviceErrorCode.MESSAGE_TOO_LARGE });
+    await manager.start(
+      start('operation-new', {
+        case: 'write',
+        value: {
+          path: join(directory, 'new.txt'),
+          cwd: directory,
+          content: 'new',
+          overwrite: false,
+        },
+      }),
+    );
+    await waitFor(() => (results(messages).length === 3 ? true : undefined));
+    expect(readFileSync(join(directory, 'new.txt'), 'utf8')).toBe('new');
     expect(readFileSync(path, 'utf8')).toBe('once');
   });
 
