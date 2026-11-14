@@ -492,6 +492,7 @@ export class WechatClient implements WechatClientApi {
               media: {
                 encrypt_query_param: media.encryptQueryParam,
                 aes_key: media.aesKeyBase64,
+                encrypt_type: 1,
               },
               mid_size: media.cipherSize,
             },
@@ -502,6 +503,7 @@ export class WechatClient implements WechatClientApi {
               media: {
                 encrypt_query_param: media.encryptQueryParam,
                 aes_key: media.aesKeyBase64,
+                encrypt_type: 1,
               },
               file_name: media.fileName ?? 'file',
               len: String(media.rawSize),
