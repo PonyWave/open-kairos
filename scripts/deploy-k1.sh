@@ -35,7 +35,7 @@ export PATH="$HOME/opt/node-v26.4.0-linux-x64/bin:$HOME/.gyro/bin:$PATH"
 
 log() { printf 'deploy-k1[%s]: %s\n' "$TARGET" "$*"; }
 health() { curl --fail --silent --show-error --max-time 5 -o /dev/null "http://127.0.0.1:$PORT/"; }
-stop_service() { tmux kill-session -t "$TMUX_SESSION" 2>/dev/null || true; }
+stop_service() { tmux kill-session -t "=$TMUX_SESSION" 2>/dev/null || true; }
 start_service() { tmux new-session -d -s "$TMUX_SESSION" "$DEPLOY_DIR/start-k1.sh"; }
 
 build() {
