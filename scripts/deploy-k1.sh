@@ -48,6 +48,9 @@ MIGRATION_BACKUP=''
 migrate_if_needed() {
   local data_dir=$1
   local backup_dir=$2
+  if [[ -d $data_dir && ! -f $data_dir/kairos.sqlite ]]; then
+    log "警告: 数据目录 $data_dir 存在但缺少 kairos.sqlite，请确认数据目录配置"
+  fi
   local check
   check=$(node apps/server/dist/migrate.js --check --data-dir "$data_dir" --backup-dir "$backup_dir")
   [[ $check == *'"status":"migration_required"'* ]] || return 0
@@ -84,7 +87,7 @@ log "安装依赖并构建"
 build
 
 DATA_DIR=$(grep -E '^KAIROS_DATA_DIR=' "$DEPLOY_DIR/.env" 2>/dev/null | cut -d= -f2- || true)
-DATA_DIR=${DATA_DIR:-$HOME/.kairos}
+DATA_DIR=${DATA_DIR:-$HOME/.kairos/.data}
 
 log "停止 $TMUX_SESSION"
 stop_service
