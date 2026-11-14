@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { SessionStore } from '../../sessions/store.js';
 import { openDatabase } from '../../storage/database.js';
 import { ChannelStore } from '../store.js';
-import { WechatChannel } from './adapter.js';
+import { segmentWechatMarkdown, WechatChannel } from './adapter.js';
 import type { WechatClientApi } from './client.js';
 
 const ownerId = 'wechat-adapter-owner';
@@ -418,4 +418,19 @@ it('end-to-end text flow: realistic getUpdates payload enqueues and send deliver
   } finally {
     database.close();
   }
+});
+
+it('segments long markdown at 4000 characters on paragraph boundaries', () => {
+  expect(segmentWechatMarkdown('短消息')).toEqual(['短消息']);
+  expect(segmentWechatMarkdown('')).toEqual([]);
+  const paragraph = '汉'.repeat(3_000);
+  const segments = segmentWechatMarkdown([paragraph, paragraph, paragraph].join('\n\n'));
+  expect(segments).toHaveLength(3);
+  for (const segment of segments) {
+    expect(segment.length).toBeLessThanOrEqual(4_000);
+  }
+  expect(segments.join('\n\n')).toContain(paragraph);
+  const hardSplit = segmentWechatMarkdown('字'.repeat(9_000));
+  expect(hardSplit).toHaveLength(3);
+  expect(hardSplit.join('')).toBe('字'.repeat(9_000));
 });

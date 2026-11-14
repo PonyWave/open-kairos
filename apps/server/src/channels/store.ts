@@ -496,19 +496,23 @@ export class ChannelStore {
     deliveryId: string,
     error: { code: string; message: string; retryable: boolean },
     nextAttemptAt: string | null,
+    options?: { countAttempt?: boolean },
   ): ChannelDeliveryRecord {
     const now = isoTime(undefined, this.#clock);
     const record = this.getDelivery(ownerId, deliveryId);
-    const exhausted = !error.retryable || record.attempts >= record.maxAttempts;
+    const countAttempt = options?.countAttempt ?? true;
+    const attempts = countAttempt ? record.attempts : Math.max(0, record.attempts - 1);
+    const exhausted = !error.retryable || (countAttempt && record.attempts >= record.maxAttempts);
     this.database
       .prepare(
         `UPDATE channel_deliveries
-         SET status = ?, last_error_code = ?, last_error_message = ?, last_error_retryable = ?,
+         SET status = ?, attempts = ?, last_error_code = ?, last_error_message = ?, last_error_retryable = ?,
              next_attempt_at = ?, updated_at = ?
          WHERE delivery_id = ? AND owner_id = ?`,
       )
       .run(
         exhausted ? 'failed' : 'pending',
+        attempts,
         error.code,
         error.message,
         error.retryable ? 1 : 0,
@@ -518,6 +522,18 @@ export class ChannelStore {
         ownerId,
       );
     return this.getDelivery(ownerId, deliveryId);
+  }
+
+  retryStaleTokenDeliveries(ownerId: string, channel: ChannelIdValue): number {
+    const now = isoTime(undefined, this.#clock);
+    const result = this.database
+      .prepare(
+        `UPDATE channel_deliveries
+         SET next_attempt_at = ?, attempts = 0, updated_at = ?
+         WHERE owner_id = ? AND channel = ? AND status = 'pending' AND last_error_code = 'wechat_ret_-2'`,
+      )
+      .run(now, now, ownerId, channel);
+    return Number(result.changes);
   }
 
   markNotified(ownerId: string, deliveryId: string): void {

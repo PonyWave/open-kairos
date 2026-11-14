@@ -272,3 +272,32 @@ it('passes delivery attachments to the channel adapter', async () => {
     database.close();
   }
 });
+
+it('keeps wechat stale-token deliveries pending with a long retry and no attempt count', async () => {
+  const value = fixture();
+  try {
+    value.bindFeishu();
+    const delivery = value.channelStore.createDelivery({
+      ownerId,
+      channel: 'feishu',
+      content: '会话过期重试',
+    });
+    value.fail(new ChannelDeliveryError(true, 'wechat_ret_-2', 'prepare failed'));
+    await value.worker.processNow();
+    let record = value.channelStore.getDelivery(ownerId, delivery.deliveryId);
+    expect(record.status).toBe('pending');
+    expect(record.attempts).toBe(0);
+    expect(record.lastErrorCode).toBe('wechat_ret_-2');
+    expect(record.nextAttemptAt).not.toBeNull();
+    const retried = value.channelStore.retryStaleTokenDeliveries(ownerId, 'feishu');
+    expect(retried).toBe(1);
+    record = value.channelStore.getDelivery(ownerId, delivery.deliveryId);
+    expect(record.attempts).toBe(0);
+    value.fail(null);
+    await value.worker.processNow();
+    expect(value.channelStore.getDelivery(ownerId, delivery.deliveryId).status).toBe('succeeded');
+    expect(value.sent).toHaveLength(1);
+  } finally {
+    value.database.close();
+  }
+});

@@ -219,6 +219,10 @@ export class ChannelManager {
         excerpt: input.text.slice(0, 500),
       });
     }
+    if (input.channel === 'wechat') {
+      this.store.retryStaleTokenDeliveries(this.#ownerId(), 'wechat');
+      void this.worker.processNow().catch(() => undefined);
+    }
     void this.#deliver(accepted.input, accepted.runId).catch((error: unknown) => {
       // 输入已持久化，调度失败时由后续重试或重启恢复。
       console.error('channel inbound deliver failed', error);

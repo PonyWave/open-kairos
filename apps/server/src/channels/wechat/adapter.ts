@@ -37,6 +37,33 @@ export interface WechatLoginSession {
 }
 
 const pinWaitTimeoutMs = 300_000;
+
+const WECHAT_MESSAGE_MAX_CHARS = 4_000;
+
+export function segmentWechatMarkdown(markdown: string): string[] {
+  if (markdown.length === 0) return [];
+  if (markdown.length <= WECHAT_MESSAGE_MAX_CHARS) return [markdown];
+  const segments: string[] = [];
+  let current = '';
+  for (const paragraph of markdown.split(/\n{2,}/)) {
+    const candidate = current.length === 0 ? paragraph : `${current}\n\n${paragraph}`;
+    if (candidate.length <= WECHAT_MESSAGE_MAX_CHARS) {
+      current = candidate;
+      continue;
+    }
+    if (current.length > 0) segments.push(current);
+    if (paragraph.length <= WECHAT_MESSAGE_MAX_CHARS) {
+      current = paragraph;
+      continue;
+    }
+    for (let offset = 0; offset < paragraph.length; offset += WECHAT_MESSAGE_MAX_CHARS) {
+      segments.push(paragraph.slice(offset, offset + WECHAT_MESSAGE_MAX_CHARS));
+    }
+    current = '';
+  }
+  if (current.length > 0) segments.push(current);
+  return segments;
+}
 const typingRefreshMs = 5_000;
 
 export class WechatChannel implements OutboundChannel {
@@ -354,13 +381,13 @@ export class WechatChannel implements OutboundChannel {
       throw new ChannelDeliveryError(false, 'empty_message', '没有可发送的文本内容。');
     }
     let lastMessageId: string | undefined;
-    if (markdown.length > 0) {
+    for (const segment of segmentWechatMarkdown(markdown)) {
       signal.throwIfAborted();
       lastMessageId = await this.#client.sendText(
         credentials.botToken,
         input.externalUserId,
         input.contextToken,
-        markdown,
+        segment,
         signal,
       );
     }

@@ -154,9 +154,12 @@ export class ChannelDeliveryWorker {
               'delivery_error',
               error instanceof Error ? error.message : String(error),
             );
-      const retryDelay = this.#retryDelaysMs[claimed.attempts - 1];
+      const staleToken = classified.code === 'wechat_ret_-2';
+      const retryDelay = staleToken ? 300_000 : this.#retryDelaysMs[claimed.attempts - 1];
       const nextAttemptAt =
-        classified.retryable && retryDelay !== undefined && claimed.attempts < claimed.maxAttempts
+        classified.retryable &&
+        retryDelay !== undefined &&
+        (staleToken || claimed.attempts < claimed.maxAttempts)
           ? new Date(this.#clock().getTime() + retryDelay).toISOString()
           : null;
       store.markAttemptFailed(
@@ -164,6 +167,7 @@ export class ChannelDeliveryWorker {
         delivery.deliveryId,
         { code: classified.code, message: classified.message, retryable: classified.retryable },
         nextAttemptAt,
+        { countAttempt: !staleToken },
       );
     }
   }
@@ -212,7 +216,11 @@ export function failureNoticeText(delivery: ChannelDeliveryRecord): string {
     `retryable: ${delivery.lastErrorRetryable === true ? 'yes' : 'no'}`,
     `original content: ${delivery.content}`,
   ];
-  if (delivery.lastErrorRetryable === true) {
+  if (delivery.lastErrorCode === 'wechat_ret_-2') {
+    lines.push(
+      'guidance: The WeChat session token is stale, so this delivery stays queued and is retried automatically when the user next sends a message. Do not resend it yourself.',
+    );
+  } else if (delivery.lastErrorRetryable === true) {
     lines.push(
       'guidance: This is a transient error. You may retry by resending the same message with the channels parameter; the GUI copy will appear again, so prefer retrying only when the IM copy matters.',
     );
