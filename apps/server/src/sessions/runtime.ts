@@ -1284,6 +1284,7 @@ export class RunCoordinator {
               : {}),
             message: withoutToolContentParts(message),
             ...(responseUsage === undefined ? {} : { responseUsage }),
+            ...(attachmentIds.length === 0 ? {} : { attachmentIds }),
           });
         } else {
           if (message.role !== 'user') {
@@ -1308,9 +1309,6 @@ export class RunCoordinator {
               message: { role: 'user', content: message.content },
             });
           }
-        }
-        if (attachmentIds.length > 0) {
-          this.store.attachments.linkMessage(saved.seq, run.ownerId, attachmentIds);
         }
         if (
           message.role === 'assistant' &&

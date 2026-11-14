@@ -371,3 +371,51 @@ it('parses a realistic file message payload and downloads the attachment', async
     database.close();
   }
 });
+
+it('end-to-end text flow: realistic getUpdates payload enqueues and send delivers one message', async () => {
+  const inbound: { text: string }[] = [];
+  const { database, store, client, channel } = fixture((message) => {
+    inbound.push(message);
+  });
+  try {
+    store.completeWechatLogin(ownerId, {
+      kind: 'wechat',
+      botToken: 'token-1',
+      baseUrl: 'https://ilinkai.weixin.qq.com',
+      botId: 'bot-1',
+      ilinkUserId: 'user-1',
+    });
+    await channel.handleInboundMessage(ownerId, 'user-1', {
+      seq: 2048,
+      message_id: '7483920192837465999',
+      from_user_id: 'user-1',
+      to_user_id: 'bot-1',
+      client_id: 'client-xyz',
+      create_time_ms: 1794593000000,
+      update_time_ms: 1794593000001,
+      message_type: 1,
+      message_state: 2,
+      session_id: 'session-9',
+      context_token: 'ctx-text',
+      item_list: [
+        {
+          type: 1,
+          create_time_ms: 1794593000000,
+          is_completed: true,
+          msg_id: 'item-text-1',
+          text_item: { text: '今天天气怎么样' },
+        },
+      ],
+    });
+    expect(inbound).toHaveLength(1);
+    expect(inbound[0]?.text).toBe('今天天气怎么样');
+    client.sentTexts.length = 0;
+    await channel.send(
+      { externalUserId: 'user-1', contextToken: 'ctx-text', markdown: '**晴天**，适合出门。' },
+      new AbortController().signal,
+    );
+    expect(client.sentTexts).toEqual(['**晴天**，适合出门。']);
+  } finally {
+    database.close();
+  }
+});

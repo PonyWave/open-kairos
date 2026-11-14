@@ -93,14 +93,26 @@ export class ChannelManager {
 
   #handleInbound(message: InboundChannelMessage): void {
     try {
-      const attachmentIds = (message.media ?? []).map(
-        (media) =>
-          this.#sessionStore.attachments.uploadChannel({
-            ownerId: this.#ownerId(),
-            fileName: media.fileName,
-            bytes: media.bytes,
-          }).attachmentId,
-      );
+      const attachmentIds: string[] = [];
+      const failedUploads: string[] = [];
+      for (const media of message.media ?? []) {
+        try {
+          attachmentIds.push(
+            this.#sessionStore.attachments.uploadChannel({
+              ownerId: this.#ownerId(),
+              fileName: media.fileName,
+              bytes: media.bytes,
+            }).attachmentId,
+          );
+        } catch (error) {
+          // 单个附件入库失败不阻断消息入队。
+          console.error('channel attachment upload failed', media.fileName, error);
+          failedUploads.push(media.fileName);
+        }
+      }
+      const text = [message.text, ...failedUploads.map((name) => `[附件入库失败: ${name}]`)]
+        .filter((part) => part.length > 0)
+        .join('\n');
       const key = `${message.channel}:${message.externalUserId}`;
       const batch = this.#mediaBatches.get(key);
       if (attachmentIds.length > 0 && !hasUserText(message.text)) {
@@ -142,7 +154,7 @@ export class ChannelManager {
         externalUserId: message.externalUserId,
         externalMessageIds: [message.externalMessageId],
         batchKey: `channel-inbound:${message.channel}:${message.externalMessageId}`,
-        text: message.text,
+        text,
         attachmentIds,
         ...(message.quote === undefined ? {} : { quote: message.quote }),
       });
